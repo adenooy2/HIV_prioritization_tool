@@ -10,6 +10,8 @@ library(ggplot2)
 #  - r_inf_adult: proportional change in adult infections (negative reduces infections)
 #  - r_inf_infant: proportional change in infant infections
 #  - r_death: proportional change in mortality/deaths
+
+#do we need to add TB treatment?
 components <- data.frame(
   id = c(
     "art_provision","mmd","dsd","cotrim","art_init",
@@ -132,6 +134,7 @@ ui <- fluidPage(
     sidebarPanel(
       h4("Country baseline"),
       numericInput("plhiv", "People living with HIV (PLHIV)", value = 200000, min = 0),
+      numericInput("pTB_HIV", "HIV/TB co-infection rate (%)", value = 25, min = 0,max=100),
       
       tags$hr(),
       h4("Baseline cascade counts (annual / current)"),
