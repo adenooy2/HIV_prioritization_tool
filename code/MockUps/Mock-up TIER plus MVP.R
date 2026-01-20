@@ -38,8 +38,10 @@ load_country_data <- function(csv_file = paste(dir,"data/tier_app/basic_hiv_data
     
     # Validate required columns
     required_cols <- c("country", "total_population", "hiv_prevalence", 
-                       "new_infections_per_year", "current_diagnoses", 
+                       "new_infections_per_year", "current_diagnoses", "percent_diagnosed",
                        "percent_on_art", "percent_suppressed", "aids_deaths_per_year")
+    
+    
     
     missing_cols <- setdiff(required_cols, names(data))
     if (length(missing_cols) > 0) {
@@ -364,24 +366,26 @@ default_baseline_interventions <- list(
 
 build_country_presets <- function(csv_data) {
   presets <- list()
-  
+ 
   if (!is.null(csv_data) && nrow(csv_data) > 0) {
     # Build from CSV
     for (i in 1:nrow(csv_data)) {
       row <- csv_data[i, ]
       country_name <- row$country
-      
+     
       # Extract context
       context <- list(
         total_population = row$total_population,
         hiv_prevalence = row$hiv_prevalence / 100,  # Convert to proportion if needed
         new_infections_per_year = row$new_infections_per_year,
         current_diagnoses = row$current_diagnoses,
+        percent_diagnosed=row$percent_diagnosed,
         percent_on_art = row$percent_on_art,
         percent_suppressed = row$percent_suppressed,
         aids_deaths_per_year = row$aids_deaths_per_year
       )
       
+  
       # Extract baseline interventions if present in CSV
       baseline <- default_baseline_interventions
       for (int_name in names(default_baseline_interventions)) {
@@ -406,6 +410,7 @@ build_country_presets <- function(csv_data) {
       hiv_prevalence = 0.08,
       new_infections_per_year = 5000,
       current_diagnoses = 3500,
+      percent_diagnosed=85,
       percent_on_art = 75,
       percent_suppressed = 85,
       aids_deaths_per_year = 800
@@ -418,13 +423,15 @@ build_country_presets <- function(csv_data) {
 
 # Build presets
 regional_presets <- build_country_presets(country_data_csv)
+
 # ============================================================================
 # POPULATION CALCULATION FUNCTION
 # ============================================================================
 
 calculate_populations <- function(context) {
+
   plhiv <- context$total_population * context$hiv_prevalence
-  diagnosed <- plhiv * 0.85  # UPDATE: Diagnosis rate assumption
+  diagnosed <- plhiv * (context$percent_diagnosed/100)  # UPDATE: Diagnosis rate assumption
   on_art <- diagnosed * (context$percent_on_art / 100)
   suppressed <- on_art * (context$percent_suppressed / 100)
   hiv_negative <- context$total_population - plhiv
@@ -694,6 +701,7 @@ ui <- page_sidebar(
     numericInput("prevalence", "HIV Prevalence (%):", value = 4.5, min = 0, max = 100, step = 0.1),
     numericInput("new_infections", "New Infections/Year:", value = 8500, min = 0),
     numericInput("current_dx", "Current Diagnoses/Year:", value = 7000, min = 0),
+    numericInput("pct_diagnosed", "% of PLHIV Diagnosed:", value = 85, min = 0, max = 100),  
     numericInput("pct_on_art", "% Diagnosed on ART:", value = 78, min = 0, max = 100),
     numericInput("pct_suppressed", "% on ART Suppressed:", value = 82, min = 0, max = 100),
     numericInput("aids_deaths", "AIDS Deaths/Year:", value = 2200, min = 0)
@@ -826,6 +834,7 @@ server <- function(input, output, session) {
     updateNumericInput(session, "prevalence", value = preset$context$hiv_prevalence * 100)
     updateNumericInput(session, "new_infections", value = preset$context$new_infections_per_year)
     updateNumericInput(session, "current_dx", value = preset$context$current_diagnoses)
+    updateNumericInput(session, "pct_diagnosed", value = preset$context$percent_diagnosed)  
     updateNumericInput(session, "pct_on_art", value = preset$context$percent_on_art)
     updateNumericInput(session, "pct_suppressed", value = preset$context$percent_suppressed)
     updateNumericInput(session, "aids_deaths", value = preset$context$aids_deaths_per_year)
@@ -843,8 +852,11 @@ server <- function(input, output, session) {
       current_diagnoses = input$current_dx,
       percent_on_art = input$pct_on_art,
       percent_suppressed = input$pct_suppressed,
-      aids_deaths_per_year = input$aids_deaths
+      aids_deaths_per_year = input$aids_deaths,
+      percent_diagnosed = input$pct_diagnosed
     )
+    
+    
   })
   
   # Calculate populations
