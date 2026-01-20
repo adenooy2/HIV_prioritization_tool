@@ -1,0 +1,63 @@
+chart,indicator,value,value_lower,value_upper,value_comment,sex,age,year,source_database,notes
+"Progress towards 95-95-95","Percent of people living with HIV who know their status",,,,,,"all ages","2024","Spectrum estimates 2025 (UNAIDS/WHO)","Estimates were not available at the time of publication."
+"Progress towards 95-95-95","Percent of people who know their status who are on ART",,,,,,"all ages","2024","Spectrum estimates 2025 (UNAIDS/WHO)","Estimates were not available at the time of publication."
+"Progress towards 95-95-95","Percent of people on ART who achieve viral suppression",,,,,,"all ages","2024","Spectrum estimates 2025 (UNAIDS/WHO)","Estimates were not available at the time of publication."
+"HIV tests conducted and positivity, by sex","Den Age-Female Gte 15","1030824",,,"validated","Females","15+","2024","Global AIDS Monitoring 2025","1030824"
+"HIV tests conducted and positivity, by sex","Per Age-Female Gte 15","0.1",,,"validated","Females","15+","2024","Global AIDS Monitoring 2025","0.1"
+"HIV tests conducted and positivity, by sex","Den Age-Male Gte 15","190301",,,"validated","Males","15+","2024","Global AIDS Monitoring 2025","190301"
+"HIV tests conducted and positivity, by sex","Per Age-Male Gte 15","0.7",,,"validated","Males","15+","2024","Global AIDS Monitoring 2025","0.7"
+"HIV tests conducted and positivity, by sex","Den Age-All","1228467",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","1228467"
+"HIV tests conducted and positivity, by sex","Per Age-All","0.2",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","0.2"
+"HIV tests conducted and positivity at community level","Den Community-Community Mobile","2665",,,"validated","All sexes","All ages","2019","Global AIDS Monitoring 2020",
+"HIV tests conducted and positivity at community level","Per Community-Community Mobile","0.2",,,"validated","All sexes","All ages","2019","Global AIDS Monitoring 2020",
+"HIV tests conducted and positivity at community level","Den Community-Community Other","75056",,,"validated","All sexes","All ages","2019","Global AIDS Monitoring 2020",
+"HIV tests conducted and positivity at community level","Per Community-Community Other","0.3",,,"validated","All sexes","All ages","2019","Global AIDS Monitoring 2020",
+"HIV tests conducted and positivity at community level","Den Community-Community All","77721",,,"validated","All sexes","All ages","2019","Global AIDS Monitoring 2020",
+"HIV tests conducted and positivity at community level","Per Community-Community All","0.3",,,"validated","All sexes","All ages","2019","Global AIDS Monitoring 2020",
+"HIV tests conducted and positivity at facility level","Den Facility-Facility Provider Init","192281",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","192281"
+"HIV tests conducted and positivity at facility level","Per Facility-Facility Provider Init","0.1",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","0.1"
+"HIV tests conducted and positivity at facility level","Den Facility-Facility Anc","947045",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","947045"
+"HIV tests conducted and positivity at facility level","Per Facility-Facility Anc",,,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","0"
+"HIV tests conducted and positivity at facility level","Den Facility-Facility Vct","84235",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","84235"
+"HIV tests conducted and positivity at facility level","Per Facility-Facility Vct","2",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","2"
+"HIV tests conducted and positivity at facility level","Den Facility-Facility All","1228467",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","1228467"
+"HIV tests conducted and positivity at facility level","Per Facility-Facility All","0.2",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","0.2"
+"HIV self-tests","Self Test Distributed-Data Value",,,,"validated","All sexes","All ages","2019","Global AIDS Monitoring 2020",
+"HIV self-tests","Self Test Distributed-Data Value",,,,"validated","All sexes","All ages","2020","Global AIDS Monitoring 2021",
+"HIV self-tests","Self Test Distributed-Data Value",,,,"validated","All sexes","All ages","2022","Global AIDS Monitoring 2023",
+"HIV self-tests","Self Test Distributed-Data Value",,,,"validated","All sexes","All ages","2023","Global AIDS Monitoring 2024",
+"HIV self-tests","Self Test Distributed-Data Value",,,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","1229278.4124464318",,,,,,"2024","EIC and WHO HIV RDT Landscape Report 2024",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","1085492.8704884038",,,,,,"2025","EIC and WHO HIV RDT Landscape Report 2024",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","1099722.52165741",,,,,,"2026","EIC and WHO HIV RDT Landscape Report 2024",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","1114462.6890911588",,,,,,"2027","EIC and WHO HIV RDT Landscape Report 2024",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","1127064.6228775969",,,,,,"2028","EIC and WHO HIV RDT Landscape Report 2024",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","1139591.7583174102",,,,,,"2029","EIC and WHO HIV RDT Landscape Report 2024",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","1150755.1821644981",,,,,,"2030","EIC and WHO HIV RDT Landscape Report 2024",
+"Key Populations","HIV prevalence among sex workers","1.3",,,,,,"2024","UNAIDS KP-Atlas 2025","Source: Behavioral surveillance survey, 2024"
+"Key Populations","HIV testing and status awareness among sex workers","90.3",,,,,,"2024","UNAIDS KP-Atlas 2025","Source: Behavioral surveillance survey, 2024"
+"Key Populations","Number of HIV tests taken among sex workers","26594",,,,,,"2023","The Global Fund",
+"Key Populations","Number of HIV tests taken among men who have sex with men","6579",,,,,,"2023","The Global Fund",
+"Key Populations","HIV prevalence among people who inject drugs","1.2",,,,,,"2023","UNAIDS KP-Atlas 2025","Source: Behavioral surveillance survey, 2023"
+"Key Populations","HIV testing and status awareness among people who inject drugs","96.6",,,,,,"2023","UNAIDS KP-Atlas 2025","Source: Behavioral surveillance survey, 2023"
+"Key Populations","Number of HIV tests taken among people who use drugs","24767",,,,,,"2023","The Global Fund",
+"Key Populations","HIV prevalence among transgender people","0.8",,,,,,"2022","UNAIDS KP-Atlas 2025","Source: Behavioral surveillance survey, 2022"
+"Key Populations","HIV testing and status awareness among transgender people","98.4",,,,,,"2022","UNAIDS KP-Atlas 2025","Source: Behavioral surveillance survey, 2022"
+"Key Populations","Number of HIV tests taken among transgender population","1678",,,,,,"2023","The Global Fund",
+"Key Populations","HIV prevalence among prisoners","0.1",,,,,,"2024","UNAIDS KP-Atlas 2025","Source: Programme data, 2024"
+"Key Populations","Number of HIV tests taken among prisoners","308553",,,,,,"2023","The Global Fund",
+"WHO HIV Testing Policy Compliance","From national authorities Laws requiring parental consent for adolescents to access HIV testing",,,,"Yes",,,"2022","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Provider-initiated testing and counselling",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Community-based testing and counselling",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Lay provider testing",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Self-testing",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Assisted partner notification",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Client-initiated testing and counselling",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Indicator condition testing",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Routine antenatal testing",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Dual HIV/syphilis rapid diagnostic tests for pregnant women in antenatal care",,,,"Yes",,,"2024","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Dual HIV/syphilis rapid diagnostic tests for any key population group",,,,"Yes",,,"2024","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Social network-based HIV testing for key populations",,,,"Yes",,,"2024","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Social network-based HIV testing for general population",,,,"Yes",,,"2024","WHO_NCPI_2025",
+"Population Groups","Den Age-Female Gte 15","1030824",,,"validated","Females","15+","2024","Global AIDS Monitoring 2025","1030824"
+"Population Groups","Den Age-Male Gte 15","190301",,,"validated","Males","15+","2024","Global AIDS Monitoring 2025","190301"

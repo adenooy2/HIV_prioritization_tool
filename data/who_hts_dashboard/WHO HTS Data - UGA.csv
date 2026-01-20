@@ -1,0 +1,331 @@
+chart,indicator,value,value_lower,value_upper,value_comment,sex,age,year,source_database,notes
+"Progress towards 95-95-95","Percent of people living with HIV who know their status","94.33321411966924","88.64111897795279","100",,,"all ages","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Progress towards 95-95-95","Percent of people who know their status who are on ART","89.76252899195201","84.34623039579952","100",,,"all ages","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Progress towards 95-95-95","Percent of people on ART who achieve viral suppression","96.4965329730855","90.67390250626644","100",,,"all ages","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","PLHIV know status on ART","653376.2364",,,,,"15+","2015","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","PLHIV know status on ART","755273.2",,,,,"15+","2016","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","PLHIV know status on ART","884902.48",,,,,"15+","2017","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","PLHIV know status on ART","968856.24",,,,,"15+","2018","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","PLHIV know status on ART","1029511.12",,,,,"15+","2019","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","PLHIV know status on ART","1071242.48",,,,,"15+","2020","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","PLHIV know status on ART","1109068.4",,,,,"15+","2021","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","PLHIV know status on ART","1151737.84",,,,,"15+","2022","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","PLHIV know status on ART","1189214.4",,,,,"15+","2023","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","PLHIV know status on ART","1241376.4",,,,,"15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","PLHIV know status not on ART","393074.27359999996",,,,,"15+","2015","(calculated)","based on People living with HIV who know their status and PLHIV know status on ART indicator values"
+"PLHIV by diagnosis and treatment status","PLHIV know status not on ART","348442.41000000015",,,,,"15+","2016","(calculated)","based on People living with HIV who know their status and PLHIV know status on ART indicator values"
+"PLHIV by diagnosis and treatment status","PLHIV know status not on ART","279445.3800000001",,,,,"15+","2017","(calculated)","based on People living with HIV who know their status and PLHIV know status on ART indicator values"
+"PLHIV by diagnosis and treatment status","PLHIV know status not on ART","246567.8999999999",,,,,"15+","2018","(calculated)","based on People living with HIV who know their status and PLHIV know status on ART indicator values"
+"PLHIV by diagnosis and treatment status","PLHIV know status not on ART","212442.92000000004",,,,,"15+","2019","(calculated)","based on People living with HIV who know their status and PLHIV know status on ART indicator values"
+"PLHIV by diagnosis and treatment status","PLHIV know status not on ART","195528.59000000008",,,,,"15+","2020","(calculated)","based on People living with HIV who know their status and PLHIV know status on ART indicator values"
+"PLHIV by diagnosis and treatment status","PLHIV know status not on ART","176264.74",,,,,"15+","2021","(calculated)","based on People living with HIV who know their status and PLHIV know status on ART indicator values"
+"PLHIV by diagnosis and treatment status","PLHIV know status not on ART","169016.41999999993",,,,,"15+","2022","(calculated)","based on People living with HIV who know their status and PLHIV know status on ART indicator values"
+"PLHIV by diagnosis and treatment status","PLHIV know status not on ART","163744.18000000017",,,,,"15+","2023","(calculated)","based on People living with HIV who know their status and PLHIV know status on ART indicator values"
+"PLHIV by diagnosis and treatment status","PLHIV know status not on ART","142629.75",,,,,"15+","2024","(calculated)","based on People living with HIV who know their status and PLHIV know status on ART indicator values"
+"PLHIV by diagnosis and treatment status","Undiagnosed PLHIV","183844.17599999998",,,,,"15+","2015","(calculated)","based on People living with HIV - adults (aged 15+) and People living with HIV who know their status indicator values"
+"PLHIV by diagnosis and treatment status","Undiagnosed PLHIV","169192.85899999994",,,,,"15+","2016","(calculated)","based on People living with HIV - adults (aged 15+) and People living with HIV who know their status indicator values"
+"PLHIV by diagnosis and treatment status","Undiagnosed PLHIV","146301.5129999998",,,,,"15+","2017","(calculated)","based on People living with HIV - adults (aged 15+) and People living with HIV who know their status indicator values"
+"PLHIV by diagnosis and treatment status","Undiagnosed PLHIV","128087.706",,,,,"15+","2018","(calculated)","based on People living with HIV - adults (aged 15+) and People living with HIV who know their status indicator values"
+"PLHIV by diagnosis and treatment status","Undiagnosed PLHIV","130773.82599999988",,,,,"15+","2019","(calculated)","based on People living with HIV - adults (aged 15+) and People living with HIV who know their status indicator values"
+"PLHIV by diagnosis and treatment status","Undiagnosed PLHIV","129881.05899999989",,,,,"15+","2020","(calculated)","based on People living with HIV - adults (aged 15+) and People living with HIV who know their status indicator values"
+"PLHIV by diagnosis and treatment status","Undiagnosed PLHIV","132877.571",,,,,"15+","2021","(calculated)","based on People living with HIV - adults (aged 15+) and People living with HIV who know their status indicator values"
+"PLHIV by diagnosis and treatment status","Undiagnosed PLHIV","113408.09899999993",,,,,"15+","2022","(calculated)","based on People living with HIV - adults (aged 15+) and People living with HIV who know their status indicator values"
+"PLHIV by diagnosis and treatment status","Undiagnosed PLHIV","93406.65599999996",,,,,"15+","2023","(calculated)","based on People living with HIV - adults (aged 15+) and People living with HIV who know their status indicator values"
+"PLHIV by diagnosis and treatment status","Undiagnosed PLHIV","72562.8600000001",,,,,"15+","2024","(calculated)","based on People living with HIV - adults (aged 15+) and People living with HIV who know their status indicator values"
+"PLHIV by diagnosis and treatment status","People living with HIV who know their status","1046450.51",,,,,"15+","2015","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV who know their status","1103715.61",,,,,"15+","2016","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV who know their status","1164347.86",,,,,"15+","2017","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV who know their status","1215424.14",,,,,"15+","2018","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV who know their status","1241954.04",,,,,"15+","2019","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV who know their status","1266771.07",,,,,"15+","2020","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV who know their status","1285333.14",,,,,"15+","2021","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV who know their status","1320754.26",,,,,"15+","2022","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV who know their status","1352958.58",,,,,"15+","2023","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV who know their status","1384006.15",,,,,"15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV - adults (aged 15+)","1230294.686","1172166.167","1327927.609",,,"15+","2015","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV - adults (aged 15+)","1272908.469","1210944.847","1377126.997",,,"15+","2016","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV - adults (aged 15+)","1310649.373","1244834.855","1420291.099",,,"15+","2017","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV - adults (aged 15+)","1343511.846","1275022.996","1459956.787",,,"15+","2018","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV - adults (aged 15+)","1372727.866","1301455.59","1497086.944",,,"15+","2019","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV - adults (aged 15+)","1396652.129","1322888.312","1526949.982",,,"15+","2020","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV - adults (aged 15+)","1418210.711","1342579.543","1558054.889",,,"15+","2021","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV - adults (aged 15+)","1434162.359","1353366.99","1582485.822",,,"15+","2022","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV - adults (aged 15+)","1446365.236","1361693.229","1600607.636",,,"15+","2023","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV by diagnosis and treatment status","People living with HIV - adults (aged 15+)","1456569.01","1364286.081","1611740.276",,,"15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","88.11793388311425","83.96282996867328","95.08480369942241",,"Females","15+","2015","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","89.38110943882795","84.98150703818685","96.71098206752748",,"Females","15+","2016","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","91.13849205320201","86.53653279267137","100",,"Females","15+","2017","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","92.44832461693807","87.61715183654549","100",,"Females","15+","2018","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","92.2327328447974","87.38596238640767","100",,"Females","15+","2019","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","92.28311362347986","87.43468052551188","100",,"Females","15+","2020","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","92.09057081458252","87.10784485067276","100",,"Females","15+","2021","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","93.50610978035661","88.3712091263665","100",,"Females","15+","2022","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","94.86950872234556","89.38186996986886","100",,"Females","15+","2023","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","95","90.31183718251992","100",,"Females","15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","80.27398219068647","75.89734415398564","86.60647212534343",,"Males","15+","2015","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","82.45425891478055","77.8719020525618","89.20897721312966",,"Males","15+","2016","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","85.11751912467125","80.24764172602211","92.063973062027",,"Males","15+","2017","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","87.218714129635","82.12043571425477","94.5984382767208",,"Males","15+","2018","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","87.55466579171356","82.43024154505021","94.74258483514889",,"Males","15+","2019","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","88.04268554005534","82.80275764221297","95.64102161097003",,"Males","15+","2020","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","88.14975469562819","82.69948559611859","96.09410284404875",,"Males","15+","2021","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","89.66285878874754","84.00668937911705","100",,"Males","15+","2022","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","91.23589979617546","85.2091554061339","100",,"Males","15+","2023","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by sex","Percent of people living with HIV who know their status","92.98804779894073","86.48729752388392","100",,"Males","15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"PLHIV who know status - by age","aware","75.06231658309869","73.5272219799408","76.42214477703139",,"both","15-24","2015","Shiny90",
+"PLHIV who know status - by age","aware","75.804970629568","74.3375669229316","77.0320323717724",,"both","15-24","2016","Shiny90",
+"PLHIV who know status - by age","aware","78.00249031373781","76.6409782155379","79.20421339425991",,"both","15-24","2017","Shiny90",
+"PLHIV who know status - by age","aware","79.63041907556641","78.33605128601","80.7319260398857",,"both","15-24","2018","Shiny90",
+"PLHIV who know status - by age","aware","77.65664438473449","76.5564960097488","78.6416486574156",,"both","15-24","2019","Shiny90",
+"PLHIV who know status - by age","aware","76.7588699051782","75.6818395985141","77.7642687970891",,"both","15-24","2020","Shiny90",
+"PLHIV who know status - by age","aware","75.26002810829169","74.2328908272556","76.3347157707171",,"both","15-24","2021","Shiny90",
+"PLHIV who know status - by age","aware","78.7963314357135","77.54083728988161","79.8500299141492",,"both","15-24","2022","Shiny90",
+"PLHIV who know status - by age","aware","82.4678721421236","81.21645994678491","83.4761186008249",,"both","15-24","2023","Shiny90",
+"PLHIV who know status - by age","aware","86.24038581827111","85.055264501998","87.1970998117108",,"both","15-24","2024","Shiny90",
+"PLHIV who know status - by age","aware","87.231091421233","85.9447167374132","88.21383800096349",,"both","25-34","2015","Shiny90",
+"PLHIV who know status - by age","aware","88.3651995672755","87.25412494246851","89.2160950283512",,"both","25-34","2016","Shiny90",
+"PLHIV who know status - by age","aware","90.0956147473088","89.1075883822943","90.9031278623875",,"both","25-34","2017","Shiny90",
+"PLHIV who know status - by age","aware","91.3716789153328","90.5036417486657","92.0574022844612",,"both","25-34","2018","Shiny90",
+"PLHIV who know status - by age","aware","90.8295079146335","90.0727478393532","91.4300419795947",,"both","25-34","2019","Shiny90",
+"PLHIV who know status - by age","aware","90.5814816603194","89.8770214549392","91.162667163015",,"both","25-34","2020","Shiny90",
+"PLHIV who know status - by age","aware","89.9746182363289","89.2586785336985","90.5392310577546",,"both","25-34","2021","Shiny90",
+"PLHIV who know status - by age","aware","91.4897802491422","90.71100556859129","92.096666332516",,"both","25-34","2022","Shiny90",
+"PLHIV who know status - by age","aware","93.0553313794187","92.30843496490961","93.6283659286573",,"both","25-34","2023","Shiny90",
+"PLHIV who know status - by age","aware","94.6108412435571","93.88136946514109","95.1166707204408",,"both","25-34","2024","Shiny90",
+"PLHIV who know status - by age","aware","87.0697191630923","86.12121164695459","87.8751881394229",,"both","35-49","2015","Shiny90",
+"PLHIV who know status - by age","aware","88.9208165769962","88.1247796550463","89.6045778191211",,"both","35-49","2016","Shiny90",
+"PLHIV who know status - by age","aware","90.9349729347485","90.22680144116289","91.5592966132186",,"both","35-49","2017","Shiny90",
+"PLHIV who know status - by age","aware","92.46253240914581","91.8635610883141","92.9870482476313",,"both","35-49","2018","Shiny90",
+"PLHIV who know status - by age","aware","92.88140363510121","92.3488579472426","93.3758424251941",,"both","35-49","2019","Shiny90",
+"PLHIV who know status - by age","aware","93.27965730491961","92.7975067809036","93.7209773331874",,"both","35-49","2020","Shiny90",
+"PLHIV who know status - by age","aware","93.4252708041694","92.9587484633326","93.836878019615",,"both","35-49","2021","Shiny90",
+"PLHIV who know status - by age","aware","94.309987893591","93.89912495764369","94.6895554663888",,"both","35-49","2022","Shiny90",
+"PLHIV who know status - by age","aware","95","94.8853879232023","95.5804979052525",,"both","35-49","2023","Shiny90",
+"PLHIV who know status - by age","aware","95","95.9511417872953","96.5409981648012",,"both","35-49","2024","Shiny90",
+"PLHIV who know status - by age","aware","86.1139554602084","84.7279071822744","87.37913504342781",,"both","50-99","2015","Shiny90",
+"PLHIV who know status - by age","aware","88.4882348145485","87.3337036245865","89.5572778667677",,"both","50-99","2016","Shiny90",
+"PLHIV who know status - by age","aware","90.9295718602223","89.8921844219023","91.8304417244008",,"both","50-99","2017","Shiny90",
+"PLHIV who know status - by age","aware","92.75854928195601","91.8778314452811","93.4823418582447",,"both","50-99","2018","Shiny90",
+"PLHIV who know status - by age","aware","93.581636844615","92.761957478713","94.2401789715159",,"both","50-99","2019","Shiny90",
+"PLHIV who know status - by age","aware","94.2764168879946","93.53719783225199","94.8393045254176",,"both","50-99","2020","Shiny90",
+"PLHIV who know status - by age","aware","94.6962158264929","93.995340749377","95.1799770729218",,"both","50-99","2021","Shiny90",
+"PLHIV who know status - by age","aware","95","94.89999397515831","95.8808863922322",,"both","50-99","2022","Shiny90",
+"PLHIV who know status - by age","aware","95","95.7753880957293","96.5782146323649",,"both","50-99","2023","Shiny90",
+"PLHIV who know status - by age","aware","95","96.68236121171721","97.3088145301149",,"both","50-99","2024","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","retests_total","5726613.9100384","5300466.083757231","6143372.681314194",,"both","15-99","2015","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","retests_total","5488015.011563236","5116406.507133824","5872684.091883144",,"both","15-99","2016","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","retests_total","6443607.765254363","5986431.419779736","6935846.762055528",,"both","15-99","2017","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","retests_total","6680261.762156631","6255780.878885046","7161715.536821254",,"both","15-99","2018","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","retests_total","4360827.812555839","4110069.5368684623","4644128.508025317",,"both","15-99","2019","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","retests_total","4435108.904054463","4160430.927989641","4760739.106367776",,"both","15-99","2020","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","retests_total","3943742.8475021776","3688865.56517883","4244437.72702159",,"both","15-99","2021","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","retests_total","7128174.351584081","6607384.195848995","7619154.13924093",,"both","15-99","2022","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","retests_total","9049275.577439524","8411895.692613684","9776454.890213596",,"both","15-99","2023","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","retests_total","11878558.596110296","10912600.801838793","12942997.93874235",,"both","15-99","2024","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","tests_first","1037327.671109152","974581.902790649","1099846.380509941",,"both","15-99","2015","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","tests_first","900135.2057932578","853741.5132110768","949186.6944847056",,"both","15-99","2016","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","tests_first","949912.6392865168","898245.8207413247","999800.737505394",,"both","15-99","2017","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","tests_first","909393.2762576508","865561.9991237605","954132.6585195516",,"both","15-99","2018","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","tests_first","627045.127391695","593342.0762207503","660590.8353996323",,"both","15-99","2019","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","tests_first","664837.2181816055","629335.0544781354","704288.6268071717",,"both","15-99","2020","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","tests_first","628190.5640438306","592578.7161856195","671068.1727570652",,"both","15-99","2021","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","tests_first","1047586.4106282326","992790.2715357556","1099097.3016180992",,"both","15-99","2022","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","tests_first","1179979.3975210832","1117663.60263796","1241691.9377900362",,"both","15-99","2023","Shiny90",
+"HIV-negative tests - first-time testers and repeat testers","tests_first","1303287.6980269104","1231063.207093286","1373153.3696060483",,"both","15-99","2024","Shiny90",
+"HIV-positive tests - new diagnoses and retests","retests","150249.86854269443",,,,"both","15-99","2015","(calculated)","based on retests_aware and retests_art indicator values"
+"HIV-positive tests - new diagnoses and retests","retests","129617.42245462103",,,,"both","15-99","2016","(calculated)","based on retests_aware and retests_art indicator values"
+"HIV-positive tests - new diagnoses and retests","retests","130296.4522545695",,,,"both","15-99","2017","(calculated)","based on retests_aware and retests_art indicator values"
+"HIV-positive tests - new diagnoses and retests","retests","139963.2829562069",,,,"both","15-99","2018","(calculated)","based on retests_aware and retests_art indicator values"
+"HIV-positive tests - new diagnoses and retests","retests","101458.58633345226",,,,"both","15-99","2019","(calculated)","based on retests_aware and retests_art indicator values"
+"HIV-positive tests - new diagnoses and retests","retests","105819.199598618",,,,"both","15-99","2020","(calculated)","based on retests_aware and retests_art indicator values"
+"HIV-positive tests - new diagnoses and retests","retests","88087.2817191763",,,,"both","15-99","2021","(calculated)","based on retests_aware and retests_art indicator values"
+"HIV-positive tests - new diagnoses and retests","retests","102050.43128609016",,,,"both","15-99","2022","(calculated)","based on retests_aware and retests_art indicator values"
+"HIV-positive tests - new diagnoses and retests","retests","105803.34459073741",,,,"both","15-99","2023","(calculated)","based on retests_aware and retests_art indicator values"
+"HIV-positive tests - new diagnoses and retests","retests","106536.25978704693",,,,"both","15-99","2024","(calculated)","based on retests_aware and retests_art indicator values"
+"HIV-positive tests - new diagnoses and retests","new_diagnoses","95065.03757834564","90384.6272697631","99744.60380986729",,"both","15-99","2015","Shiny90",
+"HIV-positive tests - new diagnoses and retests","new_diagnoses","84017.68065881466","79407.3369550426","88701.69861215439",,"both","15-99","2016","Shiny90",
+"HIV-positive tests - new diagnoses and retests","new_diagnoses","80634.20194481651","76629.4623221201","84331.04405366041",,"both","15-99","2017","Shiny90",
+"HIV-positive tests - new diagnoses and retests","new_diagnoses","70784.66166120343","67549.65088352987","73940.17210149151",,"both","15-99","2018","Shiny90",
+"HIV-positive tests - new diagnoses and retests","new_diagnoses","53073.086840116215","49205.85949966736","56736.48090474994",,"both","15-99","2019","Shiny90",
+"HIV-positive tests - new diagnoses and retests","new_diagnoses","53135.100605797634","49290.22725032512","56145.87855030983",,"both","15-99","2020","Shiny90",
+"HIV-positive tests - new diagnoses and retests","new_diagnoses","49865.74671417777","46044.10274008788","52958.648606151735",,"both","15-99","2021","Shiny90",
+"HIV-positive tests - new diagnoses and retests","new_diagnoses","61949.36894055464","59285.99530024387","64221.57764842613",,"both","15-99","2022","Shiny90",
+"HIV-positive tests - new diagnoses and retests","new_diagnoses","57943.48958232239","55682.86646572203","60259.76941092611",,"both","15-99","2023","Shiny90",
+"HIV-positive tests - new diagnoses and retests","new_diagnoses","52701.1369589416","50531.4199438387","54683.24143214105",,"both","15-99","2024","Shiny90",
+"Prevalence and positivity","Adult prevalence (15+) (Percent) Male+Female","6.70824","6.386","7.26822",,"Male+Female","15+","2015","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Prevalence and positivity","Adult prevalence (15+) (Percent) Male+Female","6.63033","6.30752","7.19477",,"Male+Female","15+","2016","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Prevalence and positivity","Adult prevalence (15+) (Percent) Male+Female","6.52016","6.19476","7.11075",,"Male+Female","15+","2017","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Prevalence and positivity","Adult prevalence (15+) (Percent) Male+Female","6.38922","6.05326","6.98165",,"Male+Female","15+","2018","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Prevalence and positivity","Adult prevalence (15+) (Percent) Male+Female","6.25297","5.9171","6.83217",,"Male+Female","15+","2019","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Prevalence and positivity","Adult prevalence (15+) (Percent) Male+Female","6.10938","5.77559","6.66587",,"Male+Female","15+","2020","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Prevalence and positivity","Adult prevalence (15+) (Percent) Male+Female","5.96789","5.6422","6.54046",,"Male+Female","15+","2021","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Prevalence and positivity","Adult prevalence (15+) (Percent) Male+Female","5.81278","5.49106","6.38096",,"Male+Female","15+","2022","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Prevalence and positivity","Adult prevalence (15+) (Percent) Male+Female","5.64935","5.33072","6.22149",,"Male+Female","15+","2023","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Prevalence and positivity","Adult prevalence (15+) (Percent) Male+Female","5.48179","5.15053","6.05192",,"Male+Female","15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Prevalence and positivity","positivity","3.5464138911952","3.1621356356897","4.0277449780702",,"both","15-99","2015","Shiny90",
+"Prevalence and positivity","positivity","3.2925539099351004","2.9539803904212","3.7859705319334",,"both","15-99","2016","Shiny90",
+"Prevalence and positivity","positivity","2.8078028245247","2.5545689065632997","3.2480648879672005",,"both","15-99","2017","Shiny90",
+"Prevalence and positivity","positivity","2.7327814391123","2.4236383321689","3.3882103872397",,"both","15-99","2018","Shiny90",
+"Prevalence and positivity","positivity","3.0618881697051","2.7325726187983","3.6190828268937",,"both","15-99","2019","Shiny90",
+"Prevalence and positivity","positivity","3.0660460145541","2.6990781609823","3.8720459219773",,"both","15-99","2020","Shiny90",
+"Prevalence and positivity","positivity","2.9940726497325003","2.6270276173848","3.5576907065023",,"both","15-99","2021","Shiny90",
+"Prevalence and positivity","positivity","1.9851572524624","1.7817302475105001","2.3517531574291",,"both","15-99","2022","Shiny90",
+"Prevalence and positivity","positivity","1.5922313444259002","1.4223383368836","1.8602033101934",,"both","15-99","2023","Shiny90",
+"Prevalence and positivity","positivity","1.2056039079729","1.0479016073113","1.4581789172341",,"both","15-99","2024","Shiny90",
+"Prevalence and positivity","yldnew","1.3552847789242","1.2874100053017","1.4303722011494",,"both","15-99","2015","Shiny90",
+"Prevalence and positivity","yldnew","1.2725946050248","1.1957743504993001","1.3519327056312",,"both","15-99","2016","Shiny90",
+"Prevalence and positivity","yldnew","1.0594668338395","1.0003220314402","1.1230745142165999",,"both","15-99","2017","Shiny90",
+"Prevalence and positivity","yldnew","0.9060184426544","0.8542955451425","0.9561216079699",,"both","15-99","2018","Shiny90",
+"Prevalence and positivity","yldnew","1.0318551948813002","0.9536799053295001","1.1071784851912",,"both","15-99","2019","Shiny90",
+"Prevalence and positivity","yldnew","1.0066100083808","0.9298675723058","1.080188457587",,"both","15-99","2020","Shiny90",
+"Prevalence and positivity","yldnew","1.055976966453","0.9637271997299","1.1385017196607001",,"both","15-99","2021","Shiny90",
+"Prevalence and positivity","yldnew","0.7421118449619","0.7054778769718","0.7845454011107",,"both","15-99","2022","Shiny90",
+"Prevalence and positivity","yldnew","0.5572459782712","0.5253735604781","0.591206157288",,"both","15-99","2023","Shiny90",
+"Prevalence and positivity","yldnew","0.394791885606","0.370026373873","0.4212378049825",,"both","15-99","2024","Shiny90",
+"Prevalence and positivity","Treatment adjusted Prevalence","3.261879874576346",,,,,,"2015","(calculated)","based on population, estimated PLHIV, and estimated PLHIV on ART data values"
+"Prevalence and positivity","Treatment adjusted Prevalence","2.8066753745681163",,,,,,"2016","(calculated)","based on population, estimated PLHIV, and estimated PLHIV on ART data values"
+"Prevalence and positivity","Treatment adjusted Prevalence","2.2155164596287547",,,,,,"2017","(calculated)","based on population, estimated PLHIV, and estimated PLHIV on ART data values"
+"Prevalence and positivity","Treatment adjusted Prevalence","1.8677747754428151",,,,,,"2018","(calculated)","based on population, estimated PLHIV, and estimated PLHIV on ART data values"
+"Prevalence and positivity","Treatment adjusted Prevalence","1.6403241721546604",,,,,,"2019","(calculated)","based on population, estimated PLHIV, and estimated PLHIV on ART data values"
+"Prevalence and positivity","Treatment adjusted Prevalence","1.4934215371198896",,,,,,"2020","(calculated)","based on population, estimated PLHIV, and estimated PLHIV on ART data values"
+"Prevalence and positivity","Treatment adjusted Prevalence","1.3645674098714364",,,,,,"2021","(calculated)","based on population, estimated PLHIV, and estimated PLHIV on ART data values"
+"Prevalence and positivity","Treatment adjusted Prevalence","1.200741219359157",,,,,,"2022","(calculated)","based on population, estimated PLHIV, and estimated PLHIV on ART data values"
+"Prevalence and positivity","Treatment adjusted Prevalence","1.0533298639768363",,,,,,"2023","(calculated)","based on population, estimated PLHIV, and estimated PLHIV on ART data values"
+"Prevalence and positivity","Treatment adjusted Prevalence","0.8495672852441374",,,,,,"2024","(calculated)","based on population, estimated PLHIV, and estimated PLHIV on ART data values"
+"HIV tests conducted and positivity, by sex","Den Age-Female Gte 15","6781526",,,"validated","Females","15+","2024","Global AIDS Monitoring 2025","6781526"
+"HIV tests conducted and positivity, by sex","Per Age-Female Gte 15","1.3",,,"validated","Females","15+","2024","Global AIDS Monitoring 2025","1.3"
+"HIV tests conducted and positivity, by sex","Den Age-Male Gte 15","2722595",,,"validated","Males","15+","2024","Global AIDS Monitoring 2025","2722595"
+"HIV tests conducted and positivity, by sex","Per Age-Male Gte 15","1.8",,,"validated","Males","15+","2024","Global AIDS Monitoring 2025","1.8"
+"HIV tests conducted and positivity, by sex","Den Age-All","10147932",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","10147932"
+"HIV tests conducted and positivity, by sex","Per Age-All","1.4",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","1.4"
+"HIV tests conducted and positivity at community level","Den Community-Community Mobile","942443",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","942443"
+"HIV tests conducted and positivity at community level","Per Community-Community Mobile","2.3",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","2.3"
+"HIV tests conducted and positivity at community level","Den Community-Community Vct","61181",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","61181"
+"HIV tests conducted and positivity at community level","Per Community-Community Vct","1.2",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","1.2"
+"HIV tests conducted and positivity at community level","Den Community-Community Other","1359749",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","1359749"
+"HIV tests conducted and positivity at community level","Per Community-Community Other","1.2",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","1.2"
+"HIV tests conducted and positivity at community level","Den Community-Community All","2363373",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","2363373"
+"HIV tests conducted and positivity at community level","Per Community-Community All","1.6",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","1.6"
+"HIV tests conducted and positivity at facility level","Den Facility-Facility Provider Init","2577219",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","2577219"
+"HIV tests conducted and positivity at facility level","Per Facility-Facility Provider Init","1.6",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","1.6"
+"HIV tests conducted and positivity at facility level","Den Facility-Facility Anc","3516282",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","3516282"
+"HIV tests conducted and positivity at facility level","Per Facility-Facility Anc","0.6",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","0.6"
+"HIV tests conducted and positivity at facility level","Den Facility-Facility Vct","1118045",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","1118045"
+"HIV tests conducted and positivity at facility level","Per Facility-Facility Vct","3",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","3"
+"HIV tests conducted and positivity at facility level","Den Facility-Facility Fp Clinic","125939",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","125939"
+"HIV tests conducted and positivity at facility level","Per Facility-Facility Fp Clinic","0.3",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","0.3"
+"HIV tests conducted and positivity at facility level","Den Facility-Facility All","7784559",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","7784559"
+"HIV tests conducted and positivity at facility level","Per Facility-Facility All","1.3",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","1.3"
+"HIV tests conducted and positivity for provider-assisted referral / index testing","Index - Number of tests - Community","285184",,,,"Female, Male, Unknown Sex","15+, <15, Unknown Age","2023","PEPFAR",
+"HIV tests conducted and positivity for provider-assisted referral / index testing","Positivity - Community Index testing","5.9021543985637",,,,"Female, Male, Unknown Sex","15+, <15, Unknown Age","2023","PEPFAR",
+"HIV tests conducted and positivity for provider-assisted referral / index testing","Index - Number of tests - Facility","123010",,,,"Female, Male, Unknown Sex","15+, <15, Unknown Age","2023","PEPFAR",
+"HIV tests conducted and positivity for provider-assisted referral / index testing","Positivity - Facility Index Testing","9.5496301113731",,,,"Female, Male, Unknown Sex","15+, <15, Unknown Age","2023","PEPFAR",
+"HIV tests conducted and positivity for provider-assisted referral / index testing","Total Index tests","408194",,,,"Female, Male, Unknown Sex","15+, <15, Unknown Age","2023","PEPFAR",
+"HIV tests conducted and positivity for provider-assisted referral / index testing","Positivity - Index Testing Total","7.001327800016701",,,,"Female, Male, Unknown Sex","15+, <15, Unknown Age","2023","PEPFAR",
+"HIV self-tests","HIV self-tests distributed","4502",,,,,,"2018","PEPFAR",
+"HIV self-tests","Self Test Distributed-Data Value",,,,"validated","All sexes","All ages","2019","Global AIDS Monitoring 2020","Not reported"
+"HIV self-tests","Self Test Distributed-Data Value","42570",,,"validated","All sexes","All ages","2020","Global AIDS Monitoring 2021","42570"
+"HIV self-tests","HIV self-tests distributed","335207",,,,"Female, Male, Unknown Sex","15+, <15, Unknown Age","2021","PEPFAR",
+"HIV self-tests","Self Test Distributed-Data Value","750698",,,"validated","All sexes","All ages","2022","Global AIDS Monitoring 2023","750698"
+"HIV self-tests","Self Test Distributed-Data Value","681602",,,"validated","All sexes","All ages","2023","Global AIDS Monitoring 2024","681602"
+"HIV self-tests","Self Test Distributed-Data Value","652457",,,"validated","All sexes","All ages","2024","Global AIDS Monitoring 2025","652457"
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","13238655.174463332",,,,,,"2024","EIC and WHO HIV RDT Landscape Report 2024",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","13934175.727940828",,,,,,"2025","EIC and WHO HIV RDT Landscape Report 2024",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","14625359.483081939",,,,,,"2026","EIC and WHO HIV RDT Landscape Report 2024",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","15427151.987591244",,,,,,"2027","EIC and WHO HIV RDT Landscape Report 2024",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","16412612.56309762",,,,,,"2028","EIC and WHO HIV RDT Landscape Report 2024",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","17353992.16633883",,,,,,"2029","EIC and WHO HIV RDT Landscape Report 2024",
+"WHO Integrated HIV RDT forecast","HIV RDT Demand Forecast - Total Volume","18310716.155799855",,,,,,"2030","EIC and WHO HIV RDT Landscape Report 2024",
+"Key Populations","HIV prevalence among sex workers","33",,,,,,"2023","UNAIDS KP-Atlas 2025","Source: Behavioral surveillance survey, 2023"
+"Key Populations","HIV testing and status awareness among sex workers","88",,,,,,"2019","UNAIDS KP-Atlas 2025","Source: PEPFAR DATIM System"
+"Key Populations","SW (Tested in past year)","35359",,,,,,"2019","PEPFAR COP 2020","National data reported in PEPFAR COP 2020"
+"Key Populations","HIV prevalence among men who have sex with men","12.7",,,,"Males",,"2017","UNAIDS KP-Atlas 2025","Source: Crane study"
+"Key Populations","HIV testing and status awareness among men who have sex with men","54",,,,"Males",,"2019","UNAIDS KP-Atlas 2025","Source: PEPFAR DATIM System"
+"Key Populations","MSM (Tested in past year)","5806",,,,,,"2019","PEPFAR COP 2020","National data reported in PEPFAR COP 2020"
+"Key Populations","HIV prevalence among people who inject drugs","17",,,,,,"2017","UNAIDS KP-Atlas 2025","Source: Crane study, 2017"
+"Key Populations","HIV testing and status awareness among people who inject drugs","45",,,,,,"2019","UNAIDS KP-Atlas 2025","Source: PEPFAR DATIM System"
+"Key Populations","PWID (Tested in past year)","753",,,,,,"2019","PEPFAR COP 2020","National data reported in PEPFAR COP 2020"
+"Key Populations","HIV testing and status awareness among transgender people","100",,,,,,"2019","UNAIDS KP-Atlas 2025","Source: PEPFAR DATIM System"
+"Key Populations","HIV prevalence among prisoners","2.3",,,,,,"2023","UNAIDS KP-Atlas 2025","Source: Programme data, 2023"
+"Key Populations","People in prisons (Tested in past year)","123317",,,,,,"2019","PEPFAR COP 2020","National data reported in PEPFAR COP 2020"
+"WHO HIV Testing Policy Compliance","From national authorities Laws requiring parental consent for adolescents to access HIV testing",,,,"Yes",,,"2022","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Provider-initiated testing and counselling",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Community-based testing and counselling",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Lay provider testing",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Self-testing",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Assisted partner notification",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Client-initiated testing and counselling",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Routine antenatal testing",,,,"Yes",,,"2025","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Dual HIV/syphilis rapid diagnostic tests for pregnant women in antenatal care",,,,"Yes",,,"2024","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Dual HIV/syphilis rapid diagnostic tests for any key population group",,,,"Yes",,,"2024","WHO_NCPI_2025",
+"WHO HIV Testing Policy Compliance","From national authorities Social network-based HIV testing for general population",,,,"Yes",,,"2024","WHO_NCPI_2025",
+"Population Groups","HIV population (15+) Female","927750.864","871187.9515","1029269.471",,"Female","15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","Percent of people living with HIV who know their status","95","90.31183718251992","95",,"Females","15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","Adult prevalence (15+) (Percent) Female","6.75248","6.35201","7.52781",,"Female","15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","New HIV infections (15+) Female","21033.34496","14628.38863","30799.04474",,"Female","15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","tests_total","8275093.486545126","7610887.944282154","8986756.687255759",,"female","15-99","2024","Shiny90",
+"Population Groups","evertest","88.8717617325285","88.3216460827152","89.4221296212689",,"female","15-99","2024","Shiny90",
+"Population Groups","Undiagnosed PLHIV","35482.38399999998",,,,"Females","15+","2024","(calculated)","based on the estimated PLHIV and % aware data values"
+"Population Groups","People living with HIV - females aged 15-24","106375.8215",,,,"Females","15-24","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","aware","87.0717770917035","85.642153482767","88.1493650489347",,"female","15-24","2024","Shiny90",
+"Population Groups","Adult prevalence (15-24) (Percent) Female","2.080003",,,,"Female","15-24","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","New infections by age 15-24 ; Female","10821.65303",,,,"Female","15-24","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","tests_total","3632841.918335857","3327613.805113471","3966091.541233023",,"female","15-24","2024","Shiny90",
+"Population Groups","evertest","75.34218693912639","74.1283573371293","76.54228119226791",,"female","15-24","2024","Shiny90",
+"Population Groups","Undiagnosed PLHIV","13752.5033240516",,,,"female","15-24","2024","(calculated)","based on the estimated PLHIV and % aware data values"
+"Population Groups","People living with HIV - females aged 25-34","252953.0993",,,,"Female","25-34","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","aware","95","95","95",,"female","25-34","2024","Shiny90",
+"Population Groups","Adult prevalence (25-34) (Percent) Female","7.158263","6.72184","7.941552",,"Female","25-34","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","New infections by age 25-34 ; Female","6226.19266",,,,"Female","25-34","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","tests_total","2502562.942014737","2280792.409277062","2721680.4096713606",,"female","25-34","2024","Shiny90",
+"Population Groups","evertest","96.4895345087624","96.1763366154719","96.7543799917032",,"female","25-34","2024","Shiny90",
+"Population Groups","Undiagnosed PLHIV","9554.566374738912",,,,"female","25-34","2024","(calculated)","based on the estimated PLHIV and % aware data values"
+"Population Groups","People living with HIV - females aged 35-49","390896.3482",,,,"Female","35-49","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","aware","95","95","95",,"female","35-49","2024","Shiny90",
+"Population Groups","Adult prevalence (35-49) (Percent) Female","12.351545","11.598498","13.703105",,"Female","35-49","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","New infections by age 35-49 ; Female","3131.81978",,,,"Female","35-49","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","tests_total","1419408.1825658008","1294089.3817456586","1556630.501106179",,"female","35-49","2024","Shiny90",
+"Population Groups","evertest","98.1815301853494","97.99865951054389","98.33986031555399",,"female","35-49","2024","Shiny90",
+"Population Groups","Undiagnosed PLHIV","8893.832012261308",,,,"female","35-49","2024","(calculated)","based on the estimated PLHIV and % aware data values"
+"Population Groups","HIV population (50+) Female","177525.5975","128579.4107","261254.8391",,"Female","50+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","aware","95","95","95",,"female","50-99","2024","Shiny90",
+"Population Groups","Adult prevalence (50+) (Percent) Female","9.213863","6.673477","13.559544",,"Female","50+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","New HIV infections (50+) Female","853.67949","312.17886","1954.78151",,"Female","50+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","tests_total","716301.7580284849","651718.1273228473","786445.2355214081",,"female","50-99","2024","Shiny90",
+"Population Groups","evertest","95.5938592265932","95.03125334722769","96.1313980866993",,"female","50-99","2024","Shiny90",
+"Population Groups","Undiagnosed PLHIV","3420.9411544012464",,,,"female","50-99","2024","(calculated)","based on the estimated PLHIV and % aware data values"
+"Population Groups","HIV population (15+) Male","528818.1456","491848.7201","583886.5538",,"Male","15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","Percent of people living with HIV who know their status","92.98804779894073","86.48729752388392","95",,"Males","15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","Adult prevalence (15+) (Percent) Male","4.12121","3.85429","4.51696",,"Male","15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","New HIV infections (15+) Male","10881.44657","7452.44155","15402.28184",,"Male","15+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","tests_total","5080569.841752406","4666488.38743684","5522403.276389035",,"male","15-99","2024","Shiny90",
+"Population Groups","evertest","78.39847770299009","77.6184899147887","79.1579741330091",,"male","15-99","2024","Shiny90",
+"Population Groups","Undiagnosed PLHIV","37080.47560000001",,,,"Males","15+","2024","(calculated)","based on the estimated PLHIV and % aware data values"
+"Population Groups","People living with HIV - males aged 15-24","45600.58045",,,,"Males","15-24","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","aware","84.3197963694155","83.34567805303091","85.1976317740839",,"male","15-24","2024","Shiny90",
+"Population Groups","Adult prevalence (15-24) (Percent) Male","0.904032",,,,"Male","15-24","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","New infections by age 15-24 ; Male","2940.90102",,,,"Male","15-24","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","tests_total","1855595.043734097","1694171.6545163458","2030322.385541417",,"male","15-24","2024","Shiny90",
+"Population Groups","evertest","58.0914574858173","56.7797242394508","59.4173142625012",,"male","15-24","2024","Shiny90",
+"Population Groups","Undiagnosed PLHIV","7150.2638712885055",,,,"male","15-24","2024","(calculated)","based on the estimated PLHIV and % aware data values"
+"Population Groups","People living with HIV - males aged 25-34","101392.27565",,,,"Male","25-34","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","aware","90.59914695089431","89.5356074177016","91.35159810844459",,"male","25-34","2024","Shiny90",
+"Population Groups","Adult prevalence (25-34) (Percent) Male","3.184247","2.961637","3.515838",,"Male","25-34","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","New infections by age 25-34 ; Male","4546.01133",,,,"Male","25-34","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","tests_total","1819484.9907957192","1646463.7996483063","1998375.1635747547",,"male","25-34","2024","Shiny90",
+"Population Groups","evertest","90.1416452683272","89.4881128744234","90.7859091232474",,"male","25-34","2024","Shiny90",
+"Population Groups","Undiagnosed PLHIV","9531.738837000676",,,,"male","25-34","2024","(calculated)","based on the estimated PLHIV and % aware data values"
+"Population Groups","People living with HIV - males aged 35-49","235337.18412",,,,"Male","35-49","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","aware","93.8935653818224","93.4082472764962","94.319244119362",,"male","35-49","2024","Shiny90",
+"Population Groups","Adult prevalence (35-49) (Percent) Male","8.118675","7.551102","8.964112",,"Male","35-49","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","New infections by age 35-49 ; Male","2746.78036",,,,"Male","35-49","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","tests_total","965239.7969440172","875721.4006831835","1057361.9536309685",,"male","35-49","2024","Shiny90",
+"Population Groups","evertest","94.2407990952249","93.82429385607949","94.671693434141",,"male","35-49","2024","Shiny90",
+"Population Groups","Undiagnosed PLHIV","14370.711280548045",,,,"male","35-49","2024","(calculated)","based on the estimated PLHIV and % aware data values"
+"Population Groups","HIV population (50+) Male","146488.1058","112267.7896","244130.345",,"Male","50+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","aware","95","95","95",,"male","50-99","2024","Shiny90",
+"Population Groups","Adult prevalence (50+) (Percent) Male","8.593671","6.586149","14.321818",,"Male","50+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","New HIV infections (50+) Male","647.75386","214.51603","2080.74071",,"Male","50+","2024","Spectrum estimates 2025 (UNAIDS/WHO)",
+"Population Groups","tests_total","445909.4059798218","403422.19793905254","490167.3171041061",,"male","50-99","2024","Shiny90",
+"Population Groups","evertest","89.7225930862824","88.7177191756305","90.6816218617593",,"male","50-99","2024","Shiny90",
+"Population Groups","Undiagnosed PLHIV","6166.06622901758",,,,"male","50-99","2024","(calculated)","based on the estimated PLHIV and % aware data values"
