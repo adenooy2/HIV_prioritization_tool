@@ -12,6 +12,8 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(scales)
+library(httr)
+library(readr)
 
 
 dir="/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/"
@@ -57,7 +59,12 @@ load_country_data <- function(csv_file = paste(dir,"data/tier_app/basic_hiv_data
 }
 
 # Load country data
-country_data_csv <- load_country_data()
+#country_data_csv <- load_country_data()
+
+response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQBCFFlfF2AaRLcGuaCvNAcJAbE-8Ak2_gDyNJnL0GQu8Ag?e=k5dAU1&download=1")
+
+country_data_csv <- content(response, as = "parsed", type = "text/csv")
+
 # ============================================================================
 # INTERVENTION PARAMETERS DATABASE
 # ============================================================================
