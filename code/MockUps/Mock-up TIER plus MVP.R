@@ -14,6 +14,7 @@ library(tidyr)
 library(scales)
 library(httr)
 library(readr)
+library(readxl)
 
 
 dir="/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/"
@@ -21,49 +22,37 @@ dir="/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritizatio
 #data/tier_app/basic_hiv_data.csv
 
 # ============================================================================
-# LOAD COUNTRY DATA FROM CSV
+# LOAD  DATA
 # ============================================================================
-# Expected CSV columns:
-# country, total_population, hiv_prevalence, new_infections_per_year,
-# current_diagnoses, percent_on_art, percent_suppressed, aids_deaths_per_year
-# Plus baseline intervention columns (optional)
-# ============================================================================
-
-load_country_data <- function(csv_file = paste(dir,"data/tier_app/basic_hiv_data.csv",sep="")) {
-  if (!file.exists(csv_file)) {
-    warning("Country data CSV not found. Using default data.")
-    return(NULL)
-  }
-  
-  tryCatch({
-    data <- read.csv(csv_file, stringsAsFactors = FALSE)
-    
-    # Validate required columns
-    required_cols <- c("country", "total_population", "hiv_prevalence", 
-                       "new_infections_per_year", "current_diagnoses", "percent_diagnosed",
-                       "percent_on_art", "percent_suppressed", "aids_deaths_per_year")
-    
-    
-    
-    missing_cols <- setdiff(required_cols, names(data))
-    if (length(missing_cols) > 0) {
-      warning(paste("Missing required columns:", paste(missing_cols, collapse = ", ")))
-      return(NULL)
-    }
-    
-    return(data)
-  }, error = function(e) {
-    warning(paste("Error loading country data:", e$message))
-    return(NULL)
-  })
-}
-
 # Load country data
-#country_data_csv <- load_country_data()
-
+#url to onedrive
 response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQBCFFlfF2AaRLcGuaCvNAcJAbE-8Ak2_gDyNJnL0GQu8Ag?e=k5dAU1&download=1")
-
 country_data_csv <- content(response, as = "parsed", type = "text/csv")
+
+#load intervention data
+# Load intervention parameters from Excel (LONG FORMAT)
+sharepoint_url_interventions <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
+
+temp_file_int <- tempfile(fileext = ".xlsx")
+download.file(sharepoint_url_interventions, temp_file_int, mode = "wb", method = "libcurl")
+
+# Read Excel file
+intervention_params <- read_excel(temp_file_int, col_names = FALSE)
+
+# Make first row the column names and remove it
+colnames(intervention_params) <- as.character(intervention_params[2, ])
+intervention_params <- intervention_params[-1, ]
+intervention_params <- intervention_params[-1, ]
+
+intervention_params=intervention_params %>% select(category,intervention,intervention_key,parameter_type,current_value) %>% 
+  spread(parameter_type,current_value)
+# Convert current_Value to numeric
+intervention_params$efficacy <- as.numeric(intervention_params$efficacy)
+intervention_params$unit_cost <- as.numeric(intervention_params$unit_cost)
+intervention_params$linkage_cost <- as.numeric(intervention_params$linkage_cost)
+intervention_params$linkage_rate <- as.numeric(intervention_params$linkage_rate)
+intervention_params$multiplier <- as.numeric(intervention_params$multiplier)
+
 
 # ============================================================================
 # INTERVENTION PARAMETERS DATABASE
@@ -82,63 +71,63 @@ intervention_groups <- list(
         name = "PrEP (oral)",
         type = "absolute",
         unit_label = "people",
-        efficacy = 0.86,  # UPDATE: Efficacy from RCTs/meta-analysis
+        efficacy = subset(intervention_params, intervention_key == "prep_oral")$efficacy,  # UPDATE: Efficacy from RCTs/meta-analysis
         eligible_pop = "high_risk_negative",
-        unit_cost = 180,  # UPDATE: Local/regional ART cost per person-year
+        unit_cost = subset(intervention_params, intervention_key == "prep_oral")$unit_cost,  # UPDATE: Local/regional ART cost per person-year
         outcomes = c("adult_infections")
       ),
       prep_lenacapavir = list(
         name = "PrEP (Lenacapavir)",
         type = "absolute",
         unit_label = "people",
-        efficacy = 0.96,  # UPDATE: Based on PURPOSE trials
+        efficacy = subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy,  # UPDATE: Based on PURPOSE trials
         eligible_pop = "high_risk_negative",
-        unit_cost = 450,  # UPDATE: Estimated cost (may vary)
+        unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost,  # UPDATE: Estimated cost (may vary)
         outcomes = c("adult_infections")
       ),
       vmmc = list(
         name = "VMMC",
         type = "absolute",
         unit_label = "people",
-        efficacy = 0.60,  # UPDATE: RCT evidence
+        efficacy = subset(intervention_params, intervention_key == "vmmc")$efficacy,  # UPDATE: RCT evidence
         eligible_pop = "uncircumcised_males",
-        unit_cost = 75,   # UPDATE: Regional VMMC program costs
+        unit_cost = subset(intervention_params, intervention_key == "vmmc")$unit_cost,   # UPDATE: Regional VMMC program costs
         outcomes = c("adult_infections")
       ),
       condoms = list(
         name = "Condom availability",
         type = "absolute",
         unit_label = "people reached",
-        efficacy = 0.85,  # UPDATE: Consistent use efficacy
+        efficacy = subset(intervention_params, intervention_key == "condoms")$efficacy,  # UPDATE: Consistent use efficacy
         eligible_pop = "sexually_active_negative",
-        unit_cost = 0.25, # UPDATE: Cost per condom distributed
+        unit_cost = subset(intervention_params, intervention_key == "condoms")$unit_cost, # UPDATE: Cost per condom distributed
         outcomes = c("adult_infections")
       ),
       pep = list(
         name = "PEP",
         type = "absolute",
         unit_label = "people",
-        efficacy = 0.81,  # UPDATE: PEP efficacy estimates
+        efficacy = subset(intervention_params, intervention_key == "pep")$efficacy,  # UPDATE: PEP efficacy estimates
         eligible_pop = "recent_exposure",
-        unit_cost = 120,  # UPDATE: 28-day PEP course cost
+        unit_cost = subset(intervention_params, intervention_key == "pep")$unit_cost,  # UPDATE: 28-day PEP course cost
         outcomes = c("adult_infections")
       ),
       infant_prophylaxis = list(
         name = "Infant prophylaxis",
         type = "coverage",
         unit_label = "% of HIV-exposed infants",
-        efficacy = 0.92,  # UPDATE: ARV prophylaxis for HIV-exposed infants
+        efficacy = subset(intervention_params, intervention_key == "infant_prophylaxis")$efficacy,  # UPDATE: ARV prophylaxis for HIV-exposed infants
         eligible_pop = "hiv_exposed_infants",
-        unit_cost = 45,   # UPDATE: Cost per infant treated
+        unit_cost = subset(intervention_params, intervention_key == "infant_prophylaxis")$unit_cost,   # UPDATE: Cost per infant treated
         outcomes = c("infant_infections")
       ),
       cotrimoxazole = list(
         name = "Cotrimoxazole prophylaxis",
         type = "coverage",
         unit_label = "% of PLHIV",
-        efficacy = 0.70,  # UPDATE: Mortality reduction from cotrimoxazole
+        efficacy = subset(intervention_params, intervention_key == "cotrimoxazole")$efficacy,  # UPDATE: Mortality reduction from cotrimoxazole
         eligible_pop = "plhiv",
-        unit_cost = 12,   # UPDATE: Annual cost per person
+        unit_cost = subset(intervention_params, intervention_key == "cotrimoxazole")$unit_cost,   # UPDATE: Annual cost per person
         outcomes = c("mortality")
       )
     )
@@ -152,78 +141,78 @@ intervention_groups <- list(
         name = "Testing: facility-based",
         type = "absolute",
         unit_label = "tests performed",
-        efficacy = 0.99,  # UPDATE: Test sensitivity
+        efficacy = subset(intervention_params, intervention_key == "test_facility")$efficacy,  # UPDATE: Test sensitivity
         eligible_pop = "sexually_active",
-        unit_cost = 15,   # UPDATE: Cost per test
-        linkage_rate = 0.97,  # UPDATE: Linkage to care for facility-based
-        linkage_cost = 25,    # UPDATE: Cost of linkage/initiation support
+        unit_cost = subset(intervention_params, intervention_key == "test_facility")$unit_cost,   # UPDATE: Cost per test
+        linkage_rate = subset(intervention_params, intervention_key == "test_facility")$linkage_rate,  # UPDATE: Linkage to care for facility-based
+        linkage_cost =subset(intervention_params, intervention_key == "test_facility")$linkage_cost,    # UPDATE: Cost of linkage/initiation support
         outcomes = c("testing")
       ),
       test_community = list(
         name = "Testing: community-based",
         type = "absolute",
         unit_label = "tests performed",
-        efficacy = 0.99,  # UPDATE: Test sensitivity
+        efficacy = subset(intervention_params, intervention_key == "test_community")$efficacy,  # UPDATE: Test sensitivity
         eligible_pop = "sexually_active",
-        unit_cost = 8,    # UPDATE: Cost per test
-        linkage_rate = 0.97,  # UPDATE: Linkage to care
-        linkage_cost = 25,
+        unit_cost = subset(intervention_params, intervention_key == "test_community")$unit_cost,    # UPDATE: Cost per test
+        linkage_rate = subset(intervention_params, intervention_key == "test_community")$linkage_rate,  # UPDATE: Linkage to care
+        linkage_cost = subset(intervention_params, intervention_key == "test_community")$linkage_cost,
         outcomes = c("testing")
       ),
       test_kpsti = list(
         name = "Testing: key populations & STI services",
         type = "absolute",
         unit_label = "tests performed",
-        efficacy = 0.99,  # UPDATE: Test sensitivity
+        efficacy = subset(intervention_params, intervention_key == "test_kpsti")$efficacy,  # UPDATE: Test sensitivity
         eligible_pop = "sexually_active",
-        unit_cost = 12,   # UPDATE: Cost per test
-        linkage_rate = 0.97,
-        linkage_cost = 25,
-        test_yield_multiplier = 1.5,  # UPDATE: Higher yield in key pops
+        unit_cost = subset(intervention_params, intervention_key == "test_kpsti")$unit_cost,   # UPDATE: Cost per test
+        linkage_rate = subset(intervention_params, intervention_key == "test_kpsti")$linkage_rate,
+        linkage_cost = subset(intervention_params, intervention_key == "test_kpsti")$linkage_cost,
+        test_yield_multiplier = subset(intervention_params, intervention_key == "test_kpsti")$multiplier,  # UPDATE: Higher yield in key pops
         outcomes = c("testing")
       ),
       hivst_facility = list(
         name = "HIVST (Facility-based)",
         type = "absolute",
         unit_label = "tests distributed",
-        efficacy = 0.97,  # UPDATE: Self-test sensitivity
+        efficacy = subset(intervention_params, intervention_key == "hivst_facility")$efficacy,  # UPDATE: Self-test sensitivity
         eligible_pop = "sexually_active",
-        unit_cost = 5,    # UPDATE: Cost per self-test kit
-        linkage_rate = 0.70,  # UPDATE: Lower linkage for HIVST
-        linkage_cost = 25,
+        unit_cost = subset(intervention_params, intervention_key == "hivst_facility")$unit_cost,    # UPDATE: Cost per self-test kit
+        linkage_rate = subset(intervention_params, intervention_key == "hivst_facility")$linkage_rate,  # UPDATE: Lower linkage for HIVST
+        linkage_cost = subset(intervention_params, intervention_key == "hivst_facility")$linkage_cost,
         outcomes = c("testing")
       ),
       hivst_community = list(
         name = "HIVST (Community-based)",
         type = "absolute",
         unit_label = "tests distributed",
-        efficacy = 0.97,  # UPDATE: Self-test sensitivity
+        efficacy = subset(intervention_params, intervention_key == "hivst_community")$efficacy,  # UPDATE: Self-test sensitivity
         eligible_pop = "sexually_active",
-        unit_cost = 4,    # UPDATE: Cost per self-test kit
-        linkage_rate = 0.70,
-        linkage_cost = 25,
+        unit_cost = subset(intervention_params, intervention_key == "hivst_community")$unit_cost,    # UPDATE: Cost per self-test kit
+        linkage_rate = subset(intervention_params, intervention_key == "hivst_community")$linkage_rate,
+        linkage_cost = subset(intervention_params, intervention_key == "hivst_community")$linkage_cost,
         outcomes = c("testing")
       ),
       eid = list(
         name = "EID (Early Infant Diagnosis)",
         type = "coverage",
         unit_label = "% of HIV-exposed infants",
-        efficacy = 0.98,  # UPDATE: Test sensitivity for infants
+        efficacy = subset(intervention_params, intervention_key == "eid")$efficacy,  # UPDATE: Test sensitivity for infants
         eligible_pop = "hiv_exposed_infants",
-        unit_cost = 25,   # UPDATE: Cost per infant tested
-        linkage_rate = 0.95,
-        linkage_cost = 20,
+        unit_cost = subset(intervention_params, intervention_key == "eid")$unit_cost,   # UPDATE: Cost per infant tested
+        linkage_rate = subset(intervention_params, intervention_key == "eid")$linkage_rate,
+        linkage_cost = subset(intervention_params, intervention_key == "eid")$linkage_cost,
         outcomes = c("testing")
       ),
       anc_hiv_testing = list(
         name = "ANC: HIV testing",
         type = "coverage",
         unit_label = "% of pregnant women",
-        efficacy = 0.99,  # UPDATE: Test sensitivity
+        efficacy = subset(intervention_params, intervention_key == "anc_hiv_testing")$efficacy,  # UPDATE: Test sensitivity
         eligible_pop = "pregnant_women",
-        unit_cost = 8,    # UPDATE: Cost per test
-        linkage_rate = 0.97,
-        linkage_cost = 25,
+        unit_cost = subset(intervention_params, intervention_key == "anc_hiv_testing")$unit_cost,    # UPDATE: Cost per test
+        linkage_rate = subset(intervention_params, intervention_key == "anc_hiv_testing")$linkage_rate,
+        linkage_cost = subset(intervention_params, intervention_key == "anc_hiv_testing")$linkage_cost,
         outcomes = c("testing")
       )
     )
@@ -237,54 +226,54 @@ intervention_groups <- list(
         name = "Routine VL monitoring",
         type = "coverage",
         unit_label = "% of people on ART",
-        efficacy = 0.85,  # UPDATE: VL suppression improvement
+        efficacy = subset(intervention_params, intervention_key == "vl_monitoring_routine")$efficacy,  # UPDATE: VL suppression improvement
         eligible_pop = "on_art",
-        unit_cost = 25,   # UPDATE: Cost per VL test
+        unit_cost = subset(intervention_params, intervention_key == "vl_monitoring_routine")$unit_cost,   # UPDATE: Cost per VL test
         outcomes = c("viral_suppression")
       ),
       vl_monitoring_targeted = list(
         name = "VL monitoring: suspected failure",
         type = "absolute",
         unit_label = "people tested",
-        efficacy = 0.90,  # UPDATE: Targeted VL efficacy
+        efficacy = subset(intervention_params, intervention_key == "vl_monitoring_targeted")$efficacy,  # UPDATE: Targeted VL efficacy
         eligible_pop = "on_art_suspected_failure",
-        unit_cost = 35,   # UPDATE: Cost per test + followup
+        unit_cost = subset(intervention_params, intervention_key == "vl_monitoring_targeted")$unit_cost,   # UPDATE: Cost per test + followup
         outcomes = c("viral_suppression")
       ),
       oi_management = list(
         name = "OI screening & management",
         type = "coverage",
         unit_label = "% of new ART initiations",
-        efficacy = 0.75,  # UPDATE: Mortality reduction from OI management
+        efficacy = subset(intervention_params, intervention_key == "oi_management")$efficacy,  # UPDATE: Mortality reduction from OI management
         eligible_pop = "new_art_initiations",
-        unit_cost = 45,   # UPDATE: Cost per person screened/treated
+        unit_cost = subset(intervention_params, intervention_key == "oi_management")$unit_cost,   # UPDATE: Cost per person screened/treated
         outcomes = c("mortality")
       ),
       mmd_3month = list(
         name = "MMD: 3-month dispensing",
         type = "coverage",
         unit_label = "% of stable clients",
-        efficacy = 0.88,  # UPDATE: Retention improvement vs monthly
+        efficacy = subset(intervention_params, intervention_key == "mmd_3month")$efficacy,  # UPDATE: Retention improvement vs monthly
         eligible_pop = "on_art_stable",
-        unit_cost = 5,    # UPDATE: Additional cost vs monthly
+        unit_cost = subset(intervention_params, intervention_key == "mmd_3month")$unit_cost,    # UPDATE: Additional cost vs monthly
         outcomes = c("retention")
       ),
       mmd_6month = list(
         name = "MMD: 6-month dispensing",
         type = "coverage",
         unit_label = "% of stable clients",
-        efficacy = 0.92,  # UPDATE: Retention improvement vs monthly
+        efficacy = subset(intervention_params, intervention_key == "mmd_6month")$efficacy,  # UPDATE: Retention improvement vs monthly
         eligible_pop = "on_art_stable",
-        unit_cost = 8,    # UPDATE: Additional cost vs monthly
+        unit_cost = subset(intervention_params, intervention_key == "mmd_6month")$unit_cost,    # UPDATE: Additional cost vs monthly
         outcomes = c("retention")
       ),
       mmd_12month = list(
         name = "MMD: 12-month dispensing",
         type = "coverage",
         unit_label = "% of stable clients",
-        efficacy = 0.95,  # UPDATE: Retention improvement vs monthly
+        efficacy = subset(intervention_params, intervention_key == "mmd_12month")$efficacy,  # UPDATE: Retention improvement vs monthly
         eligible_pop = "on_art_stable",
-        unit_cost = 12,   # UPDATE: Additional cost vs monthly
+        unit_cost =subset(intervention_params, intervention_key == "mmd_12month")$unit_cost ,   # UPDATE: Additional cost vs monthly
         outcomes = c("retention")
       )
     )
@@ -298,27 +287,27 @@ intervention_groups <- list(
         name = "Adherence counseling/psychosocial support",
         type = "coverage",
         unit_label = "% of people on ART",
-        efficacy = 0.80,  # UPDATE: Adherence improvement efficacy
+        efficacy = subset(intervention_params, intervention_key == "adherence_counseling")$efficacy,  # UPDATE: Adherence improvement efficacy
         eligible_pop = "on_art",
-        unit_cost = 30,   # UPDATE: Cost per person counseled
+        unit_cost = subset(intervention_params, intervention_key == "adherence_counseling")$unit_cost,   # UPDATE: Cost per person counseled
         outcomes = c("viral_suppression", "retention")
       ),
       tracking_tracing = list(
         name = "Tracking & tracing",
         type = "coverage",
         unit_label = "% of LTFU patients",
-        efficacy = 0.75,  # UPDATE: Return-to-care rate
+        efficacy = subset(intervention_params, intervention_key == "tracking_tracing")$efficacy,  # UPDATE: Return-to-care rate
         eligible_pop = "ltfu",
-        unit_cost = 20,   # UPDATE: Cost per person traced
+        unit_cost = subset(intervention_params, intervention_key == "tracking_tracing")$unit_cost,   # UPDATE: Cost per person traced
         outcomes = c("retention")
       ),
       anc_vl_testing = list(
         name = "ANC: Viral Load Testing",
         type = "coverage",
         unit_label = "% of pregnant women on ART",
-        efficacy = 0.88,  # UPDATE: VL suppression in pregnancy
+        efficacy = subset(intervention_params, intervention_key == "anc_vl_testing")$efficacy,  # UPDATE: VL suppression in pregnancy
         eligible_pop = "pregnant_on_art",
-        unit_cost = 25,   # UPDATE: Cost per VL test
+        unit_cost = subset(intervention_params, intervention_key == "anc_vl_testing")$unit_cost,   # UPDATE: Cost per VL test
         outcomes = c("viral_suppression", "pmtct")
       )
     )
@@ -332,19 +321,19 @@ intervention_groups <- list(
         name = "CD4 testing (all new initiations)",
         type = "coverage",
         unit_label = "% of new ART initiations",
-        efficacy = 1.0,  # Just a screening test
+        efficacy = subset(intervention_params, intervention_key == "cd4_testing")$efficacy,  # Just a screening test
         eligible_pop = "new_art_initiations",
-        unit_cost = 15,  # UPDATE: Cost per CD4 test
+        unit_cost = subset(intervention_params, intervention_key == "cd4_testing")$unit_cost,  # UPDATE: Cost per CD4 test
         outcomes = c("ahd_screening")
       ),
       ahd_package = list(
         name = "Full AHD package (LAM, CrAg, fluconazole)",
         type = "coverage",
         unit_label = "% of those with CD4<200",
-        efficacy = 0.85,  # UPDATE: Mortality reduction from AHD package
+        efficacy = subset(intervention_params, intervention_key == "ahd_package")$efficacy,  # UPDATE: Mortality reduction from AHD package
         eligible_pop = "advanced_disease",
-        proportion_advanced = 0.20,  # UPDATE: Proportion with CD4<200
-        unit_cost = 50,   # UPDATE: Cost of LAM + CrAg + fluconazole (not including CD4)
+        proportion_advanced = subset(intervention_params, intervention_key == "ahd_package")$proportion_advanced,  # UPDATE: Proportion with CD4<200 - country specific?]
+        unit_cost = subset(intervention_params, intervention_key == "ahd_package")$unit_cost,   # UPDATE: Cost of LAM + CrAg + fluconazole (not including CD4)
         outcomes = c("mortality")
       )
     )

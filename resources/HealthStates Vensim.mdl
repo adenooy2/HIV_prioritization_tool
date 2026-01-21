@@ -1,9 +1,176 @@
 {UTF-8}
-"S - Suspected, not infected"  = A FUNCTION OF( )
+"A-NS: On ART, not supressed"  = A FUNCTION OF( "ART (re)-initiation",-LTFU,-mortality on ART\
+		,-viral suppression)
 	~	
 	~		|
 
-"U - Infected, undiagnosed"  = A FUNCTION OF( )
+"A-S: On ART, supressed"  = A FUNCTION OF( -mortality virally suppressed,viral suppression\
+		) ~~|
+"A-S: On ART, supressed"= INTEG (
+	viral suppression,
+		)
+	~	
+	~		|
+
+"Adherence/Psychosocial support"  = A FUNCTION OF( )
+	~	
+	~		|
+
+AHD testing package  = A FUNCTION OF( )
+	~	
+	~		|
+
+"ART (re)-initiation"  = A FUNCTION OF( Inititation rates)
+	~	
+	~		|
+
+baseline force of infection  = A FUNCTION OF( )
+	~	
+	~		|
+
+Baseline VS rates  = A FUNCTION OF( )
+	~	
+	~		|
+
+community hivst  = A FUNCTION OF( )
+	~	
+	~		|
+
+"community-based testing"  = A FUNCTION OF( )
+	~	
+	~		|
+
+condoms  = A FUNCTION OF( )
+	~	
+	~		|
+
+diagnosis  = A FUNCTION OF( community hivst,"community-based testing",facility hivst,\
+		facility testing,KPSTI testing)
+	~	
+	~		|
+
+DSD  = A FUNCTION OF( )
+	~	
+	~		|
+
+facility hivst  = A FUNCTION OF( )
+	~	
+	~		|
+
+facility testing=A FUNCTION OF(facility testing) ~~|
+facility testing=
+	~	
+	~		|
+
+"HIV-related deaths"  = A FUNCTION OF( mortality on ART,mortality virally suppressed,\
+		undiagnosed mortality,untreated mortality)
+	~	
+	~		|
+
+infection  = A FUNCTION OF( baseline force of infection,condoms,pep,prep cabla,prep len\
+		,prep oral,vmmc) ~~|
+infection=
+	~	
+	~		|
+
+Inititation rates  = A FUNCTION OF( )
+	~	
+	~		|
+
+KPSTI testing  = A FUNCTION OF( )
+	~	
+	~		|
+
+LTFU  = A FUNCTION OF( LTFU rate,"Track & Trace")
+	~	
+	~		|
+
+LTFU rate  = A FUNCTION OF( )
+	~	
+	~		|
+
+MMD  = A FUNCTION OF( )
+	~	
+	~		|
+
+mortality on ART  = A FUNCTION OF( AHD testing package,OI Management,OI prophylaxis)
+	~	
+	~		|
+
+mortality virally suppressed  = A FUNCTION OF( AHD testing package,OI Management,OI prophylaxis\
+		)
+	~	
+	~		|
+
+"N-NS: Not in care, not supressed"  = A FUNCTION OF( -"ART (re)-initiation",diagnosis\
+		,LTFU,-untreated mortality)
+	~	
+	~		|
+
+OI Management  = A FUNCTION OF( )
+	~	
+	~		|
+
+OI prophylaxis  = A FUNCTION OF( )
+	~	
+	~		|
+
+pep  = A FUNCTION OF( )
+	~	
+	~		|
+
+prep cabla  = A FUNCTION OF( )
+	~	
+	~		|
+
+prep len  = A FUNCTION OF( )
+	~	
+	~		|
+
+prep oral  = A FUNCTION OF( )
+	~	
+	~		|
+
+Routine VL monitoring  = A FUNCTION OF( )
+	~	
+	~		|
+
+"S: Susceptible, not infected"=A FUNCTION OF("S: Susceptible, not infected",infection\
+		) ~~|
+"S: Susceptible, not infected"= INTEG (
+	-infection,
+		)
+	~	
+	~		|
+
+Targeted VL monitoring  = A FUNCTION OF( )
+	~	
+	~		|
+
+"Track & Trace"  = A FUNCTION OF( )
+	~	
+	~		|
+
+"U: Infected, undiagnosed"  = A FUNCTION OF( -diagnosis,infection,-undiagnosed mortality\
+		)
+	~	
+	~		|
+
+undiagnosed mortality=A FUNCTION OF(undiagnosed mortality) ~~|
+undiagnosed mortality=
+	~	
+	~		|
+
+untreated mortality  = A FUNCTION OF( )
+	~	
+	~		|
+
+viral suppression  = A FUNCTION OF( "Adherence/Psychosocial support",Baseline VS rates\
+		,DSD,MMD,Routine VL monitoring,Targeted VL monitoring)
+	~	
+	~		|
+
+vmmc  = A FUNCTION OF( )
 	~	
 	~		|
 
@@ -38,11 +205,105 @@ TIME STEP  = 1
 V300  Do not put anything below this section - it will be ignored
 *View 1
 $-1--1--1,0,|12||-1--1--1|-1--1--1|-1--1--1|-1--1--1|-1--1--1|96,96,100,0
-10,1,"S - Suspected, not infected",226,254,61,22,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
-10,2,"U - Infected, undiagnosed",429,248,56,22,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,1,"S: Susceptible, not infected",33,266,61,22,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,2,"U: Infected, undiagnosed",371,269,60,21,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,3,"N-NS: Not in care, not supressed",767,275,56,23,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,4,"A-NS: On ART, not supressed",1131,285,60,33,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,5,"A-S: On ART, supressed",1574,287,60,41,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,6,8,1,100,0,0,22,0,192,0,-1--1--1,,1|(120,266)|
+1,7,8,2,4,0,0,22,0,192,0,-1--1--1,,1|(235,266)|
+11,8,0,153,266,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,9,infection,153,298,41,24,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,10,12,2,100,0,0,22,0,192,0,-1--1--1,,1|(482,267)|
+1,11,12,3,4,0,0,22,0,192,0,-1--1--1,,1|(628,267)|
+11,12,0,540,267,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,13,diagnosis,540,297,42,22,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,14,16,4,100,0,0,22,0,192,0,-1--1--1,,1|(1238,270)|
+1,15,16,5,4,0,0,22,0,192,0,-1--1--1,,1|(1406,270)|
+11,16,0,1292,270,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,17,viral suppression,1292,295,1,17,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,18,prep oral,214,77,42,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,19,condoms,289,130,42,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,20,prep cabla,116,75,44,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,21,prep len,33,112,42,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,22,vmmc,261,207,42,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,23,21,8,0,0,45,0,1,192,0,251-2-128,|||0-0-0,1|(0,0)|
+1,24,20,8,0,0,45,0,1,192,0,251-2-128,|||0-0-0,1|(0,0)|
+1,25,18,8,0,0,45,0,1,192,0,251-2-128,|||0-0-0,1|(0,0)|
+1,26,19,8,0,0,45,0,1,192,0,251-2-128,|||0-0-0,1|(0,0)|
+1,27,22,8,0,0,45,0,1,192,0,251-2-128,|||0-0-0,1|(0,0)|
+10,28,baseline force of infection,36,378,61,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,29,28,9,0,0,43,0,1,192,0,152-0-255,|||0-0-0,1|(0,0)|
+1,30,32,3,100,0,0,22,0,192,0,-1--1--1,,1|(867,292)|
+1,31,32,4,4,0,0,22,0,192,0,-1--1--1,,1|(997,292)|
+11,32,0,917,292,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,33,"ART (re)-initiation",917,322,65,22,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,34,facility testing,444,139,61,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,35,"community-based testing",401,203,65,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,36,KPSTI testing,551,91,56,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,37,facility hivst,690,217,46,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,38,community hivst,665,147,42,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,39,Routine VL monitoring,1289,106,44,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,40,Targeted VL monitoring,1360,168,48,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,41,43,4,100,0,0,22,0,192,0,-1--1--1,,1|(1020,257)|
+1,42,43,3,4,0,0,22,0,192,0,-1--1--1,,1|(890,257)|
+11,43,0,964,257,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,44,LTFU,964,266,42,1,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,45,"Track & Trace",935,83,56,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,46,45,43,0,0,45,0,0,192,0,-1--1--1,,1|(0,0)|
+10,47,"Adherence/Psychosocial support",1105,64,94,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,48,47,16,0,0,43,0,0,192,0,-1--1--1,,1|(0,0)|
+10,49,MMD,1099,215,42,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,50,DSD,1109,153,42,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,51,50,16,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,52,49,16,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,53,35,12,0,0,43,0,1,192,0,63-190-253,|||0-0-0,1|(0,0)|
+1,54,34,12,0,0,43,0,1,192,0,87-212-255,|||0-0-0,1|(0,0)|
+1,55,36,12,0,0,43,0,1,192,0,74-202-254,|||0-0-0,1|(0,0)|
+1,56,38,12,0,0,43,0,1,192,0,56-175-253,|||0-0-0,1|(0,0)|
+1,57,37,12,0,0,43,0,1,192,0,51-157-252,|||0-0-0,1|(0,0)|
+10,58,Inititation rates,832,411,48,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,59,58,33,0,0,0,0,1,192,0,132-0-255,|||0-0-0,1|(0,0)|
+10,60,LTFU rate,849,194,42,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,61,60,43,0,0,43,0,1,192,0,111-0-255,|||0-0-0,1|(0,0)|
+1,62,39,16,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,63,40,16,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,64,Baseline VS rates,1507,215,48,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,65,64,16,1,0,0,0,1,192,0,89-0-204,|||0-0-0,1|(1353,241)|
+10,66,"HIV-related deaths",764,665,48,22,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,67,73,2,100,0,0,22,0,192,0,-1--1--1,,1|(358,404)|
+1,68,73,66,4,0,0,22,0,192,0,-1--1--1,,1|(358,665)|
+1,69,75,3,100,0,0,22,0,192,0,-1--1--1,,1|(756,411)|
+1,70,75,66,4,0,0,22,0,192,0,-1--1--1,,1|(756,590)|
+1,71,77,4,100,0,0,22,0,192,0,-1--1--1,,1|(1118,418)|
+1,72,77,66,4,0,0,22,0,192,0,-1--1--1,,1|(1118,665)|
+11,73,0,358,525,8,6,33,3,0,0,4,0,0,0,0,0,0,0,0,0
+10,74,undiagnosed mortality,408,525,42,22,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+11,75,0,756,531,8,6,33,3,0,0,4,0,0,0,0,0,0,0,0,0
+10,76,untreated mortality,806,531,42,22,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+11,77,0,1118,524,8,6,33,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,78,mortality on ART,1118,552,52,22,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,79,81,5,100,0,0,22,0,192,0,-1--1--1,,1|(1566,431)|
+1,80,81,66,4,0,0,22,0,192,0,-1--1--1,,1|(1566,665)|
+11,81,0,1566,541,8,6,33,3,0,0,4,0,0,0,0,0,0,0,0,0
+10,82,mortality virally suppressed,1618,541,44,23,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,83,pep,-12,193,42,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,84,83,8,0,0,0,0,1,192,0,251-2-128,|||0-0-0,1|(0,0)|
+10,85,OI prophylaxis,1316,509,61,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,86,OI Management,1305,558,56,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,87,85,77,0,0,45,0,0,192,0,-1--1--1,,1|(0,0)|
+1,88,86,77,0,0,45,0,0,192,0,-1--1--1,,1|(0,0)|
+1,89,85,81,0,0,45,0,0,192,0,-1--1--1,,1|(0,0)|
+1,90,86,81,0,0,45,0,0,192,0,-1--1--1,,1|(0,0)|
+10,91,AHD testing package,1308,436,48,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,92,91,77,0,0,45,0,0,192,0,-1--1--1,,1|(0,0)|
+1,93,91,81,0,0,45,0,0,192,0,-1--1--1,,1|(0,0)|
+11,94,0,1383,313,6,8,2,3,0,0,1,0,0,0,0,0,0,0,0,0
+1,95,94,5,100,0,0,22,0,192,0,-1--1--1,,1|(1451,313)|
+1,96,94,4,4,0,0,22,0,192,0,-1--1--1,,1|(1284,313)|
 ///---\\\
 :L<%^E!@
-5:"U - Infected, undiagnosed"
+5:Time
 19:100,0
 24:0
 25:0
