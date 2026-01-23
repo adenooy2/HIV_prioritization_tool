@@ -644,6 +644,12 @@ calculate_impact <- function(context, baseline, target, populations) {
   new_deaths <- max(0, context$aids_deaths_per_year - deaths_averted)
   new_ltfu=population$ltfu-retention_improvement
   
+  # Calculate new infection values
+  new_infections <- max(0, context$new_infections_per_year - infections_averted)
+  baseline_infant_infections <- populations$hiv_exposed_infants * 0.15 ### UPDATE
+  new_infant_infections <- max(0, baseline_infant_infections - infant_infections_averted)
+  
+  
   list(
     infections_averted = round(infections_averted),
     infant_infections_averted = round(infant_infections_averted),
@@ -675,7 +681,9 @@ calculate_impact <- function(context, baseline, target, populations) {
     new_on_art = round(new_on_art),
     new_suppressed = round(new_suppressed),
     new_deaths = round(new_deaths),
-    new_ltfu=round(new_ltfu)
+    new_ltfu=round(new_ltfu),
+    new_infections = round(new_infections),
+    new_infant_infections = round(new_infant_infections)
   )
 }
 
