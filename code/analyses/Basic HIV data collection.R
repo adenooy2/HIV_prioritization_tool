@@ -2,6 +2,7 @@ library(tidyverse)
 library(readxl)
 options(scipen=999)
 rm(list=ls())
+library(WDI)
 
 data_dir="/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/"
 
@@ -19,12 +20,30 @@ est_data_filt=est_data %>%
   unique() 
 
 
-
+##gam DATA
 gam_data=read.csv(paste(data_dir,"GAM_2025_en.csv",sep=""))
+gam_data$label=paste(gam_data$Indicator_GId,gam_data$Subgroup)
+
 gam_indicators=read_excel(paste(data_dir,"data_list.xlsx",sep=""),sheet="GAM")
 
-pop_data=read.csv(paste(data_dir,"pop_data_worldBank.csv",sep=""))
+gam_data_sub=gam_data %>% select(Area,Area.ID,Indicator,Indicator_GId,Subgroup,label,year=Time.Period,Data.value) %>% 
+  filter(label%in%c("MALE_CIRCUMCISIONS_PERFORMED All ages","PREVALENCE_MALE_CIRCUMCISION Adults (15-49)","PEOPLE_ON_PREP Total",
+                    "CONDOMS_DISTRIBUTED Male condoms Total","CONDOMS_DISTRIBUTED Female condoms Total",
+                    "COVERAGE_DSD_ART_MODELS Adults (15+)")) %>% 
+group_by(Indicator,Indicator_GId,Subgroup,Area) %>%  
+  arrange(Area,Indicator,Indicator_GId,Subgroup,desc(year)) %>% 
+  slice(1) %>% 
+  ungroup() %>% 
+  unique() 
 
+
+######worldbank data
+
+pop_data= WDI(indicator =  c( "SP.POP.TOTL","SP.POP.TOTL.MA.ZS"),start=2024) %>% select(-year)
+pop_data= pop_data %>% left_join(WDI(indicator =  c( "SP.DYN.CBRT.IN"),start=2023,end = 2023))
+pop_data=pop_data %>% select(Area=country,Area.ID=iso3c,population=SP.POP.TOTL,prop_male=SP.POP.TOTL.MA.ZS,birth_rate=SP.DYN.CBRT.IN)
+
+inds=WDIsearch("birth rate")
 ###BAsic data
 
 basic_data=est_data %>% 
@@ -57,7 +76,7 @@ basic_data$aids_deaths_per_year=round(basic_data$aids_deaths_per_year,0)
 basic_data$percent_diagnosed=round(basic_data$percent_diagnosed,1)
 
 
-sub_countries=c("Eswatini","Lesotho","Botswana","Mozambique","Zimbabwe","Zambia","Namibia","Malawi","Uganda","Kenya")
+sub_countries=c("Eswatini","Lesotho","Botswana","Mozambique","Zimbabwe","Zambia","Namibia","Malawi","South Africa","Uganda","Kenya")
 
 basic_data=basic_data %>% filter(country%in%sub_countries)
 

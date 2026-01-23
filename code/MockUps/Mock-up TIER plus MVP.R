@@ -642,6 +642,7 @@ calculate_impact <- function(context, baseline, target, populations) {
   new_on_art <- populations$on_art + art_initiations + retention_improvement
   new_suppressed <- populations$suppressed + additional_suppressed
   new_deaths <- max(0, context$aids_deaths_per_year - deaths_averted)
+  new_ltfu=population$ltfu-retention_improvement
   
   list(
     infections_averted = round(infections_averted),
@@ -673,7 +674,8 @@ calculate_impact <- function(context, baseline, target, populations) {
     new_diagnosed = round(new_diagnosed),
     new_on_art = round(new_on_art),
     new_suppressed = round(new_suppressed),
-    new_deaths = round(new_deaths)
+    new_deaths = round(new_deaths),
+    new_ltfu=round(new_ltfu)
   )
 }
 
@@ -1044,7 +1046,12 @@ server <- function(input, output, session) {
       group <- intervention_groups[[group_key]]
       for (int_key in names(group$interventions)) {
         input_id <- paste0("scenario1_", int_key)
-        scenario[[int_key]] <- input[[input_id]]
+        # Use baseline if scenario input is NULL
+        value <- input[[input_id]]
+        if (is.null(value)) {
+          value <- input[[paste0("baseline_", int_key)]]
+        }
+        scenario[[int_key]] <- value
       }
     }
     scenario
@@ -1057,7 +1064,12 @@ server <- function(input, output, session) {
       group <- intervention_groups[[group_key]]
       for (int_key in names(group$interventions)) {
         input_id <- paste0("scenario2_", int_key)
-        scenario[[int_key]] <- input[[input_id]]
+        # Use baseline if scenario input is NULL
+        value <- input[[input_id]]
+        if (is.null(value)) {
+          value <- input[[paste0("baseline_", int_key)]]
+        }
+        scenario[[int_key]] <- value
       }
     }
     scenario
@@ -1066,11 +1078,15 @@ server <- function(input, output, session) {
   # Calculate impacts
   impact_scenario1 <- reactive({
     req(populations())
+    req(baseline_input_values())
+    req(scenario1_values())
     calculate_impact(context(), baseline_input_values(), scenario1_values(), populations())
   })
   
   impact_scenario2 <- reactive({
     req(populations())
+    req(baseline_input_values())
+    req(scenario2_values())
     calculate_impact(context(), baseline_input_values(), scenario2_values(), populations())
   })
   
