@@ -15,13 +15,14 @@ library(scales)
 library(httr)
 library(readr)
 library(readxl)
-
-
-dir="/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/"
-
-source("Mock-Up logic.R")
-
 #library(devtools)
+
+logic_url="https://my.microsoftpersonalcontent.com/personal/2ae90f5cbd0fd171/_layouts/15/download.aspx?UniqueId=0da2a00b-011e-4830-8a80-eb7b9372de99&Translate=false&tempauth=v1e.eyJzaXRlaWQiOiI1ZDIwYjU0OC01MzEyLTRkYjAtYWZmZC0xYzg3NWE4OGVjNWIiLCJhdWQiOiIwMDAwMDAwMy0wMDAwLTBmZjEtY2UwMC0wMDAwMDAwMDAwMDAvbXkubWljcm9zb2Z0cGVyc29uYWxjb250ZW50LmNvbUA5MTg4MDQwZC02YzY3LTRjNWItYjExMi0zNmEzMDRiNjZkYWQiLCJleHAiOiIxNzY5NDIyNjAzIn0.uDq900nEi1RL4nwW0EwWzyBpFLTj347i6QzUWwR6l6jlhq0j1HWXPseKWM6iSVgJkVgTLDF3teJ71eGTsdb0NGZeR5_jSDKJ5m2n21c378GIn1IBib7Ib6hm8JqviKQU9ndxdqXj9dUWRlxLbNEbW8kLcCldKJ2jC4asDm3Iy5Il5DWHxe8hXjA5XP51-9TELTZrS2rxwz1wF3vYlTzP2G3ZJ1HB4W-myLF_OH6kyUNp8wusXxv8ph00uc0hJh756Fc1F22SImmVY5ndVkljq5vLlGaZjyiwGZRg9pEPqMdmhn3kMe1OjcxpICGUYuuiLzV2p_fe3RfklUFar-JDUEP6h2MIYOaKZnvq4o79oalEzlmfbiD7czW9p2TaRkpQK4FvbMKRY8OCzZ8EhzwbmeXLtTTrQ68a6K0xPRsWA_r-Q6ObsexcnRQgonFKmkqb5lXWtesUMQs1BsOeBVNzSqZtOICcYtLlDOaH07DEPLakg5mv6rKJSmWqYMlJyhF-TQgJz3c9-iopVwh6dvs0Ew.21XyMezm5lPFbp0nQqQpTTMhpNyIJx6BWrZMpM0It2E&ApiVersion=2.0"
+
+temp_logic <- tempfile(fileext = ".R")
+GET(logic_url, write_disk(temp_logic, overwrite = TRUE))
+source(temp_logic)
+
 #source_url("https://raw.githubusercontent.com/user/repo/main/logic.R")
 
 #source("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/Mock-Up logic.R")
