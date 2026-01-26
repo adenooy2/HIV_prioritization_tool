@@ -4,7 +4,7 @@
 # This tool allows users to model the health and cost impacts of scaling
 # HIV interventions up or down across prevention, testing, and treatment.
 # ============================================================================
-
+rm(list=ls())
 library(shiny)
 library(bslib)
 library(DT)
@@ -31,6 +31,9 @@ country_data_csv <- content(response, as = "parsed", type = "text/csv")
 
 #load intervention data
 # Load intervention parameters from Excel (LONG FORMAT)
+
+load_intervention_params=function(){
+
 sharepoint_url_interventions <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
 
 temp_file_int <- tempfile(fileext = ".xlsx")
@@ -53,7 +56,10 @@ intervention_params$linkage_cost <- as.numeric(intervention_params$linkage_cost)
 intervention_params$linkage_rate <- as.numeric(intervention_params$linkage_rate)
 intervention_params$multiplier <- as.numeric(intervention_params$multiplier)
 
+return(intervention_params)
+}
 
+intervention_params=load_intervention_params()
 # ============================================================================
 # INTERVENTION PARAMETERS DATABASE
 # ============================================================================
@@ -62,6 +68,7 @@ intervention_params$multiplier <- as.numeric(intervention_params$multiplier)
 # UPDATE LOCATION: Lines 28-280
 # ============================================================================
 
+build_intervention_groups=function(intervention_params){
 intervention_groups <- list(
   prevention = list(
     name = "Prevention",
@@ -340,6 +347,10 @@ intervention_groups <- list(
   )
 )
 
+return(intervention_groups)
+}
+
+intervention_groups=build_intervention_groups(intervention_params)
 # ============================================================================
 # DEFAULT BASELINE INTERVENTIONS (used when not in CSV)
 # ============================================================================
