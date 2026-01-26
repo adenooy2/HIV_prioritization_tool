@@ -15,12 +15,31 @@ library(scales)
 library(httr)
 library(readr)
 library(readxl)
-#library(devtools)
+library(devtools)
 
-#Source logic
-source("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/MVP/Mock-Up logic.R")
-
-#Or git hub
+##Source logic file
+tryCatch(
+  {
+    # Source logic – personal/local
+    source("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/MVP/Mock-Up logic.R")
+    message("Sourced local file successfully.")
+  },
+  error = function(e) {
+    message("Local source failed. Trying GitHub version...")
+    
+    tryCatch(
+      {
+        source("https://raw.githubusercontent.com/adenooy2/HIV_prioritization_tool/refs/heads/main/code/MockUps/MVP/Mock-up%20TIER%20interface%20MVP.R")
+        message("Sourced GitHub file successfully.")
+      },
+      error = function(e2) {
+        stop("Both local and GitHub sources failed:\n",
+             "Local error: ", e$message, "\n",
+             "GitHub error: ", e2$message)
+      }
+    )
+  }
+)
 
 
 # ============================================================================
