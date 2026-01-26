@@ -281,14 +281,14 @@ test_prevention_prep <- function() {
   
   # Set oral PrEP parameters
   prep <- intervention_groups$prevention$interventions$prep_oral
-  efficacy <- prep$efficacy
+  efficacy_oral <- prep$efficacy
   
   impact <- calculate_impact(context, baseline, target, pops)
   
   
   
   # Expected infections averted
-  expected_averted <- round(1000 * incidence_rate * efficacy)
+  expected_averted <- round(1000 * incidence_rate * efficacy_oral)
   
   cat(sprintf("\nExpected outcomes from 1000 additional oral PrEP users:\n"))
   cat(sprintf("  Infections averted: %.1f\n", expected_averted))
@@ -312,7 +312,7 @@ test_prevention_prep <- function() {
   impact <- calculate_impact(context, baseline, target, pops)
   
   # Expected infections averted
-  expected_averted <- -round(1000 * incidence_rate * efficacy)
+  expected_averted <- -round(1000 * incidence_rate * efficacy_oral)
   
   cat(sprintf("\nExpected outcomes from 1000 fewer oral PrEP users:\n"))
   cat(sprintf("  Infections averted: %.1f\n", expected_averted))
@@ -347,8 +347,48 @@ test_prevention_prep <- function() {
   cat(sprintf("\nActual outcomes:\n"))
   cat(sprintf("  Infections averted: %d\n", impact$infections_averted))
   
-  # Test 3.3: Infections averted matches expectation from lenacapacir
+  # Test 3.3: Infections averted matches expectation from lenacapavir
   test_that("Infections averted from prepr with lenacapavir matches expected value", {
+    expect_equal(impact$infections_averted, expected_averted)
+  })
+  
+  # Scale up len PrEP by 500 people and oral prep by 1000 people
+  baseline <- default_baseline_interventions
+  target <- baseline
+  target$prep_lenacapavir <- baseline$prep_lenacapavir + 500
+  target$prep_oral <- baseline$prep_oral + 1000
+  
+  impact <- calculate_impact(context, baseline, target, pops)
+  expected_averted <- round(500 * incidence_rate * efficacy_len+1000 * incidence_rate * efficacy_oral)
+  
+  cat(sprintf("\nExpected outcomes from 500 more lenacapavir PrEP users and 1000 more oral prep users:\n"))
+  cat(sprintf("  Infections averted: %.1f\n", expected_averted))
+  
+  cat(sprintf("\nActual outcomes:\n"))
+  cat(sprintf("  Infections averted: %d\n", impact$infections_averted))
+  
+  # Test 3.4: Infections averted matches expectation from 500 additional lenacapavir
+  test_that("Infections averted from prep with lenacapavir (+500) and oral prep (+1000) matches expected value", {
+    expect_equal(impact$infections_averted, expected_averted)
+  })
+  
+  # Scale up len PrEP by 500 people and oral prep down by 1000 people
+  baseline <- default_baseline_interventions
+  target <- baseline
+  target$prep_lenacapavir <- baseline$prep_lenacapavir + 500
+  target$prep_oral <- baseline$prep_oral - 1000
+  
+  impact <- calculate_impact(context, baseline, target, pops)
+  expected_averted <- round(500 * incidence_rate * efficacy_len-1000 * incidence_rate * efficacy_oral)
+  
+  cat(sprintf("\nExpected outcomes from 500 more lenacapavir PrEP users and 1000 fewer oral prep users:\n"))
+  cat(sprintf("  Infections averted: %.1f\n", expected_averted))
+  
+  cat(sprintf("\nActual outcomes:\n"))
+  cat(sprintf("  Infections averted: %d\n", impact$infections_averted))
+  
+  # Test 3.5: Infections averted matches expectation from 500 additional lenacapavir
+  test_that("Infections averted from prep with lenacapavir (+500) and oral prep (-1000) matches expected value", {
     expect_equal(impact$infections_averted, expected_averted)
   })
   
