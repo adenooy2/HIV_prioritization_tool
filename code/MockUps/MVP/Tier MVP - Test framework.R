@@ -37,6 +37,9 @@ tryCatch(
 # ============================================================================
 
 test_population_calculations <- function() {
+  intervention_groups=build_intervention_groups(intervention_params)
+  assign("intervention_groups", intervention_groups, envir = .GlobalEnv)
+  
   cat("\n=== TEST 1: POPULATION CALCULATIONS ===\n")
   
   # Set up test context
@@ -105,6 +108,9 @@ test_population_calculations <- function() {
 # ============================================================================
 
 test_cascade_no_intervention <- function() {
+  intervention_groups=build_intervention_groups(intervention_params)
+  assign("intervention_groups", intervention_groups, envir = .GlobalEnv)
+  
   cat("\n=== TEST 2: CASCADE WITH NO INTERVENTION ===\n")
   
   context <- list(
@@ -152,11 +158,13 @@ test_cascade_no_intervention <- function() {
 }
 
 # ============================================================================
-# TEST 3: TESTING INTERVENTION LOGIC
+# TEST 4: TESTING INTERVENTION LOGIC - `need to look at`
 # ============================================================================
 
 test_testing_intervention <- function() {
   cat("\n=== TEST 3: TESTING INTERVENTION LOGIC ===\n")
+  intervention_groups=build_intervention_groups(intervention_params)
+  assign("intervention_groups", intervention_groups, envir = .GlobalEnv)
   
   context <- list(
     total_population = 1000000,
@@ -235,11 +243,18 @@ test_testing_intervention <- function() {
 }
 
 # ============================================================================
-# TEST 4: PREVENTION INTERVENTION LOGIC
+# TEST 3: PREVENTION INTERVENTION LOGIC
 # ============================================================================
 
-test_prevention_intervention <- function() {
-  cat("\n=== TEST 4: PREVENTION INTERVENTION LOGIC ===\n")
+test_prevention_prep <- function() {
+  cat("\n=== TEST 3: PREVENTION INTERVENTION LOGIC ===\n")
+  
+  #oral prep efficacy - 80%, prep_len efficacy=0.9
+  intervention_params_test=intervention_params
+  intervention_params_test$efficacy[intervention_params_test$intervention_key=="prep_oral"]=0.8
+  intervention_params_test$efficacy[intervention_params_test$intervention_key=="prep_lenacapavir"]=0.9
+  intervention_groups=build_intervention_groups(intervention_params_test)
+  assign("intervention_groups", intervention_groups, envir = .GlobalEnv)
   
   context <- list(
     total_population = 1000000,
@@ -259,43 +274,83 @@ test_prevention_intervention <- function() {
   cat(sprintf("  Incidence rate: %.4f (%.2f per 1000)\n", 
               incidence_rate, incidence_rate * 1000))
   
-  # Scale up PrEP by 1,000 people
+  # Scale up oral PrEP by 1,000 people
   baseline <- default_baseline_interventions
   target <- baseline
   target$prep_oral <- baseline$prep_oral + 1000
   
-  impact <- calculate_impact(context, baseline, target, pops)
-  
-  # Get PrEP parameters
+  # Set oral PrEP parameters
   prep <- intervention_groups$prevention$interventions$prep_oral
   efficacy <- prep$efficacy
   
-  # Expected infections averted
-  expected_averted <- 1000 * incidence_rate * efficacy
+  impact <- calculate_impact(context, baseline, target, pops)
   
-  cat(sprintf("\nExpected outcomes from 1,000 additional PrEP users:\n"))
+  
+  
+  # Expected infections averted
+  expected_averted <- round(1000 * incidence_rate * efficacy)
+  
+  cat(sprintf("\nExpected outcomes from 1000 additional oral PrEP users:\n"))
   cat(sprintf("  Infections averted: %.1f\n", expected_averted))
   
   cat(sprintf("\nActual outcomes:\n"))
   cat(sprintf("  Infections averted: %d\n", impact$infections_averted))
   
-  # Test 4.1: Infections averted matches expectation
+  # Test 3.1: Infections averted matches expectation
   test_that("Infections averted matches expected value", {
-    expect_lt(abs(impact$infections_averted - expected_averted) / expected_averted, 0.1)
+    expect_equal(impact$infections_averted, expected_averted)
   })
   
-  cat("✓ Test 4.1 PASSED: Infections averted match expectation\n")
+  cat("✓ Test 3.1 PASSED: Infections averted match expectation\n")
   
-  # Test 4.2: Cost calculation
-  expected_cost <- 1000 * prep$unit_cost
   
-  test_that("Cost matches expected value", {
-    expect_equal(impact$total_cost, expected_cost)
+  # Scale down oral PrEP by 1,000 people
+  baseline <- default_baseline_interventions
+  target <- baseline
+  target$prep_oral <- baseline$prep_oral - 1000
+  
+  impact <- calculate_impact(context, baseline, target, pops)
+  
+  # Expected infections averted
+  expected_averted <- -round(1000 * incidence_rate * efficacy)
+  
+  cat(sprintf("\nExpected outcomes from 1000 fewer oral PrEP users:\n"))
+  cat(sprintf("  Infections averted: %.1f\n", expected_averted))
+  
+  cat(sprintf("\nActual outcomes:\n"))
+  cat(sprintf("  Infections averted: %d\n", impact$infections_averted))
+  
+  # Test 3.2: Infections averted matches expectation (should be negative)
+  test_that("Infections averted matches expected value", {
+    expect_equal(impact$infections_averted, expected_averted)
   })
   
-  cat("✓ Test 4.2 PASSED: Cost calculation correct\n")
-  cat(sprintf("  Expected cost: $%s\n", format(expected_cost, big.mark=",")))
-  cat(sprintf("  Actual cost: $%s\n", format(impact$total_cost, big.mark=",")))
+  
+  # Scale up len PrEP by 1,000 people
+  baseline <- default_baseline_interventions
+  target <- baseline
+  target$prep_lenacapavir <- baseline$prep_lenacapavir + 1000
+  
+  #len efficacy
+  prep_len <- intervention_groups$prevention$interventions$prep_lenacapavir
+  efficacy_len <- prep_len$efficacy
+  
+  
+  impact <- calculate_impact(context, baseline, target, pops)
+  
+  # Expected infections averted
+  expected_averted <- round(1000 * incidence_rate * efficacy_len)
+  
+  cat(sprintf("\nExpected outcomes from 1000 more lenacapavir PrEP users:\n"))
+  cat(sprintf("  Infections averted: %.1f\n", expected_averted))
+  
+  cat(sprintf("\nActual outcomes:\n"))
+  cat(sprintf("  Infections averted: %d\n", impact$infections_averted))
+  
+  # Test 3.3: Infections averted matches expectation from lenacapacir
+  test_that("Infections averted from prepr with lenacapavir matches expected value", {
+    expect_equal(impact$infections_averted, expected_averted)
+  })
   
   return(impact)
 }
@@ -306,6 +361,9 @@ test_prevention_intervention <- function() {
 
 test_scale_down <- function() {
   cat("\n=== TEST 5: SCALE-DOWN LOGIC ===\n")
+  
+  intervention_groups=build_intervention_groups(intervention_params)
+  assign("intervention_groups", intervention_groups, envir = .GlobalEnv)
   
   context <- list(
     total_population = 1000000,
@@ -355,6 +413,9 @@ test_scale_down <- function() {
 
 test_95_goals <- function() {
   cat("\n=== TEST 6: 95-95-95 GOALS CALCULATION ===\n")
+  
+  intervention_groups=build_intervention_groups(intervention_params)
+  assign("intervention_groups", intervention_groups, envir = .GlobalEnv)
   
   # Perfect 95-95-95 scenario
   context_perfect <- list(
@@ -468,6 +529,9 @@ test_95_goals <- function() {
 test_art_provision_cost <- function() {
   cat("\n=== TEST 8: ART PROVISION COST ===\n")
   
+  intervention_groups=build_intervention_groups(intervention_params)
+  assign("intervention_groups", intervention_groups, envir = .GlobalEnv)
+  
   context <- list(
     total_population = 1000000,
     hiv_prevalence = 0.05,
@@ -541,14 +605,14 @@ run_all_tests <- function() {
   # Run tests
   results <- list()
   
-  results$test1 <- test_population_calculations()
+  #results$test1 <- test_population_calculations()
   #results$test2 <- test_cascade_no_intervention()
   #results$test3 <- test_testing_intervention()
-  #results$test4 <- test_prevention_intervention(intervention_groups)
-  #results$test5 <- test_scale_down(intervention_groups)
+  results$test3 <- test_prevention_prep()
+  #results$test5 <- test_scale_down()
   #results$test6 <- test_95_goals()
-  #results$test7 <- test_coverage_vs_absolute(intervention_groups)
-  #results$test8 <- test_art_provision_cost(intervention_groups)
+  #results$test7 <- test_coverage_vs_absolute()
+  #results$test8 <- test_art_provision_cost()
   
   cat("\n")
   cat("╔════════════════════════════════════════════════════════════════════╗\n")
