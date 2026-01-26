@@ -75,6 +75,10 @@ basic_data$percent_on_art=round(basic_data$percent_on_art,1)
 basic_data$aids_deaths_per_year=round(basic_data$aids_deaths_per_year,0)
 basic_data$percent_diagnosed=round(basic_data$percent_diagnosed,1)
 
+basic_data$percent_diagnosed[basic_data$percent_diagnosed==100]=98
+basic_data$percent_suppressed[basic_data$percent_suppressed==100]=98
+basic_data$percent_on_art[basic_data$percent_on_art==100]=98
+
 
 sub_countries=c("Eswatini","Lesotho","Botswana","Mozambique","Zimbabwe","Zambia","Namibia","Malawi","South Africa","Uganda","Kenya")
 
