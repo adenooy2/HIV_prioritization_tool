@@ -402,7 +402,64 @@ test_prevention_pep <- function() {
   
   cat("✓ Test vmmc 2 PASSED: Infections averted match expectation\n")
 }
+ 
+
+# ============================================================================
+# TEST: PREVENTION INTERVENTION LOGIC (CTX)
+# ============================================================================
+
+test_prevention_ctx <- function() {
+  cat("\n=== TEST Cotrimoxazole: PREVENTION INTERVENTION LOGIC ===\n")
   
+  #CXT efficacy - 10%
+  intervention_params_test=intervention_params
+  intervention_params_test$efficacy[intervention_params_test$intervention_key=="cotrimoxazole"]=0.1
+  intervention_groups=build_intervention_groups(intervention_params_test)
+  assign("intervention_groups", intervention_groups, envir = .GlobalEnv)
+  
+  context <- list(
+    total_population = 1000000,
+    hiv_prevalence = 0.05,
+    percent_diagnosed = 80,
+    percent_on_art = 75,
+    percent_suppressed = 85,
+    new_infections_per_year = 5000,
+    aids_deaths_per_year = 1000
+  )
+  
+  pops <- calculate_populations(context)
+  
+  # Calculate incidence rate
+  mortality_rate <- context$aids_deaths_per_year / pops$plhiv
+  cat(sprintf("  mortality rate: %.4f (%.2f per 1000)\n", 
+              mortality_rate, mortality_rate * 1000))
+  
+  
+  # Scale up CTX by 20% from 60% to 80%
+  baseline <- default_baseline_interventions
+  baseline$cotrimoxazole=60
+  target <- baseline
+  target$cotrimoxazole <- baseline$cotrimoxazole + 20
+  
+  # Set pep parameters
+  ctx <- intervention_groups$prevention$interventions$cotrimoxazole
+  efficacy_ctx <- ctx$efficacy
+  
+  impact <- calculate_impact(context, baseline, target, pops)
+  
+  # Expected deaths averted
+  expected_deaths_averted <- round(0.2 * mortality_rate*pops$plhiv * efficacy_ctx)
+  print(expected_deaths_averted)
+  
+  # Test ctx 1: Deaths averted matches expectation
+  test_that("Deaths averted matches expected value", {
+    expect_equal(impact$deaths_averted, expected_deaths_averted)
+  })
+  
+  cat("✓ Test ctx 1 PASSED: Deaths averted match expectation\n")
+  
+  
+} 
   
 # ============================================================================
 # RUN ALL TESTS
@@ -425,6 +482,7 @@ run_all_tests <- function() {
   results$prep <- test_prevention_prep()
   results$vmmc <- test_prevention_vmmc()
   results$pep=test_prevention_pep()
+  results$ctx=test_prevention_ctx()
 
   
   cat("\n")

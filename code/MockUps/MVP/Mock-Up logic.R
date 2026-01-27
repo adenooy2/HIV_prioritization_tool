@@ -632,8 +632,10 @@ calculate_impact <- function(context, baseline, target, populations) {
       
     } else if ("mortality" %in% intervention$outcomes) {
       mortality_rate <- context$aids_deaths_per_year / populations$plhiv
+      
       deaths_averted <- deaths_averted + 
         sign * number_reached * mortality_rate * intervention$efficacy
+      
       
       intervention_cost <- sign * number_reached * intervention$unit_cost
       if (sign > 0) {
