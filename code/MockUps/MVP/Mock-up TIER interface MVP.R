@@ -475,7 +475,7 @@ server <- function(input, output, session) {
   impact_scenario2 <- reactive({
     req(populations())
     baseline <- baseline_input_values()  # Explicit dependency
-    scenario <- scenario1_values()        # Explicit dependency
+    scenario <- scenario2_values()        # Explicit dependency
     req(baseline, scenario)
     calculate_impact(context(), baseline, scenario, populations())
   })

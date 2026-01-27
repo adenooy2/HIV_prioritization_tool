@@ -514,12 +514,12 @@ calculate_impact <- function(context, baseline, target, populations) {
     if (is.null(target_value)) target_value <- 0
     
     delta <- target_value - base_value
-    print(paste("Delta: ", delta))
+    #print(paste("Delta: ", delta))
     if (delta == 0) next
     
     # Get eligible population
     eligible <- populations[[intervention$eligible_pop]]
-    print(paste("eligible: ", eligible))
+    #print(paste("eligible: ", eligible))
     if (is.null(eligible)) eligible <- 0
     
     # Calculate number reached
@@ -527,8 +527,17 @@ calculate_impact <- function(context, baseline, target, populations) {
     if (intervention$type == "coverage") {
       number_reached <- eligible * (abs(delta) / 100)
     }
+    
+    #To account for no additional impact past the eligible population - check?
+    if(intervention$type=="absolute"){
+      if(target_value>eligible){
+        number_reached=eligible-base_value
+      }
+    }
+    
     number_reached <- min(number_reached, eligible)
-    print(paste("# reached:", number_reached))
+    #print(paste("# reached:", number_reached))
+    
     # Sign for scale-up/down
     sign <- ifelse(delta > 0, 1, -1)
     
