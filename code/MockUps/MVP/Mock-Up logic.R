@@ -95,7 +95,7 @@ intervention_groups <- list(
       vmmc = list(
         name = "VMMC",
         type = "absolute",
-        unit_label = "people",
+        unit_label = "annual people",
         efficacy = subset(intervention_params, intervention_key == "vmmc")$efficacy,  # UPDATE: RCT evidence
         eligible_pop = "uncircumcised_males",
         unit_cost = subset(intervention_params, intervention_key == "vmmc")$unit_cost,   # UPDATE: Regional VMMC program costs

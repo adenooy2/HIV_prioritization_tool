@@ -17,6 +17,11 @@ library(readr)
 library(readxl)
 library(devtools)
 
+#######Things to fix
+#Fix baseline infant infections *0.15 in scenarios
+#And baseline proprtional coverage
+
+
 ##Source logic file
 tryCatch(
   {
@@ -607,7 +612,7 @@ server <- function(input, output, session) {
     pops <- populations()
     
     # Calculate baseline infant infections
-    baseline_infant_infections <- round(pops$hiv_exposed_infants * 0.15)
+    baseline_infant_infections <- round(pops$hiv_exposed_infants * 0.15) ##Fix
     
     tagList(
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
@@ -673,7 +678,7 @@ server <- function(input, output, session) {
     pops <- populations()
     impact <- impact_scenario2()
     
-    baseline_infant_infections <- round(pops$hiv_exposed_infants * 0.15)
+    baseline_infant_infections <- round(pops$hiv_exposed_infants * 0.15) ###Fix
     
     tagList(
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
