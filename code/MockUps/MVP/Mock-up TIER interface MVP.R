@@ -227,6 +227,49 @@ server <- function(input, output, session) {
     
   })
   
+  # Validate all numeric inputs to prevent negatives
+  # Validate all numeric inputs to prevent negatives
+  observe({
+    # Validate population inputs
+    if (!is.null(input$total_pop) && !is.na(input$total_pop) && input$total_pop < 0) {
+      updateNumericInput(session, "total_pop", value = 0)
+    }
+    if (!is.null(input$new_infections) && !is.na(input$new_infections) && input$new_infections < 0) {
+      updateNumericInput(session, "new_infections", value = 0)
+    }
+    if (!is.null(input$current_dx) && !is.na(input$current_dx) && input$current_dx < 0) {
+      updateNumericInput(session, "current_dx", value = 0)
+    }
+    if (!is.null(input$aids_deaths) && !is.na(input$aids_deaths) && input$aids_deaths < 0) {
+      updateNumericInput(session, "aids_deaths", value = 0)
+    }
+    
+    # Validate baseline inputs
+    baseline <- baseline_input_values()
+    for (int_key in names(baseline)) {
+      value <- baseline[[int_key]]
+      if (!is.null(value) && !is.na(value) && value < 0) {
+        updateNumericInput(session, paste0("baseline_", int_key), value = 0)
+      }
+    }
+    
+    # Validate scenario inputs
+    for (group_key in names(intervention_groups)) {
+      group <- intervention_groups[[group_key]]
+      for (int_key in names(group$interventions)) {
+        s1_val <- input[[paste0("scenario1_", int_key)]]
+        s2_val <- input[[paste0("scenario2_", int_key)]]
+        
+        if (!is.null(s1_val) && !is.na(s1_val) && s1_val < 0) {
+          updateNumericInput(session, paste0("scenario1_", int_key), value = 0)
+        }
+        if (!is.null(s2_val) && !is.na(s2_val) && s2_val < 0) {
+          updateNumericInput(session, paste0("scenario2_", int_key), value = 0)
+        }
+      }
+    }
+  })
+  
   # Calculate populations
   populations <- reactive({
     calculate_populations(context())
@@ -275,7 +318,8 @@ server <- function(input, output, session) {
           paste0("baseline_", int_key),
           label = paste0(intervention$name, " (", intervention$unit_label, ")"),
           value = value,
-          min = 0
+          min = 0,
+          step = if(intervention$type == "coverage") 0.1 else 1
         )
       })
       
@@ -319,7 +363,8 @@ server <- function(input, output, session) {
               paste0("scenario1_", int_key),
               label = "Scenario 1",
               value = base_value,
-              min = 0
+              min = 0,
+              step = if(intervention$type == "coverage") 0.1 else 1
             ),
             if (is_mmd) uiOutput(paste0("mmd_warning1_", int_key))
           ),
@@ -328,7 +373,8 @@ server <- function(input, output, session) {
               paste0("scenario2_", int_key),
               label = "Scenario 2",
               value = base_value,
-              min = 0
+              min = 0,
+              step = if(intervention$type == "coverage") 0.1 else 1
             ),
             if (is_mmd) uiOutput(paste0("mmd_warning2_", int_key))
           )
@@ -403,29 +449,32 @@ server <- function(input, output, session) {
       group <- intervention_groups[[group_key]]
       for (int_key in names(group$interventions)) {
         input_id <- paste0("baseline_", int_key)
-        baseline[[int_key]] <- input[[input_id]]
+        value <- input[[input_id]]
+        # Use 0 if NULL or NA
+        baseline[[int_key]] <- ifelse(is.null(value) || is.na(value), 0, value)
       }
     }
     baseline
   })
   
   #Update scenario inputs when baseline changes
+  # Update scenario inputs when baseline changes
   observe({
     baseline <- baseline_input_values()
     if (length(baseline) == 0) return()
-
+    
     for (group_key in names(intervention_groups)) {
       group <- intervention_groups[[group_key]]
       for (int_key in names(group$interventions)) {
         baseline_value <- baseline[[int_key]]
-        if (!is.null(baseline_value)) {
+        if (!is.null(baseline_value) && !is.na(baseline_value)) {
           # Update scenario 1 input
-          updateNumericInput(session,
-                             paste0("scenario1_", int_key),
+          updateNumericInput(session, 
+                             paste0("scenario1_", int_key), 
                              value = baseline_value)
           # Update scenario 2 input
-          updateNumericInput(session,
-                             paste0("scenario2_", int_key),
+          updateNumericInput(session, 
+                             paste0("scenario2_", int_key), 
                              value = baseline_value)
         }
       }
@@ -439,10 +488,11 @@ server <- function(input, output, session) {
       group <- intervention_groups[[group_key]]
       for (int_key in names(group$interventions)) {
         input_id <- paste0("scenario1_", int_key)
-        # Use baseline if scenario input is NULL
         value <- input[[input_id]]
-        if (is.null(value)) {
-          value <- input[[paste0("baseline_", int_key)]]
+        # Use baseline if scenario input is NULL/NA
+        if (is.null(value) || is.na(value)) {
+          baseline_value <- input[[paste0("baseline_", int_key)]]
+          value <- ifelse(is.null(baseline_value) || is.na(baseline_value), 0, baseline_value)
         }
         scenario[[int_key]] <- value
       }
@@ -457,10 +507,11 @@ server <- function(input, output, session) {
       group <- intervention_groups[[group_key]]
       for (int_key in names(group$interventions)) {
         input_id <- paste0("scenario2_", int_key)
-        # Use baseline if scenario input is NULL
         value <- input[[input_id]]
-        if (is.null(value)) {
-          value <- input[[paste0("baseline_", int_key)]]
+        # Use baseline if scenario input is NULL/NA
+        if (is.null(value) || is.na(value)) {
+          baseline_value <- input[[paste0("baseline_", int_key)]]
+          value <- ifelse(is.null(baseline_value) || is.na(baseline_value), 0, baseline_value)
         }
         scenario[[int_key]] <- value
       }
