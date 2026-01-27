@@ -274,6 +274,23 @@ test_prevention_vmmc <- function() {
   })
   
   cat("✓ Test vmmc 1 PASSED: Infections averted match expectation\n")
+  
+  # Scale down VMMC by 1,000 people
+  baseline <- default_baseline_interventions
+  target <- baseline
+  target$vmmc <- baseline$vmmc - 1000
+  
+  # Expected infections averted
+  expected_averted <- round(-1000 * incidence_rate * efficacy_vmmc)
+  
+  impact <- calculate_impact(context, baseline, target, pops)
+  
+  # Test vmmc 2: Infections averted matches expectation
+  test_that("Infections averted matches expected value", {
+    expect_equal(impact$infections_averted, expected_averted)
+  })
+  
+  cat("✓ Test vmmc 2 PASSED: Infections averted match expectation\n")
 }
 
 # ============================================================================
