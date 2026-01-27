@@ -130,7 +130,7 @@ ui <- page_sidebar(
         ),
         
         # Health Outcomes Row
-        h3("Health Outcomes", class = "mt-4 mb-3"),
+        h3("Health Outcomes (relative to baseline)", class = "mt-4 mb-3"),
         layout_columns(
           col_widths = c(6, 6),
           card(

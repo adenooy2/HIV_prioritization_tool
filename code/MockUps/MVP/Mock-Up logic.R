@@ -129,7 +129,7 @@ intervention_groups <- list(
         outcomes = c("infant_infections")
       ),
       cotrimoxazole = list(
-        name = "Cotrimoxazole prophylaxis",
+        name = "Cotrimoxazole prophylaxis (according to guidelines)",
         type = "coverage",
         unit_label = "% of PLHIV",
         efficacy = subset(intervention_params, intervention_key == "cotrimoxazole")$efficacy,  # UPDATE: Mortality reduction from cotrimoxazole

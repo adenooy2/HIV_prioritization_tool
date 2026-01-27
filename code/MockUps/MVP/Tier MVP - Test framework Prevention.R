@@ -213,6 +213,37 @@ test_prevention_prep <- function() {
   })
   pops <- calculate_populations(context)
   cat("✓ Test Prep 6 PASSED: Infections averted match expectation\n")
+  
+  # Test prep 7: Cost calculations: scale up oral prep by 1000 and lenacapavir by 2000
+  
+  prep_oral <- intervention_groups$prevention$interventions$prep_oral
+  prep_lenacapavir=intervention_groups$prevention$interventions$prep_lenacapavir
+  
+  baseline <- default_baseline_interventions
+  target <- baseline
+  target$prep_lenacapavir <- baseline$prep_lenacapavir + 2000
+  target$prep_oral <- baseline$prep_oral + 1000
+  
+  impact <- calculate_impact(context, baseline, target, pops)
+  expected_cost <- 1000 * prep_oral$unit_cost+2000*prep_lenacapavir$unit_cost
+  
+  
+  cat(sprintf("\nExpected scale up costs (+1000 oral, +2000 len):\n"))
+  cat(sprintf("  Prep cost: %.1f\n", expected_cost))
+  
+  cat(sprintf("\nActual outcomes:\n"))
+  cat(sprintf("  Total cost: %d\n", impact$total_cost))
+  
+  
+  
+  test_that("Cost matches expected value", {
+    expect_equal(impact$total_cost, expected_cost)
+  })
+  
+  cat("✓ Test prep 7 PASSED: prep scale up costs work\n")
+  cat(sprintf("  Expected cost: $%s\n", format(expected_cost, big.mark=",")))
+  cat(sprintf("  Actual cost: $%s\n", format(impact$total_cost, big.mark=",")))
+  
   return(impact)
 }
 
@@ -300,9 +331,9 @@ test_prevention_vmmc <- function() {
 test_prevention_pep <- function() {
   cat("\n=== TEST PEP: PREVENTION INTERVENTION LOGIC ===\n")
   
-  #PEP efficacy - 70%
+  #PEP efficacy - 50%
   intervention_params_test=intervention_params
-  intervention_params_test$efficacy[intervention_params_test$intervention_key=="pep"]=0.7
+  intervention_params_test$efficacy[intervention_params_test$intervention_key=="pep"]=0.5
   intervention_groups=build_intervention_groups(intervention_params_test)
   assign("intervention_groups", intervention_groups, envir = .GlobalEnv)
   
@@ -324,33 +355,55 @@ test_prevention_pep <- function() {
   cat(sprintf("  Incidence rate: %.4f (%.2f per 1000)\n", 
               incidence_rate, incidence_rate * 1000))
   
-  # Scale up PEP by 2,000 people
+  # Scale up PEP by 500 people
   baseline <- default_baseline_interventions
+  baseline$pep=1000
   target <- baseline
-  target$pep <- baseline$pep + 1000
+  target$pep <- baseline$pep + 500
   
   # Set pep parameters
-  vmmc <- intervention_groups$prevention$interventions$vmmc
-  efficacy_vmmc <- vmmc$efficacy
+  pep <- intervention_groups$prevention$interventions$pep
+  efficacy_pep <- pep$efficacy
   
   impact <- calculate_impact(context, baseline, target, pops)
   
   # Expected infections averted
-  expected_averted <- round(1000 * incidence_rate * efficacy_vmmc)
+  expected_averted <- round(500 * incidence_rate * efficacy_pep)
   
-  cat(sprintf("\nExpected outcomes from 1000 additional VMMC's:\n"))
+  cat(sprintf("\nExpected outcomes from 500 additional people receiving pep:\n"))
   cat(sprintf("  Infections averted: %.1f\n", expected_averted))
   
   cat(sprintf("\nActual outcomes:\n"))
   cat(sprintf("  Infections averted: %d\n", impact$infections_averted))
   
-  # Test vmmc 1: Infections averted matches expectation
+  # Test pep 1: Infections averted matches expectation
   test_that("Infections averted matches expected value", {
     expect_equal(impact$infections_averted, expected_averted)
   })
   
-  cat("✓ Test vmmc 1 PASSED: Infections averted match expectation\n")
+  cat("✓ Test pep 1 PASSED: Infections averted match expectation\n")
+  
+  
+  # Scale down pep by 500 people
+  baseline <- default_baseline_interventions
+  baseline$pep=1000
+  target <- baseline
+  target$pep <- baseline$pep - 500
+  
+  # Expected infections averted
+  expected_averted <- round(-500 * incidence_rate * efficacy_pep)
+  
+  impact <- calculate_impact(context, baseline, target, pops)
+  
+  # Test pep 2: Infections averted matches expectation
+  test_that("Infections averted matches expected value", {
+    expect_equal(impact$infections_averted, expected_averted)
+  })
+  
+  cat("✓ Test vmmc 2 PASSED: Infections averted match expectation\n")
 }
+  
+  
 # ============================================================================
 # RUN ALL TESTS
 # ============================================================================
@@ -371,6 +424,7 @@ run_all_tests <- function() {
   results <- list()
   results$prep <- test_prevention_prep()
   results$vmmc <- test_prevention_vmmc()
+  results$pep=test_prevention_pep()
 
   
   cat("\n")
