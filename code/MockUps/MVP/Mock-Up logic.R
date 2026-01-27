@@ -576,7 +576,6 @@ calculate_impact <- function(context, baseline, target, populations) {
     } else if ("adult_infections" %in% intervention$outcomes) {
       # Prevention interventions
      
-      
       incidence_rate <- context$new_infections_per_year / populations$hiv_negative
       infections_averted <- infections_averted + 
         sign * number_reached * incidence_rate * intervention$efficacy

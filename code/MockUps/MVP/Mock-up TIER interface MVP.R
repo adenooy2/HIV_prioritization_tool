@@ -246,10 +246,23 @@ server <- function(input, output, session) {
     
     # Validate baseline inputs
     baseline <- baseline_input_values()
-    for (int_key in names(baseline)) {
-      value <- baseline[[int_key]]
-      if (!is.null(value) && !is.na(value) && value < 0) {
-        updateNumericInput(session, paste0("baseline_", int_key), value = 0)
+    for (group_key in names(intervention_groups)) {
+      group <- intervention_groups[[group_key]]
+      for (int_key in names(group$interventions)) {
+        intervention <- group$interventions[[int_key]]
+        value <- baseline[[int_key]]
+        
+        # Check for negative values
+        if (!is.null(value) && !is.na(value) && value < 0) {
+          updateNumericInput(session, paste0("baseline_", int_key), value = 0)
+        }
+        
+        # Check for coverage > 100%
+        if (intervention$type == "coverage") {
+          if (!is.null(value) && !is.na(value) && value > 100) {
+            updateNumericInput(session, paste0("baseline_", int_key), value = 100)
+          }
+        }
       }
     }
     
@@ -257,14 +270,26 @@ server <- function(input, output, session) {
     for (group_key in names(intervention_groups)) {
       group <- intervention_groups[[group_key]]
       for (int_key in names(group$interventions)) {
+        intervention <- group$interventions[[int_key]]
+        
         s1_val <- input[[paste0("scenario1_", int_key)]]
         s2_val <- input[[paste0("scenario2_", int_key)]]
         
         if (!is.null(s1_val) && !is.na(s1_val) && s1_val < 0) {
           updateNumericInput(session, paste0("scenario1_", int_key), value = 0)
         }
+        if (intervention$type == "coverage") {
+          if (!is.null(s1_val) && !is.na(s1_val) && s1_val > 100) {
+            updateNumericInput(session, paste0("scenario1_", int_key), value = 100)
+          }
+        }
         if (!is.null(s2_val) && !is.na(s2_val) && s2_val < 0) {
           updateNumericInput(session, paste0("scenario2_", int_key), value = 0)
+        }
+        if (intervention$type == "coverage") {
+          if (!is.null(s2_val) && !is.na(s2_val) && s2_val > 100) {
+            updateNumericInput(session, paste0("scenario2_", int_key), value = 100)
+          }
         }
       }
     }
