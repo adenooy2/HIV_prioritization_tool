@@ -286,7 +286,7 @@ server <- function(input, output, session) {
   
   # Generate scenario UI (side-by-side)
   output$scenario_ui <- renderUI({
-    baseline <- baseline_values()
+    baseline <- baseline_input_values()
     if (length(baseline) == 0) return(NULL)
     
     scenario_columns <- lapply(names(intervention_groups), function(group_key) {
@@ -404,6 +404,29 @@ server <- function(input, output, session) {
     baseline
   })
   
+  #Update scenario inputs when baseline changes
+  observe({
+    baseline <- baseline_input_values()
+    if (length(baseline) == 0) return()
+
+    for (group_key in names(intervention_groups)) {
+      group <- intervention_groups[[group_key]]
+      for (int_key in names(group$interventions)) {
+        baseline_value <- baseline[[int_key]]
+        if (!is.null(baseline_value)) {
+          # Update scenario 1 input
+          updateNumericInput(session,
+                             paste0("scenario1_", int_key),
+                             value = baseline_value)
+          # Update scenario 2 input
+          updateNumericInput(session,
+                             paste0("scenario2_", int_key),
+                             value = baseline_value)
+        }
+      }
+    }
+  })
+  
   # Collect scenario 1 values
   scenario1_values <- reactive({
     scenario <- list()
@@ -443,16 +466,18 @@ server <- function(input, output, session) {
   # Calculate impacts
   impact_scenario1 <- reactive({
     req(populations())
-    req(baseline_input_values())
-    req(scenario1_values())
-    calculate_impact(context(), baseline_input_values(), scenario1_values(), populations())
+    baseline <- baseline_input_values()  # Explicit dependency
+    scenario <- scenario1_values()        # Explicit dependency
+    req(baseline, scenario)
+    calculate_impact(context(), baseline, scenario, populations())
   })
   
   impact_scenario2 <- reactive({
     req(populations())
-    req(baseline_input_values())
-    req(scenario2_values())
-    calculate_impact(context(), baseline_input_values(), scenario2_values(), populations())
+    baseline <- baseline_input_values()  # Explicit dependency
+    scenario <- scenario1_values()        # Explicit dependency
+    req(baseline, scenario)
+    calculate_impact(context(), baseline, scenario, populations())
   })
   
   # Calculate 95-95-95 metrics

@@ -514,10 +514,12 @@ calculate_impact <- function(context, baseline, target, populations) {
     if (is.null(target_value)) target_value <- 0
     
     delta <- target_value - base_value
+    print(paste("Delta: ", delta))
     if (delta == 0) next
     
     # Get eligible population
     eligible <- populations[[intervention$eligible_pop]]
+    print(paste("eligible: ", eligible))
     if (is.null(eligible)) eligible <- 0
     
     # Calculate number reached
@@ -526,7 +528,7 @@ calculate_impact <- function(context, baseline, target, populations) {
       number_reached <- eligible * (abs(delta) / 100)
     }
     number_reached <- min(number_reached, eligible)
-    
+    print(paste("# reached:", number_reached))
     # Sign for scale-up/down
     sign <- ifelse(delta > 0, 1, -1)
     
@@ -564,6 +566,8 @@ calculate_impact <- function(context, baseline, target, populations) {
       
     } else if ("adult_infections" %in% intervention$outcomes) {
       # Prevention interventions
+     
+      
       incidence_rate <- context$new_infections_per_year / populations$hiv_negative
       infections_averted <- infections_averted + 
         sign * number_reached * incidence_rate * intervention$efficacy

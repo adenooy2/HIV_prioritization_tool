@@ -392,6 +392,28 @@ test_prevention_prep <- function() {
     expect_equal(impact$infections_averted, expected_averted)
   })
   
+  
+  # Prep to more than eligible popoulatin should have same impact as prep to eligible population (i.e zero difference)
+  pops$high_risk_negative=10000
+  baseline <- default_baseline_interventions
+  baseline$prep_oral=10000
+  target <- baseline
+  target$prep_oral <- 15000
+  
+  impact <- calculate_impact(context, baseline, target, pops)
+  expected_averted =0
+  
+  cat(sprintf("\nExpected o infections averted when more than eligible pop on prep compared to eligible pop:\n"))
+  cat(sprintf("  Infections averted: %.1f\n", expected_averted))
+  
+  cat(sprintf("\nActual outcomes:\n"))
+  cat(sprintf("  Infections averted: %d\n", impact$infections_averted))
+  
+  # Test 3.6: No difference in infection averted between 100% eligble pop and 150% eligible pop
+  test_that("Infections averted from prep with lenacapavir (+500) and oral prep (-1000) matches expected value", {
+    expect_equal(impact$infections_averted, expected_averted)
+  })
+  
   return(impact)
 }
 
