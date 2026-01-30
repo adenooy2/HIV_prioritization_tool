@@ -393,6 +393,47 @@ return(intervention_groups)
 }
 
 intervention_groups=build_intervention_groups(intervention_params)
+
+# ============================================================================
+# POPULATION CALCULATION FUNCTION
+# ============================================================================
+
+calculate_populations <- function(context) {
+  
+  plhiv <- context$total_population * context$hiv_prevalence
+  diagnosed <- plhiv * (context$percent_diagnosed/100)  # UPDATE: Diagnosis rate assumption
+  on_art <- diagnosed * (context$percent_on_art / 100)
+  suppressed <- on_art * (context$percent_suppressed / 100)
+  hiv_negative <- context$total_population - plhiv
+  sexually_active <- context$total_population * 0.60  # UPDATE: Sexual activity rate
+  births <- context$total_population * 0.035  # UPDATE: Birth rate
+  hiv_positive_births <- births * context$hiv_prevalence * 1.5  # UPDATE: Prevalence multiplier
+  
+  list(
+    total = context$total_population,
+    plhiv = plhiv,
+    hiv_negative = hiv_negative,
+    sexually_active = sexually_active,
+    undiagnosed = plhiv - diagnosed,
+    diagnosed = diagnosed,
+    diagnosed_not_on_art = diagnosed - on_art,
+    on_art = on_art,
+    on_art_stable = on_art * 0.85,  # UPDATE: Stability assumption
+    on_art_suspected_failure = on_art * 0.08,  # UPDATE: Failure rate
+    suppressed = suppressed,
+    unsuppressed = on_art - suppressed,
+    ltfu = on_art * 0.15,  # UPDATE: LTFU rate
+    high_risk_negative = hiv_negative * 0.05,  # UPDATE: High-risk proportion
+    uncircumcised_males = (hiv_negative * 0.50) * 0.25,  # UPDATE: Male proportion * uncircumcised rate
+    sexually_active_negative = (hiv_negative * 0.60),  # UPDATE: Sexual activity
+    recent_exposure = hiv_negative * 0.002,  # UPDATE: PEP need
+    hiv_exposed_infants = hiv_positive_births,
+    pregnant_women = births,
+    pregnant_on_art = births * context$hiv_prevalence * 0.85,#update
+    newly_diagnosed_advanced = (plhiv - diagnosed) * 0.20  # UPDATE: Advanced disease %
+  )
+}
+
 # ============================================================================
 # DEFAULT BASELINE INTERVENTIONS (used when not in CSV)
 # ============================================================================
@@ -436,6 +477,25 @@ build_country_presets <- function(csv_data) {
         aids_deaths_per_year = row$aids_deaths_per_year
       )
       
+      pops=calculate_populations(context)
+      
+      #Proprtional baselines - UPDATE - check tetsing for adult pop
+      default_baseline_interventions <- list(
+        prep_oral = 0.01*pops$total, prep_lenacapavir = 0, vmmc = 0.01*pops$uncircumcised_males,
+        condoms = 0.6*pops$total, pep = 0.2*pops$recent_exposure, infant_prophylaxis = 70,
+        cotrimoxazole = 60, 
+        test_facility_targeted = 0.05*pops$total, test_facility_general = 0.05*pops$total, 
+        test_network_index = 0.01*pops$total, test_community = 0.04*pops$total,
+        test_kpsti = 0.02*pops$total, hivst_facility = 0.02*pops$total, hivst_community = 0.02*pops$total*pops$total,
+        eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
+        vl_monitoring_routine = 60, vl_monitoring_targeted = 0.05*pops$on_art_suspected_failure,
+        oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
+        adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
+        cd4_testing = 92, ahd_package = 88
+      )
+      
+      
+      
       
       # Extract baseline interventions if present in CSV
       baseline <- default_baseline_interventions
@@ -475,45 +535,6 @@ build_country_presets <- function(csv_data) {
 # Build presets
 regional_presets <- build_country_presets(country_data_csv)
 
-# ============================================================================
-# POPULATION CALCULATION FUNCTION
-# ============================================================================
-
-calculate_populations <- function(context) {
-  
-  plhiv <- context$total_population * context$hiv_prevalence
-  diagnosed <- plhiv * (context$percent_diagnosed/100)  # UPDATE: Diagnosis rate assumption
-  on_art <- diagnosed * (context$percent_on_art / 100)
-  suppressed <- on_art * (context$percent_suppressed / 100)
-  hiv_negative <- context$total_population - plhiv
-  sexually_active <- context$total_population * 0.60  # UPDATE: Sexual activity rate
-  births <- context$total_population * 0.035  # UPDATE: Birth rate
-  hiv_positive_births <- births * context$hiv_prevalence * 1.5  # UPDATE: Prevalence multiplier
-  
-  list(
-    total = context$total_population,
-    plhiv = plhiv,
-    hiv_negative = hiv_negative,
-    sexually_active = sexually_active,
-    undiagnosed = plhiv - diagnosed,
-    diagnosed = diagnosed,
-    diagnosed_not_on_art = diagnosed - on_art,
-    on_art = on_art,
-    on_art_stable = on_art * 0.85,  # UPDATE: Stability assumption
-    on_art_suspected_failure = on_art * 0.08,  # UPDATE: Failure rate
-    suppressed = suppressed,
-    unsuppressed = on_art - suppressed,
-    ltfu = on_art * 0.15,  # UPDATE: LTFU rate
-    high_risk_negative = hiv_negative * 0.05,  # UPDATE: High-risk proportion
-    uncircumcised_males = (hiv_negative * 0.50) * 0.25,  # UPDATE: Male proportion * uncircumcised rate
-    sexually_active_negative = (hiv_negative * 0.60),  # UPDATE: Sexual activity
-    recent_exposure = hiv_negative * 0.002,  # UPDATE: PEP need
-    hiv_exposed_infants = hiv_positive_births,
-    pregnant_women = births,
-    pregnant_on_art = births * context$hiv_prevalence * 0.85,#update
-    newly_diagnosed_advanced = (plhiv - diagnosed) * 0.20  # UPDATE: Advanced disease %
-  )
-}
 
 # ============================================================================
 # IMPACT CALCULATION FUNCTION
@@ -711,7 +732,7 @@ calculate_impact <- function(context, baseline, target, populations) {
   new_on_art <- populations$on_art + art_initiations + retention_improvement
   new_suppressed <- populations$suppressed + additional_suppressed
   new_deaths <- max(0, context$aids_deaths_per_year - deaths_averted)
-  new_ltfu=population$ltfu-retention_improvement
+  new_ltfu=populations$ltfu-retention_improvement
   
   # Calculate new infection values
   new_infections <- max(0, context$new_infections_per_year - infections_averted)
