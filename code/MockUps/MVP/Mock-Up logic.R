@@ -59,7 +59,7 @@ intervention_params$multiplier <- as.numeric(intervention_params$multiplier)
 return(intervention_params)
 }
 
-intervention_params=load_intervention_params()
+# intervention_params=load_intervention_params()
 # ============================================================================
 # INTERVENTION PARAMETERS DATABASE
 # ============================================================================
@@ -392,7 +392,7 @@ intervention_groups <- list(
 return(intervention_groups)
 }
 
-intervention_groups=build_intervention_groups(intervention_params)
+# intervention_groups=build_intervention_groups(intervention_params)
 
 # ============================================================================
 # POPULATION CALCULATION FUNCTION
@@ -406,11 +406,12 @@ calculate_populations <- function(context) {
   suppressed <- on_art * (context$percent_suppressed / 100)
   hiv_negative <- context$total_population - plhiv
   sexually_active <- context$total_population * 0.60  # UPDATE: Sexual activity rate
-  births <- context$total_population * 0.035  # UPDATE: Birth rate
+  births <- (context$total_population * context$birth_rate)/1000  # UPDATE: Birth rate
   hiv_positive_births <- births * context$hiv_prevalence * 1.5  # UPDATE: Prevalence multiplier
   
   list(
     total = context$total_population,
+    adult_pop=context$total_population*(1-context$prop_pop_under_14),
     plhiv = plhiv,
     hiv_negative = hiv_negative,
     sexually_active = sexually_active,
@@ -424,7 +425,7 @@ calculate_populations <- function(context) {
     unsuppressed = on_art - suppressed,
     ltfu = on_art * 0.15,  # UPDATE: LTFU rate
     high_risk_negative = hiv_negative * 0.05,  # UPDATE: High-risk proportion
-    uncircumcised_males = (hiv_negative * 0.50) * 0.25,  # UPDATE: Male proportion * uncircumcised rate
+    uncircumcised_males = (hiv_negative * context$prop_pop_male) * 0.25,  # UPDATE: Male proportion * uncircumcised rate
     sexually_active_negative = (hiv_negative * 0.60),  # UPDATE: Sexual activity
     recent_exposure = hiv_negative * 0.002,  # UPDATE: PEP need
     hiv_exposed_infants = hiv_positive_births,
@@ -438,19 +439,19 @@ calculate_populations <- function(context) {
 # DEFAULT BASELINE INTERVENTIONS (used when not in CSV)
 # ============================================================================
 
-default_baseline_interventions <- list(
-  prep_oral = 5000, prep_lenacapavir = 0, vmmc = 30000,
-  condoms = 200000, pep = 2000, infant_prophylaxis = 70,
-  cotrimoxazole = 60, 
-  test_facility_targeted = 25000, test_facility_general = 25000, 
-  test_network_index = 5000, test_community = 20000,
-  test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
-  eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
-  vl_monitoring_routine = 60, vl_monitoring_targeted = 2000,
-  oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
-  adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
-  cd4_testing = 92, ahd_package = 88
-)
+# default_baseline_interventions <- list(
+#   prep_oral = 5000, prep_lenacapavir = 0, vmmc = 30000,
+#   condoms = 200000, pep = 2000, infant_prophylaxis = 70,
+#   cotrimoxazole = 60, 
+#   test_facility_targeted = 25000, test_facility_general = 25000, 
+#   test_network_index = 5000, test_community = 20000,
+#   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
+#   eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
+#   vl_monitoring_routine = 60, vl_monitoring_targeted = 2000,
+#   oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
+#   adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
+#   cd4_testing = 92, ahd_package = 88
+# )
 
 # ============================================================================
 # BUILD COUNTRY PRESETS FROM CSV OR USE DEFAULTS
@@ -474,7 +475,10 @@ build_country_presets <- function(csv_data) {
         percent_diagnosed=row$percent_diagnosed,
         percent_on_art = row$percent_on_art,
         percent_suppressed = row$percent_suppressed,
-        aids_deaths_per_year = row$aids_deaths_per_year
+        aids_deaths_per_year = row$aids_deaths_per_year,
+        birth_rate=row$birth_rate,
+        prop_pop_male=row$prop_male,
+        prop_pop_under_14=row$prop_under14
       )
       
       pops=calculate_populations(context)
@@ -532,8 +536,8 @@ build_country_presets <- function(csv_data) {
   return(presets)
 }
 
-# Build presets
-regional_presets <- build_country_presets(country_data_csv)
+# # Build presets
+# regional_presets <- build_country_presets(country_data_csv)
 
 
 # ============================================================================
@@ -776,3 +780,12 @@ calculate_impact <- function(context, baseline, target, populations) {
     new_infant_infections = round(new_infant_infections)
   )
 }
+
+
+# ============================================================================
+# Run functions
+
+intervention_params=load_intervention_params()
+intervention_groups=build_intervention_groups(intervention_params)
+regional_presets <- build_country_presets(country_data_csv)
+# ============================================================================
