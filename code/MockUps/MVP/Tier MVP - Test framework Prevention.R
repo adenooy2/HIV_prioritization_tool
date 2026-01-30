@@ -448,16 +448,35 @@ test_prevention_ctx <- function() {
   impact <- calculate_impact(context, baseline, target, pops)
   
   # Expected deaths averted
-  expected_deaths_averted <- round(0.2 * mortality_rate*pops$plhiv * efficacy_ctx)
+  expected_deaths_averted <- round(0.2*mortality_rate*pops$plhiv * efficacy_ctx)
   print(expected_deaths_averted)
   
-  # Test ctx 1: Deaths averted matches expectation
+  # Test ctx 1: Deaths averted matches expectation (increase coverage)
   test_that("Deaths averted matches expected value", {
     expect_equal(impact$deaths_averted, expected_deaths_averted)
   })
   
-  cat("✓ Test ctx 1 PASSED: Deaths averted match expectation\n")
+  cat("✓ Test ctx 1 PASSED: Deaths averted match expectation (increase coverage)\n")
   
+  
+  # Scale down CTX by 20% from 60% to 40%
+  baseline <- default_baseline_interventions
+  baseline$cotrimoxazole=60
+  target <- baseline
+  target$cotrimoxazole <- baseline$cotrimoxazole - 20
+  
+  impact <- calculate_impact(context, baseline, target, pops)
+  
+  # Expected deaths averted
+  expected_deaths_averted <- round(-0.2*mortality_rate*pops$plhiv * efficacy_ctx)
+  print(expected_deaths_averted)
+  
+  # Test ctx 2: Deaths averted matches expectation (decrease coverage)
+  test_that("Deaths averted matches expected value", {
+    expect_equal(impact$deaths_averted, expected_deaths_averted)
+  })
+  
+  cat("✓ Test ctx 2 PASSED: Deaths averted match expectation (decrease coverage)\n")
   
 } 
   
