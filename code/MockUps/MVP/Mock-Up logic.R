@@ -149,11 +149,11 @@ intervention_groups <- list(
         type = "absolute",
         unit_label = "tests performed",
         efficacy = subset(intervention_params, intervention_key == "test_facility_targeted")$efficacy,
-        eligible_pop = "sexually_active",
+        eligible_pop = "adult_pop",
         unit_cost = subset(intervention_params, intervention_key == "test_facility_targeted")$unit_cost,
         linkage_rate = subset(intervention_params, intervention_key == "test_facility_targeted")$linkage_rate,
         linkage_cost = subset(intervention_params, intervention_key == "test_facility_targeted")$linkage_cost,
-        test_yield_multiplier = subset(intervention_params, intervention_key == "test_facility_targeted")$multiplier,  # UPDATE: Higher yield
+        test_yield_multiplier = subset(intervention_params, intervention_key == "test_facility_targeted")$yield_multiplier,  # UPDATE: Higher yield
         outcomes = c("testing")
       ),
       test_facility_general = list(
@@ -161,11 +161,11 @@ intervention_groups <- list(
         type = "absolute",
         unit_label = "tests performed",
         efficacy = subset(intervention_params, intervention_key == "test_facility_general")$efficacy,
-        eligible_pop = "sexually_active",
+        eligible_pop = "adult_pop",
         unit_cost = subset(intervention_params, intervention_key == "test_facility_general")$unit_cost,
         linkage_rate = subset(intervention_params, intervention_key == "test_facility_general")$linkage_rate,
         linkage_cost = subset(intervention_params, intervention_key == "test_facility_general")$linkage_cost,
-        test_yield_multiplier = subset(intervention_params, intervention_key == "test_facility_general")$multiplier,
+        test_yield_multiplier = subset(intervention_params, intervention_key == "test_facility_general")$yield_multiplier,
         outcomes = c("testing")
       ),
       test_network_index = list(
@@ -173,11 +173,11 @@ intervention_groups <- list(
         type = "absolute",
         unit_label = "tests performed",
         efficacy = subset(intervention_params, intervention_key == "test_network_index")$efficacy,
-        eligible_pop = "sexually_active",
+        eligible_pop = "adult_pop",
         unit_cost = subset(intervention_params, intervention_key == "test_network_index")$unit_cost,
         linkage_rate = subset(intervention_params, intervention_key == "test_network_index")$linkage_rate,
         linkage_cost = subset(intervention_params, intervention_key == "test_network_index")$linkage_cost,
-        test_yield_multiplier = subset(intervention_params, intervention_key == "test_network_index")$multiplier,
+        test_yield_multiplier = subset(intervention_params, intervention_key == "test_network_index")$yield_multiplier,
         outcomes = c("testing")
       ),
       test_community = list(
@@ -185,11 +185,11 @@ intervention_groups <- list(
         type = "absolute",
         unit_label = "tests performed",
         efficacy = subset(intervention_params, intervention_key == "test_community")$efficacy,  # UPDATE: Test sensitivity
-        eligible_pop = "sexually_active",
+        eligible_pop = "adult_pop",
         unit_cost = subset(intervention_params, intervention_key == "test_community")$unit_cost,    # UPDATE: Cost per test
         linkage_rate = subset(intervention_params, intervention_key == "test_community")$linkage_rate,  # UPDATE: Linkage to care
         linkage_cost = subset(intervention_params, intervention_key == "test_community")$linkage_cost,
-        test_yield_multiplier = subset(intervention_params, intervention_key == "test_community")$multiplier,
+        test_yield_multiplier = subset(intervention_params, intervention_key == "test_community")$yield_multiplier,
         outcomes = c("testing")
       ),
       test_kpsti = list(
@@ -197,11 +197,11 @@ intervention_groups <- list(
         type = "absolute",
         unit_label = "tests performed",
         efficacy = subset(intervention_params, intervention_key == "test_kpsti")$efficacy,  # UPDATE: Test sensitivity
-        eligible_pop = "sexually_active",
+        eligible_pop = "adult_pop",
         unit_cost = subset(intervention_params, intervention_key == "test_kpsti")$unit_cost,   # UPDATE: Cost per test
         linkage_rate = subset(intervention_params, intervention_key == "test_kpsti")$linkage_rate,
         linkage_cost = subset(intervention_params, intervention_key == "test_kpsti")$linkage_cost,
-        test_yield_multiplier = subset(intervention_params, intervention_key == "test_kpsti")$multiplier,  # UPDATE: Higher yield in key pops
+        test_yield_multiplier = subset(intervention_params, intervention_key == "test_kpsti")$yield_multiplier,  # UPDATE: Higher yield in key pops
         outcomes = c("testing")
       ),
       hivst_facility = list(
@@ -209,11 +209,11 @@ intervention_groups <- list(
         type = "absolute",
         unit_label = "tests distributed",
         efficacy = subset(intervention_params, intervention_key == "hivst_facility")$efficacy,  # UPDATE: Self-test sensitivity
-        eligible_pop = "sexually_active",
+        eligible_pop = "adult_pop",
         unit_cost = subset(intervention_params, intervention_key == "hivst_facility")$unit_cost,    # UPDATE: Cost per self-test kit
         linkage_rate = subset(intervention_params, intervention_key == "hivst_facility")$linkage_rate,  # UPDATE: Lower linkage for HIVST
         linkage_cost = subset(intervention_params, intervention_key == "hivst_facility")$linkage_cost,
-        test_yield_multiplier = subset(intervention_params, intervention_key == "hivst_facility")$multiplier,
+        test_yield_multiplier = subset(intervention_params, intervention_key == "hivst_facility")$yield_multiplier,
         outcomes = c("testing")
       ),
       hivst_community = list(
@@ -221,11 +221,11 @@ intervention_groups <- list(
         type = "absolute",
         unit_label = "tests distributed",
         efficacy = subset(intervention_params, intervention_key == "hivst_community")$efficacy,  # UPDATE: Self-test sensitivity
-        eligible_pop = "sexually_active",
+        eligible_pop = "adult_pop",
         unit_cost = subset(intervention_params, intervention_key == "hivst_community")$unit_cost,    # UPDATE: Cost per self-test kit
         linkage_rate = subset(intervention_params, intervention_key == "hivst_community")$linkage_rate,
         linkage_cost = subset(intervention_params, intervention_key == "hivst_community")$linkage_cost,
-        test_yield_multiplier = subset(intervention_params, intervention_key == "hivst_community")$multiplier,
+        test_yield_multiplier = subset(intervention_params, intervention_key == "hivst_community")$yield_multiplier,
         outcomes = c("testing")
       ),
       eid = list(
@@ -237,7 +237,7 @@ intervention_groups <- list(
         unit_cost = subset(intervention_params, intervention_key == "eid")$unit_cost,   # UPDATE: Cost per infant tested
         linkage_rate = subset(intervention_params, intervention_key == "eid")$linkage_rate,
         linkage_cost = subset(intervention_params, intervention_key == "eid")$linkage_cost,
-        test_yield_multiplier = subset(intervention_params, intervention_key == "eid")$multiplier,
+        test_yield_multiplier = subset(intervention_params, intervention_key == "eid")$yield_multiplier,
         outcomes = c("testing")
       ),
       anc_hiv_testing = list(
@@ -249,7 +249,7 @@ intervention_groups <- list(
         unit_cost = subset(intervention_params, intervention_key == "anc_hiv_testing")$unit_cost,    # UPDATE: Cost per test
         linkage_rate = subset(intervention_params, intervention_key == "anc_hiv_testing")$linkage_rate,
         linkage_cost = subset(intervention_params, intervention_key == "anc_hiv_testing")$linkage_cost,
-        test_yield_multiplier = subset(intervention_params, intervention_key == "anc_hiv_testing")$multiplier,
+        test_yield_multiplier = subset(intervention_params, intervention_key == "anc_hiv_testing")$yield_multiplier,
         outcomes = c("testing")
       ),
       pnc_hiv_testing = list(
@@ -261,7 +261,7 @@ intervention_groups <- list(
         unit_cost = subset(intervention_params, intervention_key == "pnc_hiv_testing")$unit_cost,
         linkage_rate = subset(intervention_params, intervention_key == "pnc_hiv_testing")$linkage_rate,
         linkage_cost = subset(intervention_params, intervention_key == "pnc_hiv_testing")$linkage_cost,
-        test_yield_multiplier = subset(intervention_params, intervention_key == "pnc_hiv_testing")$multiplier,
+        test_yield_multiplier = subset(intervention_params, intervention_key == "pnc_hiv_testing")$yield_multiplier,
         outcomes = c("testing")
       )
     )
@@ -409,9 +409,10 @@ calculate_populations <- function(context) {
   births <- (context$total_population * context$birth_rate)/1000  # UPDATE: Birth rate
   hiv_positive_births <- births * context$hiv_prevalence * 1.5  # UPDATE: Prevalence multiplier
   
+  
   list(
     total = context$total_population,
-    adult_pop=context$total_population*(1-context$prop_pop_under_14),
+    adult_pop=context$total_population*(1-context$prop_pop_under_14/100),
     plhiv = plhiv,
     hiv_negative = hiv_negative,
     sexually_active = sexually_active,
@@ -439,19 +440,19 @@ calculate_populations <- function(context) {
 # DEFAULT BASELINE INTERVENTIONS (used when not in CSV)
 # ============================================================================
 
-# default_baseline_interventions <- list(
-#   prep_oral = 5000, prep_lenacapavir = 0, vmmc = 30000,
-#   condoms = 200000, pep = 2000, infant_prophylaxis = 70,
-#   cotrimoxazole = 60, 
-#   test_facility_targeted = 25000, test_facility_general = 25000, 
-#   test_network_index = 5000, test_community = 20000,
-#   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
-#   eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
-#   vl_monitoring_routine = 60, vl_monitoring_targeted = 2000,
-#   oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
-#   adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
-#   cd4_testing = 92, ahd_package = 88
-# )
+default_baseline_interventions <- list(
+  prep_oral = 5000, prep_lenacapavir = 0, vmmc = 30000,
+  condoms = 200000, pep = 2000, infant_prophylaxis = 70,
+  cotrimoxazole = 60,
+  test_facility_targeted = 25000, test_facility_general = 25000,
+  test_network_index = 5000, test_community = 20000,
+  test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
+  eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
+  vl_monitoring_routine = 60, vl_monitoring_targeted = 2000,
+  oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
+  adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
+  cd4_testing = 92, ahd_package = 88
+)
 
 # ============================================================================
 # BUILD COUNTRY PRESETS FROM CSV OR USE DEFAULTS
@@ -482,15 +483,18 @@ build_country_presets <- function(csv_data) {
       )
       
       pops=calculate_populations(context)
+      print(pops)
+    
+      
       
       #Proprtional baselines - UPDATE - check tetsing for adult pop
       default_baseline_interventions <- list(
         prep_oral = 0.01*pops$total, prep_lenacapavir = 0, vmmc = 0.01*pops$uncircumcised_males,
         condoms = 0.6*pops$total, pep = 0.2*pops$recent_exposure, infant_prophylaxis = 70,
         cotrimoxazole = 60, 
-        test_facility_targeted = 0.05*pops$total, test_facility_general = 0.05*pops$total, 
-        test_network_index = 0.01*pops$total, test_community = 0.04*pops$total,
-        test_kpsti = 0.02*pops$total, hivst_facility = 0.02*pops$total, hivst_community = 0.02*pops$total*pops$total,
+        test_facility_targeted = 0.05*pops$adult_pop, test_facility_general = 0.05*pops$adult_pop, 
+        test_network_index = 0.01*pops$adult_pop, test_community = 0.04*pops$adult_pop,
+        test_kpsti = 0.02*pops$adult_pop, hivst_facility = 0.01*pops$adult_pop, hivst_community = 0.02*pops$total*pops$adult_pop,
         eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
         vl_monitoring_routine = 60, vl_monitoring_targeted = 0.05*pops$on_art_suspected_failure,
         oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
@@ -517,20 +521,59 @@ build_country_presets <- function(csv_data) {
     }
   }
   
-  # Add Custom Country option
+  # Add Custom Country option with proportional baselines
+  custom_context <- list(
+    total_population = 1000000,
+    hiv_prevalence = 0.05,
+    percent_diagnosed = 80,
+    percent_on_art = 75,
+    percent_suppressed = 85,
+    new_infections_per_year = 5000,
+    aids_deaths_per_year = 1000,
+    birth_rate=24,
+    prop_pop_male=49,
+    prop_pop_under_14=40
+  )
+  
+  # Calculate populations for Custom Country to get proportional baselines
+  custom_pops <- calculate_populations(custom_context)
+  
+  # Create proportional baselines for Custom Country
+  custom_baseline <- list(
+    prep_oral = 0.01*custom_pops$total, 
+    prep_lenacapavir = 0, 
+    vmmc = 0.01*custom_pops$uncircumcised_males,
+    condoms = 0.6*custom_pops$total, 
+    pep = 0.2*custom_pops$recent_exposure, 
+    infant_prophylaxis = 70,
+    cotrimoxazole = 60, 
+    test_facility_targeted = 0.05*custom_pops$adult_pop, 
+    test_facility_general = 0.05*custom_pops$adult_pop, 
+    test_network_index = 0.01*custom_pops$adult_pop, 
+    test_community = 0.04*custom_pops$adult_pop,
+    test_kpsti = 0.02*custom_pops$adult_pop, 
+    hivst_facility = 0.02*custom_pops$adult_pop, 
+    hivst_community = 0.01*custom_pops$adult_pop,
+    eid = 75, 
+    anc_hiv_testing = 88, 
+    pnc_hiv_testing = 70,
+    vl_monitoring_routine = 60, 
+    vl_monitoring_targeted = 0.05*custom_pops$on_art_suspected_failure,
+    oi_management = 50, 
+    mmd_3month = 40, 
+    mmd_6month = 20, 
+    mmd_12month = 5,
+    adherence_counseling = 55, 
+    tracking_tracing = 40, 
+    anc_vl_testing = 68,
+    cd4_testing = 92, 
+    ahd_package = 88
+  )
+  
   presets[["Custom Country"]] <- list(
     description = "Enter your own parameters",
-    context = list(
-      total_population = 1000000,
-      hiv_prevalence = 0.08,
-      new_infections_per_year = 5000,
-      current_diagnoses = 3500,
-      percent_diagnosed=85,
-      percent_on_art = 75,
-      percent_suppressed = 85,
-      aids_deaths_per_year = 800
-    ),
-    baseline = default_baseline_interventions
+    context = custom_context,
+    baseline = custom_baseline
   )
   
   return(presets)
@@ -545,10 +588,20 @@ build_country_presets <- function(csv_data) {
 # ============================================================================
 
 calculate_impact <- function(context, baseline, target, populations) {
+  
+  # QUICK CHECK: Are context values valid?
+  if (is.null(context$percent_suppressed) || length(context$percent_suppressed) == 0) {
+    stop("ERROR: context$percent_suppressed is NULL or length zero!")
+  }
+  if (is.null(context$percent_diagnosed) || length(context$percent_diagnosed) == 0) {
+    stop("ERROR: context$percent_diagnosed is NULL or length zero!")
+  }
+  
   # Initialize outcome counters
   infections_averted <- 0
   infant_infections_averted <- 0
   deaths_averted <- 0
+  positive_tests= 0
   new_diagnoses <- 0
   re_engagement <- 0
   infant_diagnoses <- 0
@@ -561,8 +614,9 @@ calculate_impact <- function(context, baseline, target, populations) {
   
   # Calculate dynamic testing yield
   # Yield = probability that a test is positive = (undiagnosed + ltfu) / sexually_active
-  base_test_yield <- (populations$undiagnosed + populations$ltfu) / populations$sexually_active
-  base_test_yield <- min(base_test_yield, 0.10)  # Cap at 10% for plausibility
+  base_test_yield <- ((populations$undiagnosed + populations$ltfu) / populations$sexually_active)*0.9
+  base_test_yield <- min(base_test_yield, 0.10)  # Cap at 10% for plausibility,  maximum of 90% of people could be found #Update
+  
   
   # Flatten intervention structure
   all_interventions <- list()
@@ -612,10 +666,12 @@ calculate_impact <- function(context, baseline, target, populations) {
     
     # Calculate outcomes based on intervention type
     if ("testing" %in% intervention$outcomes) {
+      print(intervention)
+      
       # Testing interventions: calculate yield and split new vs re-engagement
       test_yield <- base_test_yield
       if (!is.null(intervention$test_yield_multiplier)) {
-        test_yield <- test_yield * intervention$test_yield_multiplier
+        test_yield <- test_yield * as.numeric(intervention$test_yield_multiplier)
       }
       
       positive_tests <- number_reached * test_yield * intervention$efficacy
@@ -630,8 +686,15 @@ calculate_impact <- function(context, baseline, target, populations) {
       
       # ART initiations based on linkage rate
       linkage_rate <- intervention$linkage_rate
+      print(paste("Linkage_rate:", linkage_rate))
       linked <- positive_tests * linkage_rate
       art_initiations <- art_initiations + sign * linked
+      
+      #Additional virally suppressed based on current 95-targets minus 10%
+      
+      additional_suppressed <- additional_suppressed + art_initiations * ((context$percent_suppressed-10)/100)
+      
+      
       
       # Costs: test cost + linkage cost for those who link
       intervention_cost <- sign * (number_reached * intervention$unit_cost + 
@@ -749,6 +812,7 @@ calculate_impact <- function(context, baseline, target, populations) {
     infant_infections_averted = round(infant_infections_averted),
     total_infections_averted = round(infections_averted + infant_infections_averted),
     deaths_averted = round(deaths_averted),
+    new_positives=round(positive_tests),
     new_diagnoses = round(new_diagnoses),
     re_engagement = round(re_engagement),
     infant_diagnoses = round(infant_diagnoses),
@@ -778,6 +842,7 @@ calculate_impact <- function(context, baseline, target, populations) {
     new_ltfu=round(new_ltfu),
     new_infections = round(new_infections),
     new_infant_infections = round(new_infant_infections)
+    
   )
 }
 

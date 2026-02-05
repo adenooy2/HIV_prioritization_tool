@@ -54,7 +54,10 @@ test_prevention_prep <- function() {
     percent_on_art = 75,
     percent_suppressed = 85,
     new_infections_per_year = 5000,
-    aids_deaths_per_year = 1000
+    aids_deaths_per_year = 1000,
+    birth_rate=24,
+    prop_pop_male=0.49,
+    prop_pop_under_14=0.4
   )
   
   pops <- calculate_populations(context)
@@ -268,7 +271,10 @@ test_prevention_vmmc <- function() {
     percent_on_art = 75,
     percent_suppressed = 85,
     new_infections_per_year = 5000,
-    aids_deaths_per_year = 1000
+    aids_deaths_per_year = 1000,
+    birth_rate=24,
+    prop_pop_male=0.49,
+    prop_pop_under_14=0.4
   )
   
   pops <- calculate_populations(context)
@@ -344,7 +350,10 @@ test_prevention_pep <- function() {
     percent_on_art = 75,
     percent_suppressed = 85,
     new_infections_per_year = 5000,
-    aids_deaths_per_year = 1000
+    aids_deaths_per_year = 1000,
+    birth_rate=24,
+    prop_pop_male=0.49,
+    prop_pop_under_14=0.4
   )
   
   pops <- calculate_populations(context)
@@ -424,7 +433,10 @@ test_prevention_ctx <- function() {
     percent_on_art = 75,
     percent_suppressed = 85,
     new_infections_per_year = 5000,
-    aids_deaths_per_year = 1000
+    aids_deaths_per_year = 1000,
+    birth_rate=24,
+    prop_pop_male=0.49,
+    prop_pop_under_14=0.4
   )
   
   pops <- calculate_populations(context)

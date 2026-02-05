@@ -195,6 +195,13 @@ server <- function(input, output, session) {
   original_population <- reactiveVal(5000000)
   original_baseline <- reactiveVal(NULL)
   
+  # Store demographic parameters (will be populated from selected region's CSV data)
+  demographic_params <- reactiveValues(
+    birth_rate = NULL,
+    prop_pop_male = NULL,
+    prop_pop_under_14 = NULL
+  )
+  
   # Load regional preset when selected
   observeEvent(input$region, {
     preset <- regional_presets[[input$region]]
@@ -207,6 +214,11 @@ server <- function(input, output, session) {
     updateNumericInput(session, "pct_suppressed", value = preset$context$percent_suppressed)
     updateNumericInput(session, "aids_deaths", value = preset$context$aids_deaths_per_year)
     
+    # Store demographic parameters FROM THE SELECTED REGION (from CSV)
+    demographic_params$birth_rate <- preset$context$birth_rate
+    demographic_params$prop_pop_male <- preset$context$prop_pop_male
+    demographic_params$prop_pop_under_14 <- preset$context$prop_pop_under_14
+   
     original_population(preset$context$total_population)
     original_baseline(preset$baseline)
   }, ignoreInit = FALSE)
@@ -221,7 +233,11 @@ server <- function(input, output, session) {
       percent_on_art = input$pct_on_art,
       percent_suppressed = input$pct_suppressed,
       aids_deaths_per_year = input$aids_deaths,
-      percent_diagnosed = input$pct_diagnosed
+      percent_diagnosed = input$pct_diagnosed,
+      # These come from the selected region's CSV data:
+      birth_rate = demographic_params$birth_rate,
+      prop_pop_male = demographic_params$prop_pop_male,
+      prop_pop_under_14 = demographic_params$prop_pop_under_14
     )
     
     

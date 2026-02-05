@@ -36,9 +36,11 @@ tryCatch(
 # ============================================================================
 # TEST: Testing INTERVENTION LOGIC 
 # ============================================================================
-test_basic_testing <- function() {
+test_basic_testing_general <- function() {
   cat("\n=== TEST: General testing INTERVENTION LOGIC ===\n")
   
+  re_test_prop=0.5
+  base_vs_assumption=10
   #Test parameters - multiplier
   intervention_params_test=intervention_params
   intervention_params_test$multiplier[intervention_params_test$intervention_key=="test_facility_general"]=1
@@ -69,16 +71,18 @@ test_basic_testing <- function() {
     new_infections_per_year = 5000,
     aids_deaths_per_year = 1000,
     birth_rate=24,
-    prop_pop_male=0.49,
-    prop_pop_under_14=0.4
+    prop_pop_male=49,
+    prop_pop_under_14=40
   )
   
   pops <- calculate_populations(context)
+  print(pops)
   
   # Calculate base yield
-  base_yield <- (pops$undiagnosed+pops$ltfu) / pops$hiv_negative
+  base_yield <- 0.9* (pops$undiagnosed+pops$ltfu) / pops$sexually_active
+  base_yield=min(base_yield,0.1)
   
-  cat(sprintf("  Incidence rate: %.4f (%.2f per 1000)\n", 
+  cat(sprintf("  Base yield: %.4f (%.2f per 1000)\n", 
               base_yield, base_yield * 1000))
   
   #test 1
@@ -92,39 +96,74 @@ test_basic_testing <- function() {
   impact <- calculate_impact(context, baseline, target, pops)
   
   # Expected positive tests 
-  expected_positive_general <- round(10000 * base_yield * general_test$test_yield_multiplier*general_test$efficacy)
+  expected_positive_general <- 10000 * base_yield * as.numeric(general_test$test_yield_multiplier)*general_test$efficacy
   
-  cat(sprintf("\nExpected outcomes from 500 additional people receiving pep:\n"))
-  cat(sprintf("  Infections averted: %.1f\n", expected_averted))
+  cat(sprintf("\nExpected outcomes from 10,000 aditional general facility tests:\n"))
+  cat(sprintf("  Expected positive: %.1f\n", round(expected_positive_general)))
   
   cat(sprintf("\nActual outcomes:\n"))
-  cat(sprintf("  Infections averted: %d\n", impact$infections_averted))
+  cat(sprintf("  Actual positive: %f\n", impact$new_positive))
   
-  # Test pep 1: Infections averted matches expectation
+  # Test general testing 1 (positives)
   test_that("Infections averted matches expected value", {
-    expect_equal(impact$infections_averted, expected_averted)
+    expect_equal(impact$new_positive, round(expected_positive_general))
   })
   
-  cat("✓ Test pep 1 PASSED: Infections averted match expectation\n")
+  cat("✓ Test basics 1 PASSED: Expected positive tests matched actual\n")
   
+  ###New diagnoses
   
-  # Scale down pep by 500 people
-  baseline <- default_baseline_interventions
-  baseline$pep=1000
-  target <- baseline
-  target$pep <- baseline$pep - 500
+  expected_new_dx=expected_positive_general*(1-re_test_prop)
   
-  # Expected infections averted
-  expected_averted <- round(-500 * incidence_rate * efficacy_pep)
+  cat(sprintf("\nExpected new diagnoses from 10,000 aditional general facility tests:\n"))
+  cat(sprintf("  Expected new diagnosed: %.1f\n", round(expected_new_dx)))
   
-  impact <- calculate_impact(context, baseline, target, pops)
+  cat(sprintf("\nActual outcomes:\n"))
+  cat(sprintf("  Actual new_dx: %f\n", impact$new_diagnoses))
   
-  # Test pep 2: Infections averted matches expectation
-  test_that("Infections averted matches expected value", {
-    expect_equal(impact$infections_averted, expected_averted)
+  # Test general testing 2
+  test_that("New diagnoses matches expected value", {
+    expect_equal(impact$new_diagnoses, round(expected_new_dx))
   })
   
-  cat("✓ Test vmmc 2 PASSED: Infections averted match expectation\n")
+  cat("✓ Test basics 2 PASSED: Expected new_dx matched actual\n")
+  
+  ###ART inititations
+  
+  expected_new_art=expected_positive_general*general_test$linkage_rate
+  
+  cat(sprintf("\nExpected new ART from 10,000 aditional general facility tests:\n"))
+  cat(sprintf("  Expected new ART: %.1f\n", round(expected_new_art)))
+  
+  cat(sprintf("\nActual outcomes:\n"))
+  cat(sprintf("  Actual ART: %f\n", impact$art_initiations))
+  
+  # Test general testing 2
+  test_that("New diagnoses matches expected value", {
+    expect_equal(impact$art_initiations, round(expected_new_art))
+  })
+  
+  cat("✓ Test basics 3 PASSED: Expected new art matched actual\n")
+  
+  ###Newly suppressed
+  
+  expected_new_VS=expected_new_art*(context$percent_suppressed-base_vs_assumption)/100
+  
+  print(paste("expected_vs_rate: ",context$percent_suppressed-base_vs_assumption))
+  
+  cat(sprintf("\nExpected new VS from 10,000 aditional general facility tests:\n"))
+  cat(sprintf("  Expected new VS: %.1f\n", round(expected_new_VS)))
+  
+  cat(sprintf("\nActual outcomes:\n"))
+  cat(sprintf("  Actual new VS: %f\n", impact$additional_suppressed))
+  
+  # Test general testing 2
+  test_that("New VS matches expected value", {
+    expect_equal(impact$additional_suppressed, round(expected_new_VS))
+  })
+  
+  cat("✓ Test basics 4 PASSED: Expected new VS matched actual\n")
+  
 }
 
 
@@ -148,10 +187,8 @@ run_all_tests <- function() {
   
   # Run tests
   results <- list()
-  results$prep <- test_prevention_prep()
-  results$vmmc <- test_prevention_vmmc()
-  results$pep=test_prevention_pep()
-  results$ctx=test_prevention_ctx()
+  results$basic_tests <- test_basic_testing_general()
+ 
 
   
   cat("\n")
