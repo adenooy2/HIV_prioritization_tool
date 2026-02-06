@@ -218,7 +218,7 @@ server <- function(input, output, session) {
     demographic_params$birth_rate <- preset$context$birth_rate
     demographic_params$prop_pop_male <- preset$context$prop_pop_male
     demographic_params$prop_pop_under_14 <- preset$context$prop_pop_under_14
-   
+    
     original_population(preset$context$total_population)
     original_baseline(preset$baseline)
   }, ignoreInit = FALSE)
@@ -376,7 +376,7 @@ server <- function(input, output, session) {
   
   # Generate scenario UI (side-by-side)
   output$scenario_ui <- renderUI({
-    baseline <- baseline_input_values()
+    baseline <- baseline_values()
     if (length(baseline) == 0) return(NULL)
     
     scenario_columns <- lapply(names(intervention_groups), function(group_key) {
@@ -483,7 +483,7 @@ server <- function(input, output, session) {
     )
   })
   
-  # Collect baseline values from inputs
+  # Collect baseline values from inputs ONLY (no fallback to avoid circular dependencies)
   baseline_input_values <- reactive({
     baseline <- list()
     for (group_key in names(intervention_groups)) {
@@ -498,29 +498,27 @@ server <- function(input, output, session) {
     baseline
   })
   
-  #Update scenario inputs when baseline changes
-  # Update scenario inputs when baseline changes
-  observe({
-    baseline <- baseline_input_values()
+  # Update baseline AND scenario inputs when baseline_values() changes
+  observeEvent(baseline_values(), {
+    baseline <- baseline_values()
     if (length(baseline) == 0) return()
     
+    # Update baseline inputs
     for (group_key in names(intervention_groups)) {
       group <- intervention_groups[[group_key]]
       for (int_key in names(group$interventions)) {
         baseline_value <- baseline[[int_key]]
         if (!is.null(baseline_value) && !is.na(baseline_value)) {
+          # Update baseline input
+          updateNumericInput(session, paste0("baseline_", int_key), value = baseline_value)
           # Update scenario 1 input
-          updateNumericInput(session, 
-                             paste0("scenario1_", int_key), 
-                             value = baseline_value)
+          updateNumericInput(session, paste0("scenario1_", int_key), value = baseline_value)
           # Update scenario 2 input
-          updateNumericInput(session, 
-                             paste0("scenario2_", int_key), 
-                             value = baseline_value)
+          updateNumericInput(session, paste0("scenario2_", int_key), value = baseline_value)
         }
       }
     }
-  })
+  }, ignoreInit = TRUE)
   
   # Collect scenario 1 values
   scenario1_values <- reactive({
