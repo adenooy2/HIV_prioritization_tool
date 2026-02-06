@@ -485,8 +485,6 @@ build_country_presets <- function(csv_data) {
       pops=calculate_populations(context)
       #print(pops)
     
-      
-      
       #Proprtional baselines - UPDATE - check tetsing for adult pop
       default_baseline_interventions <- list(
         prep_oral = 0.01*pops$total, prep_lenacapavir = 0, vmmc = 0.01*pops$uncircumcised_males,
@@ -501,8 +499,6 @@ build_country_presets <- function(csv_data) {
         adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
         cd4_testing = 92, ahd_package = 88
       )
-      
-      
       
       
       # Extract baseline interventions if present in CSV
@@ -800,6 +796,8 @@ calculate_impact <- function(context, baseline, target, populations) {
   
   # Calculate new cascade after interventions
   new_diagnosed <- populations$diagnosed + new_diagnoses
+  #new_diagnosed=max(new_diagnosed,populations$diagnosed-context$current_diagnoses) ###VALIDATION
+  
   new_on_art <- populations$on_art + art_initiations + retention_improvement
   new_suppressed <- populations$suppressed + additional_suppressed
   new_deaths <- max(0, context$aids_deaths_per_year - deaths_averted)
