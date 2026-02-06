@@ -40,7 +40,7 @@ test_basic_testing_general <- function() {
   cat("\n=== TEST: General testing INTERVENTION LOGIC ===\n")
   
   re_test_prop=0.5
-  base_vs_assumption=10
+  base_vs_assumption=0.9
   #Test parameters - multiplier
   intervention_params_test=intervention_params
   intervention_params_test$multiplier[intervention_params_test$intervention_key=="test_facility_general"]=1
@@ -147,9 +147,9 @@ test_basic_testing_general <- function() {
   
   ###Newly suppressed
   
-  expected_new_VS=expected_new_art*(context$percent_suppressed-base_vs_assumption)/100
+  expected_new_VS=expected_new_art*(context$percent_suppressed*base_vs_assumption)/100
   
-  print(paste("expected_vs_rate: ",context$percent_suppressed-base_vs_assumption))
+  print(paste("expected_vs_rate: ",context$percent_suppressed*base_vs_assumption))
   
   cat(sprintf("\nExpected new VS from 10,000 aditional general facility tests:\n"))
   cat(sprintf("  Expected new VS: %.1f\n", round(expected_new_VS)))
@@ -171,7 +171,7 @@ test_different_testing <- function() {
   cat("\n=== TEST: General testing INTERVENTION LOGIC ===\n")
   
   re_test_prop=0.5
-  base_vs_assumption=10
+  base_vs_assumption=0.9
   #Test parameters - multiplier
   intervention_params_test=intervention_params
   intervention_params_test$yield_multiplier[intervention_params_test$intervention_key=="test_facility_general"]=1
@@ -289,7 +289,7 @@ test_different_testing <- function() {
   cat("✓ Test modalities PASSED: Expected new art matched actual\n")
   
   ###Virally Suppressed
-  expected_vs=expected_art_total*(context$percent_suppressed-base_vs_assumption)/100
+  expected_vs=expected_art_total*(context$percent_suppressed*0.9)/100
   
   
   cat(sprintf("\nExpected new VS from 10,000 aditional general and 10,000 targeted facility tests:\n"))
@@ -305,6 +305,68 @@ test_different_testing <- function() {
   
   cat("✓ Test modalities PASSED: Expected new VS matched actual\n")
   
+  
+  ###1st-95
+  PLHIV=pops$plhiv
+  baseline_diagnosed=pops$diagnosed
+  print(paste("Baseline:", baseline_diagnosed))
+  
+  print(paste("Total diagnosed:", baseline_diagnosed+expected_new_dx))
+  
+  first_95_expected=(baseline_diagnosed+expected_new_dx)/PLHIV
+  
+  cat(sprintf("\nExpected 1st 95 from 10,000 aditional general and 10,000 targeted facility tests:\n"))
+  cat(sprintf("  Expected 1st 95 %.3f\n", first_95_expected))
+  
+  cat(sprintf("\nActual outcomes:\n"))
+  cat(sprintf("  Actual new 1st 95: %f\n", impact$new_diagnosed/PLHIV))
+  
+  # Test general testing 2
+  test_that("New 1st95 matches expected value", {
+    expect_equal(round(impact$new_diagnosed/PLHIV,3), round(first_95_expected,3))
+  })
+  
+  ###2nd-95
+  baseline_art=pops$on_art
+  print(paste("Baseline art:", baseline_art))
+  
+  print(paste("Total ART:", baseline_art+expected_art_total))
+  
+  sec_95_expected=(baseline_art+expected_art_total)/(baseline_diagnosed+expected_new_dx)
+  
+  cat(sprintf("\nExpected 2nd 95 from 10,000 aditional general and 10,000 targeted facility tests:\n"))
+  cat(sprintf("  Expected 2nd 95 %.3f\n", sec_95_expected))
+  
+  cat(sprintf("\nActual outcomes:\n"))
+  cat(sprintf("  Actual new 2nd 95: %f\n", impact$new_on_art/(baseline_diagnosed+expected_new_dx)))
+  
+  # Test general testing 2
+  test_that("New 2nd 95 matches expected value", {
+    expect_equal(round(impact$new_on_art/impact$new_diagnosed,3), round(sec_95_expected,3))
+  })
+  
+  cat("✓ Test modalities PASSED: 2nd 95\n")
+  
+  ###3nd-95
+  baseline_supp=pops$suppressed
+  print(paste("Baseline VS:", baseline_supp))
+  
+  print(paste("Total VS:", baseline_supp+expected_vs))
+  
+  third_95_expected=(baseline_supp+expected_vs)/((baseline_art+expected_art_total))
+  
+  cat(sprintf("\nExpected 3rd 95 from 10,000 aditional general and 10,000 targeted facility tests:\n"))
+  cat(sprintf("  Expected 3rdd 95 %.3f\n", third_95_expected))
+  
+  cat(sprintf("\nActual outcomes:\n"))
+  cat(sprintf("  Actual new 3rd 95: %f\n",impact$new_suppressed/impact$new_on_art))
+  
+  # Test general testing 2
+  test_that("New 3rd 95 matches expected value", {
+    expect_equal(round(impact$new_suppressed/impact$new_on_art,3), round(third_95_expected,3))
+  })
+  
+  cat("✓ Test modalities PASSED: 3rd 95\n")
   
 }
 

@@ -696,7 +696,7 @@ calculate_impact <- function(context, baseline, target, populations) {
       
       #Additional virally suppressed based on current 95-targets minus 10%
       
-      additional_suppressed <- additional_suppressed + sign * linked * ((context$percent_suppressed-10)/100)
+      additional_suppressed <- additional_suppressed + sign * linked * ((context$percent_suppressed*0.9)/100) ##BAse VS assumption UPDATE
       
       
       
