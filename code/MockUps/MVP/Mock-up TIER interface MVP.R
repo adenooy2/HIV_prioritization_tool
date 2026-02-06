@@ -19,7 +19,7 @@ library(devtools)
 
 #######Things to fix
 #Fix baseline infant infections *0.15 in scenarios
-#And baseline proprtional coverage
+#baseline assumption viral suppression
 
 
 ##Source logic file

@@ -483,7 +483,7 @@ build_country_presets <- function(csv_data) {
       )
       
       pops=calculate_populations(context)
-      print(pops)
+      #print(pops)
     
       
       
@@ -601,6 +601,7 @@ calculate_impact <- function(context, baseline, target, populations) {
   infections_averted <- 0
   infant_infections_averted <- 0
   deaths_averted <- 0
+  new_pos_tests=0
   positive_tests= 0
   new_diagnoses <- 0
   re_engagement <- 0
@@ -666,7 +667,7 @@ calculate_impact <- function(context, baseline, target, populations) {
     
     # Calculate outcomes based on intervention type
     if ("testing" %in% intervention$outcomes) {
-      print(intervention)
+      #print(intervention)
       
       # Testing interventions: calculate yield and split new vs re-engagement
       test_yield <- base_test_yield
@@ -681,18 +682,21 @@ calculate_impact <- function(context, baseline, target, populations) {
       new_dx <- positive_tests * 0.50 #UPDATE
       re_eng <- positive_tests * 0.50 #UPDATE
       
+      print(paste("NEW dx",new_dx))
+      
+      new_pos_tests=new_pos_tests+positive_tests
       new_diagnoses <- new_diagnoses + sign * new_dx
       re_engagement <- re_engagement + sign * re_eng
       
       # ART initiations based on linkage rate
       linkage_rate <- intervention$linkage_rate
-      print(paste("Linkage_rate:", linkage_rate))
+      #print(paste("Linkage_rate:", linkage_rate))
       linked <- positive_tests * linkage_rate
       art_initiations <- art_initiations + sign * linked
       
       #Additional virally suppressed based on current 95-targets minus 10%
       
-      additional_suppressed <- additional_suppressed + art_initiations * ((context$percent_suppressed-10)/100)
+      additional_suppressed <- additional_suppressed + sign * linked * ((context$percent_suppressed-10)/100)
       
       
       
@@ -812,7 +816,7 @@ calculate_impact <- function(context, baseline, target, populations) {
     infant_infections_averted = round(infant_infections_averted),
     total_infections_averted = round(infections_averted + infant_infections_averted),
     deaths_averted = round(deaths_averted),
-    new_positives=round(positive_tests),
+    new_positives=round(new_pos_tests),
     new_diagnoses = round(new_diagnoses),
     re_engagement = round(re_engagement),
     infant_diagnoses = round(infant_diagnoses),
