@@ -376,7 +376,7 @@ server <- function(input, output, session) {
   
   # Generate scenario UI (side-by-side)
   output$scenario_ui <- renderUI({
-    baseline <- baseline_values()
+    baseline <- baseline_input_values()
     if (length(baseline) == 0) return(NULL)
     
     scenario_columns <- lapply(names(intervention_groups), function(group_key) {

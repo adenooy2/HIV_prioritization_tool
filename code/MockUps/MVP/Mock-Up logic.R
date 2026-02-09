@@ -127,15 +127,6 @@ intervention_groups <- list(
         eligible_pop = "hiv_exposed_infants",
         unit_cost = subset(intervention_params, intervention_key == "infant_prophylaxis")$unit_cost,   # UPDATE: Cost per infant treated
         outcomes = c("infant_infections")
-      ),
-      cotrimoxazole = list(
-        name = "Cotrimoxazole prophylaxis (according to guidelines)",
-        type = "coverage",
-        unit_label = "% of PLHIV",
-        efficacy = subset(intervention_params, intervention_key == "cotrimoxazole")$efficacy,  # UPDATE: Mortality reduction from cotrimoxazole
-        eligible_pop = "plhiv",
-        unit_cost = subset(intervention_params, intervention_key == "cotrimoxazole")$unit_cost,   # UPDATE: Annual cost per person
-        outcomes = c("mortality")
       )
     )
   ),
@@ -288,6 +279,15 @@ intervention_groups <- list(
         eligible_pop = "on_art_suspected_failure",
         unit_cost = subset(intervention_params, intervention_key == "vl_monitoring_targeted")$unit_cost,   # UPDATE: Cost per test + followup
         outcomes = c("viral_suppression")
+      ),   
+      cotrimoxazole = list(
+        name = "Cotrimoxazole prophylaxis (according to guidelines)",
+        type = "coverage",
+        unit_label = "% of PLHIV",
+        efficacy = subset(intervention_params, intervention_key == "cotrimoxazole")$efficacy,  # UPDATE: Mortality reduction from cotrimoxazole
+        eligible_pop = "plhiv",
+        unit_cost = subset(intervention_params, intervention_key == "cotrimoxazole")$unit_cost,   # UPDATE: Annual cost per person
+        outcomes = c("mortality")
       ),
       oi_management = list(
         name = "OI screening & management",
