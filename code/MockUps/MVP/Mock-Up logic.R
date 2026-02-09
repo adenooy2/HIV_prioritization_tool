@@ -490,9 +490,9 @@ build_country_presets <- function(csv_data) {
         prep_oral = 0.01*pops$total, prep_lenacapavir = 0, vmmc = 0.01*pops$uncircumcised_males,
         condoms = 0.6*pops$total, pep = 0.2*pops$recent_exposure, infant_prophylaxis = 70,
         cotrimoxazole = 60, 
-        test_facility_targeted = 0.05*pops$adult_pop, test_facility_general = 0.05*pops$adult_pop, 
-        test_network_index = 0.01*pops$adult_pop, test_community = 0.04*pops$adult_pop,
-        test_kpsti = 0.02*pops$adult_pop, hivst_facility = 0.01*pops$adult_pop, hivst_community = 0.02*pops$total*pops$adult_pop,
+        test_facility_targeted = round(0.067*pops$adult_pop,-4), test_facility_general = round(0.134*pops$adult_pop,-4), 
+        test_network_index = round(0.0047*pops$adult_pop,-4), test_community = round(0.019*pops$adult_pop,-4),
+        test_kpsti = round(0.005*pops$adult_pop,-4), hivst_facility = round(0.0035*pops$adult_pop,-4), hivst_community = round(0.0035*pops$adult_pop,-4),
         eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
         vl_monitoring_routine = 60, vl_monitoring_targeted = 0.05*pops$on_art_suspected_failure,
         oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
@@ -671,7 +671,7 @@ calculate_impact <- function(context, baseline, target, populations) {
         test_yield <- test_yield * as.numeric(intervention$test_yield_multiplier)
       }
       
-      positive_tests <- number_reached * test_yield * intervention$efficacy
+      positive_tests <- sign *number_reached * test_yield * intervention$efficacy
       tests_performed <- tests_performed + sign * number_reached
       
       # 50% are new diagnoses, 50% are re-engagement 
@@ -681,18 +681,18 @@ calculate_impact <- function(context, baseline, target, populations) {
       print(paste("NEW dx",new_dx))
       
       new_pos_tests=new_pos_tests+positive_tests
-      new_diagnoses <- new_diagnoses + sign * new_dx
-      re_engagement <- re_engagement + sign * re_eng
+      new_diagnoses <- new_diagnoses +  new_dx
+      re_engagement <- re_engagement + re_eng
       
       # ART initiations based on linkage rate
       linkage_rate <- intervention$linkage_rate
       #print(paste("Linkage_rate:", linkage_rate))
       linked <- positive_tests * linkage_rate
-      art_initiations <- art_initiations + sign * linked
+      art_initiations <- art_initiations + linked
       
       #Additional virally suppressed based on current 95-targets minus 10%
       
-      additional_suppressed <- additional_suppressed + sign * linked * ((context$percent_suppressed*0.9)/100) ##BAse VS assumption UPDATE
+      additional_suppressed <- additional_suppressed +  linked * ((context$percent_suppressed*0.9)/100) ##BAse VS assumption UPDATE
       
       
       
@@ -796,7 +796,9 @@ calculate_impact <- function(context, baseline, target, populations) {
   
   # Calculate new cascade after interventions
   new_diagnosed <- populations$diagnosed + new_diagnoses
-  #new_diagnosed=max(new_diagnosed,populations$diagnosed-context$current_diagnoses) ###VALIDATION
+  
+  print(paste("current dx",context$current_diagnoses))
+  new_diagnosed=max(new_diagnosed,populations$diagnosed-context$current_diagnoses) ###VALIDATION
   
   new_on_art <- populations$on_art + art_initiations + retention_improvement
   new_suppressed <- populations$suppressed + additional_suppressed

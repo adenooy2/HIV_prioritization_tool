@@ -370,6 +370,67 @@ test_different_testing <- function() {
   
 }
 
+############TEST SET Three: No tetsing validation #################
+test_no_testing <- function() {
+  cat("\n=== TEST: No testing INTERVENTION LOGIC ===\n")
+  
+  re_test_prop=0.5
+  base_vs_assumption=0.9
+  
+  assign("intervention_groups", intervention_groups, envir = .GlobalEnv)
+  
+  context <- list(
+    total_population = 1000000,
+    hiv_prevalence = 0.05,
+    percent_diagnosed = 80,
+    percent_on_art = 75,
+    percent_suppressed = 85,
+    new_infections_per_year = 5000,
+    aids_deaths_per_year = 1000,
+    birth_rate=24,
+    prop_pop_male=49,
+    prop_pop_under_14=40
+  )
+  
+  pops <- calculate_populations(context)
+  print(pops)
+  
+  # Calculate base yield
+  base_yield <- 0.9* (pops$undiagnosed+pops$ltfu) / pops$sexually_active
+  base_yield=min(base_yield,0.1)
+  
+  cat(sprintf("  Base yield: %.4f (%.2f per 1000)\n", 
+              base_yield, base_yield * 1000))
+  
+  #test 1
+  # Scale up general facility testing by 10 000 people and targeted testings by 10 000
+  baseline <- default_baseline_interventions
+  
+  target <- baseline
+  target$test_facility_general = 0
+  target$test_facility_targeted = 0
+  target$test_network_index=0
+  target$test_kpsti=0
+  target$test_community=0
+  target$hivst_community=0
+  target$hivst_facility=0
+  target$eid=0
+  target$anc_hiv_testing=0
+  target$pnc_hiv_testing=0
+  
+  #Impact
+  impact <- calculate_impact(context, baseline, target, pops)
+  
+  
+  
+  
+}
+  
+  
+  
+  
+  
+
 # ============================================================================
 # RUN ALL TESTS
 # ============================================================================

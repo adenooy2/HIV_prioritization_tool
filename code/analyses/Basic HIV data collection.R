@@ -39,6 +39,13 @@ group_by(Indicator,Indicator_GId,Subgroup,Area) %>%
   unique() 
 
 
+gam_diagnoses=gam_data %>% select(Area,Area.ID,Indicator,Indicator_GId,Subgroup,label,year=Time.Period,Data.value) %>%
+filter(label%in%c("HIV_TESTS_VOL Total","HIV_POS_RATE Total")) %>% group_by(Indicator,Indicator_GId,Subgroup,Area) %>%  
+  arrange(Indicator,Indicator_GId,Subgroup,Area,desc(year))  %>% slice(1) %>% 
+  ungroup() %>% 
+  unique() %>% 
+  select(Area,Area.ID,label,year,Data.value) %>% spread(label,Data.value) %>% mutate(diagnoses=`HIV_POS_RATE Total`*`HIV_TESTS_VOL Total`/100)
+
 ######worldbank data
 
 pop_data= WDI(indicator =  c( "SP.POP.TOTL","SP.POP.TOTL.MA.ZS","SP.POP.0014.TO.ZS"),start=2024) %>% select(-year)

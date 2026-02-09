@@ -395,7 +395,7 @@ server <- function(input, output, session) {
             style = "padding-top: 25px; font-size: 0.9em;",
             strong(intervention$name),
             br(),
-            span(style = "color: #666;", "Baseline: ", base_value),
+            span(style = "color: #666;", "Baseline: ",format(round(base_value, 1), big.mark = ",")),
             br(),
             span(style = "color: #999; font-size: 0.85em;", intervention$unit_label)
           ),
