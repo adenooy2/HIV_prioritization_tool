@@ -431,7 +431,7 @@ calculate_populations <- function(context) {
     recent_exposure = hiv_negative * 0.002,  # UPDATE: PEP need
     hiv_exposed_infants = hiv_positive_births,
     pregnant_women = births,
-    pregnant_on_art = births * context$hiv_prevalence * 0.85,#update
+    pregnant_on_art = births * context$hiv_prevalence * (context$percent_on_art / 100),
     newly_diagnosed_advanced = (plhiv - diagnosed) * 0.20  # UPDATE: Advanced disease %
   )
 }
@@ -779,7 +779,7 @@ calculate_impact <- function(context, baseline, target, populations) {
     } else if ("pmtct" %in% intervention$outcomes) {
       mtct_rate <- 0.15
       infant_infections_averted <- infant_infections_averted + 
-        sign * number_reached * mtct_rate * 0.30
+        sign * number_reached * mtct_rate * 0.30 ######UPDATE, efficacy
       
       intervention_cost <- sign * number_reached * intervention$unit_cost
       if (sign > 0) {

@@ -22,11 +22,15 @@ library(devtools)
 #baseline assumption viral suppression
 
 
+
 ##Source logic file
 tryCatch(
   {
     # Source logic – personal/local
+    #source("/Users/brookenichols/Downloads/Mock-Up logic.R") #Uncomment here and comment line below to try
     source("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/MVP/Mock-Up logic.R")
+    
+    
     message("Sourced local file successfully.")
   },
   error = function(e) {
@@ -729,7 +733,7 @@ server <- function(input, output, session) {
     pops <- populations()
     impact <- impact_scenario1()
     
-    baseline_infant_infections <- round(pops$hiv_exposed_infants * 0.15)
+    baseline_infant_infections <- round(pops$hiv_exposed_infants * 0.15) ###UPDATE
     
     tagList(
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
@@ -768,7 +772,7 @@ server <- function(input, output, session) {
     pops <- populations()
     impact <- impact_scenario2()
     
-    baseline_infant_infections <- round(pops$hiv_exposed_infants * 0.15) ###Fix
+    baseline_infant_infections <- round(pops$hiv_exposed_infants * 0.15) ###Fix UPDATE
     
     tagList(
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
