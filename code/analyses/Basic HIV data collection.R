@@ -66,7 +66,8 @@ basic_data=est_data %>%
   filter(is.na(Data.value)==FALSE) %>% spread(Indicator_GId,Data.value) %>% left_join(pop_data,by="Area.ID") %>% 
   filter(is.na(population)==FALSE) 
 
-basic_data$diagnoses=(basic_data$PLHIV_KNOWLEDGE_OF_STATUS/100)*basic_data$NEW_INFECTIONS. ##UPDATE
+basic_data$diagnoses=(basic_data$PLHIV_KNOWLEDGE_OF_STATUS/100)*basic_data$NEW_INFECTIONS ##UPDATE
+
 
 basic_data=basic_data%>% 
   rename(country=Area.x,total_population=population,hiv_prevalence=`HIV_PREVALENCE`,new_infections_per_year=`NEW_INFECTIONS`,
@@ -85,11 +86,12 @@ basic_data$aids_deaths_per_year=round(basic_data$aids_deaths_per_year,0)
 basic_data$percent_diagnosed=round(basic_data$percent_diagnosed,1)
 
 basic_data$percent_diagnosed[basic_data$percent_diagnosed==100]=98
+
 basic_data$percent_suppressed[basic_data$percent_suppressed==100]=98
 basic_data$percent_on_art[basic_data$percent_on_art==100]=98
 
 
-sub_countries=c("Eswatini","Lesotho","Botswana","Mozambique","Zimbabwe","Zambia","Namibia","Malawi","South Africa","Uganda","Kenya","Central African Republic")
+sub_countries=c("Botswana","Côte d'Ivoire","Eswatini","Ghana","Kenya","Lesotho","Malawi","Mozambique","Nigeria","Congo","South Africa","South Sudan","United Republic of Tanzania","Uganda","Zambia","Zimbabwe")
 
 basic_data=basic_data %>% filter(country%in%sub_countries)
 

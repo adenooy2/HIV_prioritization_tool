@@ -315,6 +315,184 @@ server <- function(input, output, session) {
     }
   })
   
+
+  
+  # Validate PrEP constraints (oral + lenacapavir cannot exceed adult population)
+  # Only reduce the value that was just changed, not proportional reduction
+  observe({
+    ctx <- context()
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return()
+    
+    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
+    
+    # Baseline validation - oral PrEP
+    isolate({
+      prep_oral <- input$baseline_prep_oral
+      prep_lena <- input$baseline_prep_lenacapavir
+      
+      if (!is.null(prep_oral) && !is.null(prep_lena) &&
+          !is.na(prep_oral) && !is.na(prep_lena)) {
+        if (prep_oral + prep_lena > adult_pop) {
+          # Cap oral at max allowed
+          max_oral <- max(0, adult_pop - prep_lena)
+          updateNumericInput(session, "baseline_prep_oral", 
+                             value = round(max_oral),
+                             max = round(max_oral))
+          showNotification(
+            paste0("Oral PrEP capped at ", format(round(max_oral), big.mark = ","), 
+                   " (max allowed with current Lenacapavir)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$baseline_prep_oral)
+  
+  observe({
+    ctx <- context()
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return()
+    
+    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
+    
+    # Baseline validation - lenacapavir
+    isolate({
+      prep_oral <- input$baseline_prep_oral
+      prep_lena <- input$baseline_prep_lenacapavir
+      
+      if (!is.null(prep_oral) && !is.null(prep_lena) &&
+          !is.na(prep_oral) && !is.na(prep_lena)) {
+        if (prep_oral + prep_lena > adult_pop) {
+          # Cap lenacapavir at max allowed
+          max_lena <- max(0, adult_pop - prep_oral)
+          updateNumericInput(session, "baseline_prep_lenacapavir", 
+                             value = round(max_lena),
+                             max = round(max_lena))
+          showNotification(
+            paste0("Lenacapavir capped at ", format(round(max_lena), big.mark = ","), 
+                   " (max allowed with current oral PrEP)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$baseline_prep_lenacapavir)
+  
+  # Scenario 1 validation - oral PrEP
+  observe({
+    ctx <- context()
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return()
+    
+    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
+    
+    isolate({
+      prep_oral <- input$scenario1_prep_oral
+      prep_lena <- input$scenario1_prep_lenacapavir
+      
+      if (!is.null(prep_oral) && !is.null(prep_lena) &&
+          !is.na(prep_oral) && !is.na(prep_lena)) {
+        if (prep_oral + prep_lena > adult_pop) {
+          max_oral <- max(0, adult_pop - prep_lena)
+          updateNumericInput(session, "scenario1_prep_oral", 
+                             value = round(max_oral),
+                             max = round(max_oral))
+          showNotification(
+            paste0("Scenario 1: Oral PrEP capped at ", format(round(max_oral), big.mark = ","), 
+                   " (max allowed with current Lenacapavir)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario1_prep_oral)
+  
+  observe({
+    ctx <- context()
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return()
+    
+    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
+    
+    isolate({
+      prep_oral <- input$scenario1_prep_oral
+      prep_lena <- input$scenario1_prep_lenacapavir
+      
+      if (!is.null(prep_oral) && !is.null(prep_lena) &&
+          !is.na(prep_oral) && !is.na(prep_lena)) {
+        if (prep_oral + prep_lena > adult_pop) {
+          max_lena <- max(0, adult_pop - prep_oral)
+          updateNumericInput(session, "scenario1_prep_lenacapavir", 
+                             value = round(max_lena),
+                             max = round(max_lena))
+          showNotification(
+            paste0("Scenario 1: Lenacapavir capped at ", format(round(max_lena), big.mark = ","), 
+                   " (max allowed with current oral PrEP)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario1_prep_lenacapavir)
+  
+  # Scenario 2 validation - oral PrEP
+  observe({
+    ctx <- context()
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return()
+    
+    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
+    
+    isolate({
+      prep_oral <- input$scenario2_prep_oral
+      prep_lena <- input$scenario2_prep_lenacapavir
+      
+      if (!is.null(prep_oral) && !is.null(prep_lena) &&
+          !is.na(prep_oral) && !is.na(prep_lena)) {
+        if (prep_oral + prep_lena > adult_pop) {
+          max_oral <- max(0, adult_pop - prep_lena)
+          updateNumericInput(session, "scenario2_prep_oral", 
+                             value = round(max_oral),
+                             max = round(max_oral))
+          showNotification(
+            paste0("Scenario 2: Oral PrEP capped at ", format(round(max_oral), big.mark = ","), 
+                   " (max allowed with current Lenacapavir)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario2_prep_oral)
+  
+  observe({
+    ctx <- context()
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return()
+    
+    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
+    
+    isolate({
+      prep_oral <- input$scenario2_prep_oral
+      prep_lena <- input$scenario2_prep_lenacapavir
+      
+      if (!is.null(prep_oral) && !is.null(prep_lena) &&
+          !is.na(prep_oral) && !is.na(prep_lena)) {
+        if (prep_oral + prep_lena > adult_pop) {
+          max_lena <- max(0, adult_pop - prep_oral)
+          updateNumericInput(session, "scenario2_prep_lenacapavir", 
+                             value = round(max_lena),
+                             max = round(max_lena))
+          showNotification(
+            paste0("Scenario 2: Lenacapavir capped at ", format(round(max_lena), big.mark = ","), 
+                   " (max allowed with current oral PrEP)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario2_prep_lenacapavir)
+  
   # Calculate populations
   populations <- reactive({
     calculate_populations(context())
@@ -367,6 +545,16 @@ server <- function(input, output, session) {
           step = if(intervention$type == "coverage") 0.1 else 1
         )
       })
+      
+      if (group_key == "prevention") {
+        interventions_ui <- c(interventions_ui, list(
+          div(
+            style = "margin-top: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;",
+            h6("Total PrEP Coverage:", style = "margin-bottom: 5px;"),
+            uiOutput("prep_total_baseline")
+          )
+        ))
+      }
       
       tagList(
         h4(group$name, style = paste0("color: ", group$color, "; border-left: 4px solid ", 
@@ -425,6 +613,24 @@ server <- function(input, output, session) {
           )
         )
       })
+      
+      # ADD THIS SECTION - PrEP total indicator at end of prevention section
+      if (group_key == "prevention") {
+        interventions_ui <- c(interventions_ui, list(
+          layout_columns(
+            col_widths = c(4, 4, 4),
+            div(),
+            div(
+              h6("Total PrEP Coverage:", style = "margin-top: 15px;"),
+              uiOutput("prep_total_scenario1")
+            ),
+            div(
+              h6("Total PrEP Coverage:", style = "margin-top: 15px;"),
+              uiOutput("prep_total_scenario2")
+            )
+          )
+        ))
+      }
       
       # Add MMD coverage indicator at end of monitoring section
       if (group_key == "treatment_monitoring") {
@@ -486,6 +692,83 @@ server <- function(input, output, session) {
       paste0(total, "% of stable clients")
     )
   })
+  
+  # ADD THESE THREE FUNCTIONS - PrEP total indicators
+  output$prep_total_scenario1 <- renderUI({
+    prep_oral <- input$scenario1_prep_oral
+    prep_lena <- input$scenario1_prep_lenacapavir
+    
+    if (is.null(prep_oral) || is.null(prep_lena)) return(NULL)
+    
+    ctx <- context()
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return(NULL)
+    
+    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
+    total_prep <- prep_oral + prep_lena
+    pct <- (total_prep / adult_pop) * 100
+    
+    color <- ifelse(total_prep > adult_pop, "red", 
+                    ifelse(pct > 90, "orange", "green"))
+    
+    tags$div(
+      style = paste0("color: ", color, "; font-weight: bold;"),
+      paste0(format(round(total_prep), big.mark = ","), " people"),
+      br(),
+      span(style = "font-size: 0.85em;",
+           paste0("(", round(pct, 1), "% of adult pop)"))
+    )
+  })
+  
+  output$prep_total_scenario2 <- renderUI({
+    prep_oral <- input$scenario2_prep_oral
+    prep_lena <- input$scenario2_prep_lenacapavir
+    
+    if (is.null(prep_oral) || is.null(prep_lena)) return(NULL)
+    
+    ctx <- context()
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return(NULL)
+    
+    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
+    total_prep <- prep_oral + prep_lena
+    pct <- (total_prep / adult_pop) * 100
+    
+    color <- ifelse(total_prep > adult_pop, "red", 
+                    ifelse(pct > 90, "orange", "green"))
+    
+    tags$div(
+      style = paste0("color: ", color, "; font-weight: bold;"),
+      paste0(format(round(total_prep), big.mark = ","), " people"),
+      br(),
+      span(style = "font-size: 0.85em;",
+           paste0("(", round(pct, 1), "% of adult pop)"))
+    )
+  })
+  
+  output$prep_total_baseline <- renderUI({
+    prep_oral <- input$baseline_prep_oral
+    prep_lena <- input$baseline_prep_lenacapavir
+    
+    if (is.null(prep_oral) || is.null(prep_lena)) return(NULL)
+    
+    ctx <- context()
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return(NULL)
+    
+    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
+    total_prep <- prep_oral + prep_lena
+    pct <- (total_prep / adult_pop) * 100
+    
+    color <- ifelse(total_prep > adult_pop, "red", 
+                    ifelse(pct > 90, "orange", "green"))
+    
+    tags$div(
+      style = paste0("color: ", color, "; font-weight: bold;"),
+      paste0(format(round(total_prep), big.mark = ","), " people"),
+      br(),
+      span(style = "font-size: 0.85em;",
+           paste0("(", round(pct, 1), "% of adult pop)"))
+    )
+  })
+  
   
   # Collect baseline values from inputs ONLY (no fallback to avoid circular dependencies)
   baseline_input_values <- reactive({
