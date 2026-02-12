@@ -316,6 +316,7 @@ server <- function(input, output, session) {
   })
   
 
+  # Prep  limits observer ----------------------------------------------------- 
   
   # Validate PrEP constraints (oral + lenacapavir cannot exceed adult population)
   # Only reduce the value that was just changed, not proportional reduction
@@ -492,6 +493,231 @@ server <- function(input, output, session) {
       }
     })
   }) %>% bindEvent(input$scenario2_prep_lenacapavir)
+  
+
+# MMD limits observer -----------------------------------------------------
+
+  # Validate MMD constraints (3-month + 6-month + 12-month cannot exceed 100%)
+  # Only reduce the value that was just changed
+  
+  # Baseline validation - 3-month MMD
+  observe({
+    isolate({
+      mmd3 <- input$baseline_mmd_3month
+      mmd6 <- input$baseline_mmd_6month
+      mmd12 <- input$baseline_mmd_12month
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd3 <- max(0, 100 - mmd6 - mmd12)
+          updateNumericInput(session, "baseline_mmd_3month", 
+                             value = round(max_mmd3, 1),
+                             max = round(max_mmd3, 1))
+          showNotification(
+            paste0("3-month MMD capped at ", round(max_mmd3, 1), 
+                   "% (total MMD cannot exceed 100%)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$baseline_mmd_3month)
+  
+  observe({
+    isolate({
+      mmd3 <- input$baseline_mmd_3month
+      mmd6 <- input$baseline_mmd_6month
+      mmd12 <- input$baseline_mmd_12month
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd6 <- max(0, 100 - mmd3 - mmd12)
+          updateNumericInput(session, "baseline_mmd_6month", 
+                             value = round(max_mmd6, 1),
+                             max = round(max_mmd6, 1))
+          showNotification(
+            paste0("6-month MMD capped at ", round(max_mmd6, 1), 
+                   "% (total MMD cannot exceed 100%)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$baseline_mmd_6month)
+  
+  observe({
+    isolate({
+      mmd3 <- input$baseline_mmd_3month
+      mmd6 <- input$baseline_mmd_6month
+      mmd12 <- input$baseline_mmd_12month
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd12 <- max(0, 100 - mmd3 - mmd6)
+          updateNumericInput(session, "baseline_mmd_12month", 
+                             value = round(max_mmd12, 1),
+                             max = round(max_mmd12, 1))
+          showNotification(
+            paste0("12-month MMD capped at ", round(max_mmd12, 1), 
+                   "% (total MMD cannot exceed 100%)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$baseline_mmd_12month)
+  
+  # Scenario 1 validation - 3-month MMD
+  observe({
+    isolate({
+      mmd3 <- input$scenario1_mmd_3month
+      mmd6 <- input$scenario1_mmd_6month
+      mmd12 <- input$scenario1_mmd_12month
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd3 <- max(0, 100 - mmd6 - mmd12)
+          updateNumericInput(session, "scenario1_mmd_3month", 
+                             value = round(max_mmd3, 1),
+                             max = round(max_mmd3, 1))
+          showNotification(
+            paste0("Scenario 1: 3-month MMD capped at ", round(max_mmd3, 1), 
+                   "% (total MMD cannot exceed 100%)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario1_mmd_3month)
+  
+  observe({
+    isolate({
+      mmd3 <- input$scenario1_mmd_3month
+      mmd6 <- input$scenario1_mmd_6month
+      mmd12 <- input$scenario1_mmd_12month
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd6 <- max(0, 100 - mmd3 - mmd12)
+          updateNumericInput(session, "scenario1_mmd_6month", 
+                             value = round(max_mmd6, 1),
+                             max = round(max_mmd6, 1))
+          showNotification(
+            paste0("Scenario 1: 6-month MMD capped at ", round(max_mmd6, 1), 
+                   "% (total MMD cannot exceed 100%)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario1_mmd_6month)
+  
+  observe({
+    isolate({
+      mmd3 <- input$scenario1_mmd_3month
+      mmd6 <- input$scenario1_mmd_6month
+      mmd12 <- input$scenario1_mmd_12month
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd12 <- max(0, 100 - mmd3 - mmd6)
+          updateNumericInput(session, "scenario1_mmd_12month", 
+                             value = round(max_mmd12, 1),
+                             max = round(max_mmd12, 1))
+          showNotification(
+            paste0("Scenario 1: 12-month MMD capped at ", round(max_mmd12, 1), 
+                   "% (total MMD cannot exceed 100%)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario1_mmd_12month)
+  
+  # Scenario 2 validation - 3-month MMD
+  observe({
+    isolate({
+      mmd3 <- input$scenario2_mmd_3month
+      mmd6 <- input$scenario2_mmd_6month
+      mmd12 <- input$scenario2_mmd_12month
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd3 <- max(0, 100 - mmd6 - mmd12)
+          updateNumericInput(session, "scenario2_mmd_3month", 
+                             value = round(max_mmd3, 1),
+                             max = round(max_mmd3, 1))
+          showNotification(
+            paste0("Scenario 2: 3-month MMD capped at ", round(max_mmd3, 1), 
+                   "% (total MMD cannot exceed 100%)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario2_mmd_3month)
+  
+  observe({
+    isolate({
+      mmd3 <- input$scenario2_mmd_3month
+      mmd6 <- input$scenario2_mmd_6month
+      mmd12 <- input$scenario2_mmd_12month
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd6 <- max(0, 100 - mmd3 - mmd12)
+          updateNumericInput(session, "scenario2_mmd_6month", 
+                             value = round(max_mmd6, 1),
+                             max = round(max_mmd6, 1))
+          showNotification(
+            paste0("Scenario 2: 6-month MMD capped at ", round(max_mmd6, 1), 
+                   "% (total MMD cannot exceed 100%)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario2_mmd_6month)
+  
+  observe({
+    isolate({
+      mmd3 <- input$scenario2_mmd_3month
+      mmd6 <- input$scenario2_mmd_6month
+      mmd12 <- input$scenario2_mmd_12month
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd12 <- max(0, 100 - mmd3 - mmd6)
+          updateNumericInput(session, "scenario2_mmd_12month", 
+                             value = round(max_mmd12, 1),
+                             max = round(max_mmd12, 1))
+          showNotification(
+            paste0("Scenario 2: 12-month MMD capped at ", round(max_mmd12, 1), 
+                   "% (total MMD cannot exceed 100%)"),
+            type = "warning",
+            duration = 3
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario2_mmd_12month)
   
   # Calculate populations
   populations <- reactive({
