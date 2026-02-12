@@ -796,9 +796,10 @@ calculate_impact <- function(context, baseline, target, populations) {
   
   # Calculate new cascade after interventions
   new_diagnosed <- populations$diagnosed + new_diagnoses
+  # FLOOR: Can't go below starting diagnosed population
+  new_diagnosed <- max(new_diagnosed, populations$diagnosed)
   
   print(paste("current dx",context$current_diagnoses))
-  new_diagnosed=max(new_diagnosed,populations$diagnosed-context$current_diagnoses) ###VALIDATION
   
   new_on_art <- populations$on_art + art_initiations + retention_improvement
   new_suppressed <- populations$suppressed + additional_suppressed

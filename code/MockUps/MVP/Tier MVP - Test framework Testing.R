@@ -200,6 +200,7 @@ test_different_testing <- function() {
     percent_on_art = 75,
     percent_suppressed = 85,
     new_infections_per_year = 5000,
+    current_diagnoses = 4000,
     aids_deaths_per_year = 1000,
     birth_rate=24,
     prop_pop_male=49,
@@ -404,7 +405,7 @@ test_no_testing <- function() {
               base_yield, base_yield * 1000))
   
   #test 1
-  # Scale up general facility testing by 10 000 people and targeted testings by 10 000
+  # No testing at all
   baseline <- default_baseline_interventions
   
   target <- baseline
@@ -420,7 +421,6 @@ test_no_testing <- function() {
   target$pnc_hiv_testing=0
   
   #Impact
-  
   
   impact <- calculate_impact(context, baseline, target, pops)
   
