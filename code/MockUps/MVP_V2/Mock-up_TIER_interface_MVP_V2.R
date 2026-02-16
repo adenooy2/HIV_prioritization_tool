@@ -116,13 +116,10 @@ ui <- page_sidebar(
         ),
         
         # Health Outcomes Row
-        h3("Health Outcomes", class = "mt-4 mb-3"),
+        h3("Health Outcomes (relative to baseline)", class = "mt-4 mb-3"),
         layout_columns(
-          col_widths = c(4, 4, 4),
-          card(
-            card_header(class = "bg-secondary text-white", "Baseline"),
-            card_body(uiOutput("results_baseline_health"))
-          ),
+          col_widths = c(6, 6),
+          
           card(
             card_header(class = "bg-primary text-white", "Scenario 1"),
             card_body(uiOutput("results_scenario1_health"))
@@ -1518,62 +1515,14 @@ server <- function(input, output, session) {
   # ============================================================================
   
   # ========================================================================
-  # HEALTH OUTCOMES DISPLAY
+  # HEALTH OUTCOMES DISPLAY (RELATIVE TO BASELINE)
   # ========================================================================
   
   output$results_baseline_health <- renderUI({
-    outcomes <- outcomes_baseline()
-    
     tagList(
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Tests Performed:"),
-          span(style = "font-weight: bold;", 
-               format(outcomes$tests_performed, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Test Positivity Rate:"),
-          span(style = "font-weight: bold;", 
-               paste0(outcomes$test_positivity_rate, "%"))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("New Diagnoses:"),
-          span(class = "text-primary", style = "font-weight: bold;",
-               format(outcomes$new_diagnoses, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Re-engagement in Care:"),
-          span(class = "text-primary", style = "font-weight: bold;",
-               format(outcomes$re_engagement, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
-          strong("ART Initiations:"),
-          strong(class = "text-success",
-                 format(outcomes$art_initiations, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Adult Infections Averted:"),
-          span(class = "text-success", style = "font-weight: bold;",
-               format(outcomes$adult_infections_averted, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Infant Infections Averted:"),
-          span(class = "text-success", style = "font-weight: bold;",
-               format(outcomes$infant_infections_averted, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
-          strong("Total Infections Averted:"),
-          strong(class = "text-success",
-                 format(outcomes$total_infections_averted, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Deaths Averted:"),
-          span(class = "text-success", style = "font-weight: bold;",
-               format(outcomes$deaths_averted, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Additional Suppressed:"),
-          span(class = "text-primary", style = "font-weight: bold;",
-               format(outcomes$additional_suppressed, big.mark = ","))
+      div(class = "text-center py-3",
+          p(style = "font-style: italic; color: #666;", "Baseline reference values"),
+          p(style = "font-size: 0.9em; color: #999;", "Scenarios show changes relative to this baseline")
       )
     )
   })
@@ -1586,83 +1535,58 @@ server <- function(input, output, session) {
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Tests Performed:"),
           span(
-            span(style = "font-weight: bold;", 
-                 format(outcomes$tests_performed, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_tests_performed > 0, "blue",
-                                       ifelse(diff$diff_tests_performed < 0, "orange", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_tests_performed > 0, "+", ""),
-                        format(diff$diff_tests_performed, big.mark = ","), ")"))
+            style = paste0("font-weight: bold; color: ",
+                           ifelse(diff$diff_tests_performed > 0, "blue",
+                                  ifelse(diff$diff_tests_performed < 0, "orange", "gray")), ";"),
+            paste0(ifelse(diff$diff_tests_performed > 0, "+", ""),
+                   format(diff$diff_tests_performed, big.mark = ","))
           )
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Test Positivity Rate:"),
-          span(style = "font-weight: bold;", 
-               paste0(outcomes$test_positivity_rate, "%"))
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("New Diagnoses:"),
           span(
-            span(class = "text-primary", style = "font-weight: bold;",
-                 format(outcomes$new_diagnoses, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_new_diagnoses > 0, "green",
-                                       ifelse(diff$diff_new_diagnoses < 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_new_diagnoses > 0, "+", ""),
-                        format(diff$diff_new_diagnoses, big.mark = ","), ")"))
-          )
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Re-engagement in Care:"),
-          span(
-            span(class = "text-primary", style = "font-weight: bold;",
-                 format(outcomes$re_engagement, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_new_diagnoses > 0, "green",
-                                       ifelse(diff$diff_new_diagnoses < 0, "red", "gray")), ";"),
-                 "")
+            style = paste0("font-weight: bold; color: ",
+                           ifelse(diff$diff_new_diagnoses > 0, "green",
+                                  ifelse(diff$diff_new_diagnoses < 0, "red", "gray")), ";"),
+            paste0(ifelse(diff$diff_new_diagnoses > 0, "+", ""),
+                   format(diff$diff_new_diagnoses, big.mark = ","))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
           strong("ART Initiations:"),
-          span(
-            strong(class = "text-success",
-                   format(outcomes$art_initiations, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_art_initiations > 0, "green",
-                                       ifelse(diff$diff_art_initiations < 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_art_initiations > 0, "+", ""),
-                        format(diff$diff_art_initiations, big.mark = ","), ")"))
+          strong(
+            style = paste0("color: ",
+                           ifelse(diff$diff_art_initiations > 0, "green",
+                                  ifelse(diff$diff_art_initiations < 0, "red", "gray")), ";"),
+            paste0(ifelse(diff$diff_art_initiations > 0, "+", ""),
+                   format(diff$diff_art_initiations, big.mark = ","))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Adult Infections Averted:"),
-          span(class = "text-success", style = "font-weight: bold;",
-               format(outcomes$adult_infections_averted, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Infant Infections Averted:"),
-          span(class = "text-success", style = "font-weight: bold;",
-               format(outcomes$infant_infections_averted, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
-          strong("Total Infections Averted:"),
-          strong(class = "text-success",
-                 format(outcomes$total_infections_averted, big.mark = ","))
+          span("Infections Averted:"),
+          span(
+            class = "text-success", style = "font-weight: bold;",
+            paste0(ifelse(diff$additional_infections_averted > 0, "+", ""),
+                   format(diff$additional_infections_averted, big.mark = ","))
+          )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Deaths Averted:"),
-          span(class = "text-success", style = "font-weight: bold;",
-               format(outcomes$deaths_averted, big.mark = ","))
+          span(
+            class = "text-success", style = "font-weight: bold;",
+            paste0(ifelse(diff$additional_deaths_averted > 0, "+", ""),
+                   format(diff$additional_deaths_averted, big.mark = ","))
+          )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Additional Suppressed:"),
-          span(class = "text-primary", style = "font-weight: bold;",
-               format(outcomes$additional_suppressed, big.mark = ","))
+          span(
+            style = paste0("font-weight: bold; color: ",
+                           ifelse(diff$diff_suppressed > 0, "green",
+                                  ifelse(diff$diff_suppressed < 0, "red", "gray")), ";"),
+            paste0(ifelse(diff$diff_suppressed > 0, "+", ""),
+                   format(diff$diff_suppressed, big.mark = ","))
+          )
       )
     )
   })
@@ -1675,83 +1599,58 @@ server <- function(input, output, session) {
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Tests Performed:"),
           span(
-            span(style = "font-weight: bold;", 
-                 format(outcomes$tests_performed, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_tests_performed > 0, "blue",
-                                       ifelse(diff$diff_tests_performed < 0, "orange", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_tests_performed > 0, "+", ""),
-                        format(diff$diff_tests_performed, big.mark = ","), ")"))
+            style = paste0("font-weight: bold; color: ",
+                           ifelse(diff$diff_tests_performed > 0, "blue",
+                                  ifelse(diff$diff_tests_performed < 0, "orange", "gray")), ";"),
+            paste0(ifelse(diff$diff_tests_performed > 0, "+", ""),
+                   format(diff$diff_tests_performed, big.mark = ","))
           )
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Test Positivity Rate:"),
-          span(style = "font-weight: bold;", 
-               paste0(outcomes$test_positivity_rate, "%"))
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("New Diagnoses:"),
           span(
-            span(class = "text-primary", style = "font-weight: bold;",
-                 format(outcomes$new_diagnoses, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_new_diagnoses > 0, "green",
-                                       ifelse(diff$diff_new_diagnoses < 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_new_diagnoses > 0, "+", ""),
-                        format(diff$diff_new_diagnoses, big.mark = ","), ")"))
-          )
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Re-engagement in Care:"),
-          span(
-            span(class = "text-primary", style = "font-weight: bold;",
-                 format(outcomes$re_engagement, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_new_diagnoses > 0, "green",
-                                       ifelse(diff$diff_new_diagnoses < 0, "red", "gray")), ";"),
-                 "")
+            style = paste0("font-weight: bold; color: ",
+                           ifelse(diff$diff_new_diagnoses > 0, "green",
+                                  ifelse(diff$diff_new_diagnoses < 0, "red", "gray")), ";"),
+            paste0(ifelse(diff$diff_new_diagnoses > 0, "+", ""),
+                   format(diff$diff_new_diagnoses, big.mark = ","))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
           strong("ART Initiations:"),
-          span(
-            strong(class = "text-success",
-                   format(outcomes$art_initiations, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_art_initiations > 0, "green",
-                                       ifelse(diff$diff_art_initiations < 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_art_initiations > 0, "+", ""),
-                        format(diff$diff_art_initiations, big.mark = ","), ")"))
+          strong(
+            style = paste0("color: ",
+                           ifelse(diff$diff_art_initiations > 0, "green",
+                                  ifelse(diff$diff_art_initiations < 0, "red", "gray")), ";"),
+            paste0(ifelse(diff$diff_art_initiations > 0, "+", ""),
+                   format(diff$diff_art_initiations, big.mark = ","))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Adult Infections Averted:"),
-          span(class = "text-success", style = "font-weight: bold;",
-               format(outcomes$adult_infections_averted, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Infant Infections Averted:"),
-          span(class = "text-success", style = "font-weight: bold;",
-               format(outcomes$infant_infections_averted, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
-          strong("Total Infections Averted:"),
-          strong(class = "text-success",
-                 format(outcomes$total_infections_averted, big.mark = ","))
+          span("Infections Averted:"),
+          span(
+            class = "text-success", style = "font-weight: bold;",
+            paste0(ifelse(diff$additional_infections_averted > 0, "+", ""),
+                   format(diff$additional_infections_averted, big.mark = ","))
+          )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Deaths Averted:"),
-          span(class = "text-success", style = "font-weight: bold;",
-               format(outcomes$deaths_averted, big.mark = ","))
+          span(
+            class = "text-success", style = "font-weight: bold;",
+            paste0(ifelse(diff$additional_deaths_averted > 0, "+", ""),
+                   format(diff$additional_deaths_averted, big.mark = ","))
+          )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Additional Suppressed:"),
-          span(class = "text-primary", style = "font-weight: bold;",
-               format(outcomes$additional_suppressed, big.mark = ","))
+          span(
+            style = paste0("font-weight: bold; color: ",
+                           ifelse(diff$diff_suppressed > 0, "green",
+                                  ifelse(diff$diff_suppressed < 0, "red", "gray")), ";"),
+            paste0(ifelse(diff$diff_suppressed > 0, "+", ""),
+                   format(diff$diff_suppressed, big.mark = ","))
+          )
       )
     )
   })

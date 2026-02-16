@@ -489,26 +489,34 @@ test_that("Testing constraints: cannot diagnose more than undiagnosed", {
   cat(paste("  ART:", outcomes$art_initiations, "\n"))
   cat(paste("  VS:", outcomes$additional_suppressed, "\n"))
   
+  average_linkage=0.9
   # Assertions
-  expect_lte(outcomes$new_diagnoses, test_populations$undiagnosed)#"Cannot diagnose more people than are undiagnosed"
+  expect_lte(outcomes$new_diagnoses, test_populations$undiagnosed*0.95)#"Cannot diagnose more people than are undiagnosed"
   expect_lte(outcomes$end_diagnosed, test_populations$plhiv)#"Diagnosed cannot exceed PLHIV"
   expect_gte(outcomes$new_diagnoses, 0)#"New diagnoses cannot be negative")
+  expect_lte(outcomes$re_engagement, test_populations$ltfu*0.95)
+  expect_lte(outcomes$art_initiations, round(outcomes$positive_tests*average_linkage))
+  expect_lte(outcomes$additional_suppressed, round(outcomes$art_initiations*(test_context$percent_suppressed/100)*0.9))
   
   cat("✓ All assertions passed\n")
 })
 
 # ============================================================================
-# TEST 6: LINKAGE RATES AFFECT ART INITIATIONS
+# TEST 7: LINKAGE RATES AFFECT ART INITIATIONS
 # ============================================================================
 
 test_that("Different linkage rates affect ART initiations", {
   cat("\n========================================\n")
-  cat("TEST 6: Linkage Rates\n")
+  cat("TEST 7: Linkage Rates\n")
   cat("========================================\n")
   
+  intervention_groups_test=intervention_groups
+  intervention_groups_test$testing$interventions$test_facility_general$linkage_rate=0.9
+  intervention_groups_test$testing$interventions$hivst_community$linkage_rate=0.8
+  
   # Get linkage rates
-  facility_linkage <- intervention_groups$testing$interventions$test_facility_general$linkage_rate
-  hivst_linkage <- intervention_groups$testing$interventions$hivst_community$linkage_rate
+  facility_linkage <- intervention_groups_test$testing$interventions$test_facility_general$linkage_rate
+  hivst_linkage <- intervention_groups_test$testing$interventions$hivst_community$linkage_rate
   
   cat("\nLinkage rates:\n")
   cat(paste("  Facility-based:", facility_linkage, "\n"))
@@ -516,8 +524,8 @@ test_that("Different linkage rates affect ART initiations", {
   
   # Scenario 1: Facility testing
   interventions1 <- list()
-  for (group_key in names(intervention_groups)) {
-    group <- intervention_groups[[group_key]]
+  for (group_key in names(intervention_groups_test)) {
+    group <- intervention_groups_test[[group_key]]
     for (int_key in names(group$interventions)) {
       interventions1[[int_key]] <- 0
     }
@@ -526,8 +534,8 @@ test_that("Different linkage rates affect ART initiations", {
   
   # Scenario 2: HIVST (lower linkage)
   interventions2 <- list()
-  for (group_key in names(intervention_groups)) {
-    group <- intervention_groups[[group_key]]
+  for (group_key in names(intervention_groups_test)) {
+    group <- intervention_groups_test[[group_key]]
     for (int_key in names(group$interventions)) {
       interventions2[[int_key]] <- 0
     }
@@ -546,6 +554,7 @@ test_that("Different linkage rates affect ART initiations", {
   cat("\nScenario 2: 30,000 HIVST tests:\n")
   cat(paste("  Positive tests:", outcomes2$positive_tests, "\n"))
   cat(paste("  ART initiations:", outcomes2$art_initiations, "\n"))
+  
   cat(paste("  Linkage rate achieved:", 
             round(outcomes2$art_initiations / outcomes2$positive_tests * 100, 1), "%\n"))
   
@@ -555,20 +564,19 @@ test_that("Different linkage rates affect ART initiations", {
   
   # If positive tests are similar, facility should link more people
   if (abs(outcomes1$positive_tests - outcomes2$positive_tests) < 100) {
-    expect_gt(outcomes1$art_initiations, outcomes2$art_initiations,
-              info = "With similar positives, facility should link more people")
+    expect_gt(outcomes1$art_initiations, outcomes2$art_initiations )
   }
   
   cat("✓ All assertions passed\n")
 })
 
 # ============================================================================
-# TEST 7: TEST POSITIVITY RATE CALCULATIONS
+# TEST 8: TEST POSITIVITY RATE CALCULATIONS
 # ============================================================================
 
 test_that("Test positivity rate calculated correctly", {
   cat("\n========================================\n")
-  cat("TEST 7: Test Positivity Rate\n")
+  cat("TEST 8: Test Positivity Rate\n")
   cat("========================================\n")
   
   interventions <- list()
@@ -594,21 +602,19 @@ test_that("Test positivity rate calculated correctly", {
   # Assertions
   expect_equal(round(outcomes$test_positivity_rate, 2), round(expected_positivity, 2),
                info = "Test positivity rate should match manual calculation")
-  expect_gte(outcomes$test_positivity_rate, 0,
-             info = "Test positivity cannot be negative")
-  expect_lte(outcomes$test_positivity_rate, 100,
-             info = "Test positivity cannot exceed 100%")
+  expect_gte(outcomes$test_positivity_rate, 0,)#"Test positivity cannot be negative")
+  expect_lte(outcomes$test_positivity_rate, 100)#"Test positivity cannot exceed 100%")
   
   cat("✓ All assertions passed\n")
 })
 
 # ============================================================================
-# TEST 8: ZERO TESTING IN SCENARIO VS BASELINE WITH TESTING
+# TEST 9: ZERO TESTING IN SCENARIO VS BASELINE WITH TESTING
 # ============================================================================
 
 test_that("Zero testing scenario vs baseline with testing", {
   cat("\n========================================\n")
-  cat("TEST 8: Zero Testing Scenario vs Baseline\n")
+  cat("TEST 9: Zero Testing Scenario vs Baseline\n")
   cat("========================================\n")
   
   # Baseline with testing
@@ -659,14 +665,11 @@ test_that("Zero testing scenario vs baseline with testing", {
                info = "Zero testing should find no positives")
   expect_equal(zero_outcomes$new_diagnoses, 0,
                info = "Zero testing should result in no new diagnoses")
-  expect_gt(baseline_outcomes$new_diagnoses, 0,
-            info = "Baseline with testing should have new diagnoses")
-  expect_lt(zero_outcomes$end_diagnosed, baseline_outcomes$end_diagnosed,
-            info = "Zero testing should result in fewer diagnosed at year end")
+  expect_gt(baseline_outcomes$new_diagnoses, 0)# "Baseline with testing should have new diagnoses")
+  expect_lt(zero_outcomes$end_diagnosed, baseline_outcomes$end_diagnosed) #"Zero testing should result in fewer diagnosed at year end")
   
   # But zero testing shouldn't lose existing diagnosed
-  expect_gte(zero_outcomes$end_diagnosed, test_populations$diagnosed,
-             info = "Zero testing shouldn't reduce starting diagnosed count")
+  expect_gte(zero_outcomes$end_diagnosed, test_populations$diagnosed)# "Zero testing shouldn't reduce starting diagnosed count")
   
   cat("✓ All assertions passed\n")
 })
