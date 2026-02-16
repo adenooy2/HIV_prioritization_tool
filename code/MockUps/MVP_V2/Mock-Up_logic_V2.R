@@ -136,7 +136,7 @@ build_intervention_groups <- function(intervention_params){
           type = "absolute",
           unit_label = "tests performed",
           efficacy = subset(intervention_params, intervention_key == "test_facility_targeted")$efficacy,
-          eligible_pop = "adult_pop",
+          eligible_pop = "total",
           unit_cost = subset(intervention_params, intervention_key == "test_facility_targeted")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_facility_targeted")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_facility_targeted")$linkage_cost,
@@ -148,7 +148,7 @@ build_intervention_groups <- function(intervention_params){
           type = "absolute",
           unit_label = "tests performed",
           efficacy = subset(intervention_params, intervention_key == "test_facility_general")$efficacy,
-          eligible_pop = "adult_pop",
+          eligible_pop = "total",
           unit_cost = subset(intervention_params, intervention_key == "test_facility_general")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_facility_general")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_facility_general")$linkage_cost,
@@ -160,7 +160,7 @@ build_intervention_groups <- function(intervention_params){
           type = "absolute",
           unit_label = "tests performed",
           efficacy = subset(intervention_params, intervention_key == "test_network_index")$efficacy,
-          eligible_pop = "adult_pop",
+          eligible_pop = "total",
           unit_cost = subset(intervention_params, intervention_key == "test_network_index")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_network_index")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_network_index")$linkage_cost,
@@ -172,7 +172,7 @@ build_intervention_groups <- function(intervention_params){
           type = "absolute",
           unit_label = "tests performed",
           efficacy = subset(intervention_params, intervention_key == "test_community")$efficacy,
-          eligible_pop = "adult_pop",
+          eligible_pop = "total",
           unit_cost = subset(intervention_params, intervention_key == "test_community")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_community")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_community")$linkage_cost,
@@ -184,7 +184,7 @@ build_intervention_groups <- function(intervention_params){
           type = "absolute",
           unit_label = "tests performed",
           efficacy = subset(intervention_params, intervention_key == "test_kpsti")$efficacy,
-          eligible_pop = "adult_pop",
+          eligible_pop = "total",
           unit_cost = subset(intervention_params, intervention_key == "test_kpsti")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_kpsti")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_kpsti")$linkage_cost,
@@ -196,7 +196,7 @@ build_intervention_groups <- function(intervention_params){
           type = "absolute",
           unit_label = "tests distributed",
           efficacy = subset(intervention_params, intervention_key == "hivst_facility")$efficacy,
-          eligible_pop = "adult_pop",
+          eligible_pop = "total",
           unit_cost = subset(intervention_params, intervention_key == "hivst_facility")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "hivst_facility")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "hivst_facility")$linkage_cost,
@@ -208,7 +208,7 @@ build_intervention_groups <- function(intervention_params){
           type = "absolute",
           unit_label = "tests distributed",
           efficacy = subset(intervention_params, intervention_key == "hivst_community")$efficacy,
-          eligible_pop = "adult_pop",
+          eligible_pop = "total",
           unit_cost = subset(intervention_params, intervention_key == "hivst_community")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "hivst_community")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "hivst_community")$linkage_cost,
@@ -575,7 +575,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   new_diagnoses <- 0
   re_engagement <- 0
   additional_suppressed <- 0
+  additional_suppressed_testing=0
   art_initiations <- 0
+  art_inititations_testing=0
   retention_improvement <- 0
   total_intervention_cost <- 0
   tests_performed <- 0
@@ -588,8 +590,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # base_test_yield <- (undiagnosed_yield + ltfu_yield) * 0.9
   # 
   
-  base_test_yield=((populations$undiagnosed+populations$ltfu)/populations$sexually_active)*0.9
+  base_test_yield=((populations$undiagnosed+populations$ltfu)/populations$sexually_active)
   base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
+  
+  print(paste("BY:",base_test_yield))
   
   # # Calculate proportion of positive tests that are new diagnoses vs re-engagement
   # if ((populations$undiagnosed + populations$ltfu) > 0) {
@@ -602,6 +606,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   
   prop_new_dx <- 0.5
   prop_reeng <- 0.5
+  
+  average_linkage=0.9
   
   # Flatten intervention structure
   all_interventions <- list()
@@ -632,7 +638,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
     
     # Cap at eligible population
     if (intervention$type == "absolute") {
-      if (intervention_value > eligible) {
+      if (intervention_value >= eligible) {
         number_reached <- eligible
       }
     }
@@ -660,11 +666,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
       # ART initiations based on linkage rate
       linkage_rate <- intervention$linkage_rate
       linked <- pos_tests * linkage_rate
-      art_initiations <- art_initiations + linked
+      art_inititations_testing <- art_inititations_testing + linked
       
-      # Additional suppressed
-      additional_suppressed <- additional_suppressed + 
+      additional_suppressed_testing= additional_suppressed + 
         linked * ((context$percent_suppressed * 0.9) / 100)
+      
+      # # Additional suppressed
+      # additional_suppressed <- additional_suppressed + 
+      #   linked * ((context$percent_suppressed * 0.9) / 100)
       
       # Costs
       total_intervention_cost <- total_intervention_cost + 
@@ -727,24 +736,39 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # APPLY CONSTRAINTS - CAP AT REALISTIC MAXIMUMS
   # ========================================================================
   
-  # Cannot diagnose more people than are undiagnosed
-  new_diagnoses <- min(new_diagnoses, populations$undiagnosed)
   
-  # Cannot re-engage more people than are LTFU
-  re_engagement <- min(re_engagement, populations$ltfu)
+  
+  # Cannot diagnose more people than 95% are undiagnosed
+  new_diagnoses <- min(new_diagnoses, populations$undiagnosed*0.95)
+  
+  # Cannot re-engage more than 95% people than are LTFU
+  re_engagement <- min(re_engagement, populations$ltfu*0.95)
+  
+  #positive tests
+  positive_tests=new_diagnoses+re_engagement
   
   # Retention improvement cannot exceed LTFU (since it brings people back)
   retention_improvement <- min(retention_improvement, populations$ltfu)
+  
+  ###tetsing elements -ART
+  art_inititations_testing=min(art_inititations_testing,average_linkage*(new_diagnoses+re_engagement))
+  art_initiations=art_inititations_testing+art_initiations
+  
+  
+  ###tetsing elements -VS
+  additional_suppressed_testing=min(art_initiations*((context$percent_suppressed * 0.9) / 100),additional_suppressed_testing)
+  additional_suppressed <- additional_suppressed+additional_suppressed_testing
   
   # Cannot initiate more people on ART than are diagnosed but not on ART
   # (including newly diagnosed people)
   max_art_initiations <- populations$diagnosed + new_diagnoses - populations$on_art + re_engagement
   art_initiations <- min(art_initiations, max(0, max_art_initiations))
-  
+
   # Cannot suppress more people than are on ART but unsuppressed
   # (including new ART initiations)
   max_additional_suppressed <- populations$on_art + art_initiations + retention_improvement - populations$suppressed
   additional_suppressed <- min(additional_suppressed, max(0, max_additional_suppressed))
+  
   
   # ========================================================================
   # CALCULATE END-OF-YEAR CASCADE VALUES

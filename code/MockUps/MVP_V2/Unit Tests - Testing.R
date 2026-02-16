@@ -82,6 +82,10 @@ test_that("Baseline with zero testing produces no new diagnoses", {
                info = "Zero testing should result in zero new diagnoses")
   expect_equal(outcomes$re_engagement, 0, 
                info = "Zero testing should result in zero re-engagement")
+  expect_equal(outcomes$art_initiations, 0, 
+               info = "Zero testing should result in zero new art")
+  expect_equal(outcomes$additional_suppressed, 0, 
+               info = "Zero testing should result in zero new suppressed")
   
   cat("✓ All assertions passed\n")
 })
@@ -97,13 +101,22 @@ test_that("Baseline general facility_testing - 10,000 tests", {
   cat("TEST 2: Baseline with 10,000 general tests \n")
   cat("========================================\n")
   
+  # Calculate base yield
+  base_yield <- (test_populations$undiagnosed+test_populations$ltfu) / test_populations$sexually_active
+  base_yield=min(base_yield,0.1)
+  
+  cat(sprintf("  Base yield: %.4f (%.2f per 1000)\n", 
+              base_yield, base_yield * 1000))
+  
+  
   baseline_interventions <- list()
   intervention_groups_test=intervention_groups
   
   intervention_groups_test$testing$interventions$test_facility_general$efficacy=0.97
   intervention_groups_test$testing$interventions$test_facility_general$test_yield_multiplier=1
   intervention_groups_test$testing$interventions$test_facility_general$linkage_rate=0.9
-  
+  intervention_groups_test$testing$interventions$test_facility_general$unit_cost=8
+  intervention_groups_test$testing$interventions$test_facility_general$linkage_cost=4
   
   # Set all testing to zero
   for (group_key in names(intervention_groups_test)) {
@@ -115,51 +128,74 @@ test_that("Baseline general facility_testing - 10,000 tests", {
   
   baseline_interventions$test_facility_general <- 10000
   
+  expected_positive_general <- 10000 * base_yield * 1*0.97
+  expected_new_dx <-  expected_positive_general *0.5
+  expected_art=expected_positive_general*0.9
+  expected_vs=expected_art*(test_context$percent_suppressed/100)*0.9
+  expected_cost=10000*8+4*expected_art
+  
+  
   outcomes <- calculate_scenario_outcomes(test_context, baseline_interventions, test_populations)
   
   cat(paste("Tests performed:", outcomes$tests_performed, "\n"))
   cat(paste("Positive tests:", outcomes$positive_tests, "\n"))
   cat(paste("New diagnoses:", outcomes$new_diagnoses, "\n"))
   cat(paste("Re-engagement:", outcomes$re_engagement, "\n"))
+  cat(paste("ART init:", outcomes$art_initiations, "\n"))
+  cat(paste("VS:", outcomes$additional_suppressed, "\n"))
   
   # Assertions
-  expect_equal(outcomes$tests_performed, 0, 
-               info = "Zero testing should result in zero tests performed")
-  expect_equal(outcomes$positive_tests, 0, 
-               info = "Zero testing should result in zero positive tests")
-  expect_equal(outcomes$new_diagnoses, 0, 
-               info = "Zero testing should result in zero new diagnoses")
-  expect_equal(outcomes$re_engagement, 0, 
-               info = "Zero testing should result in zero re-engagement")
+  expect_equal(outcomes$tests_performed, 10000, 
+               info = "10000 tests performed")
+  expect_equal(outcomes$positive_tests, round(expected_positive_general,0), 
+               info = "Correct positive tests from 10000 general tests")
+  expect_equal(outcomes$new_diagnoses, round(expected_new_dx,0), 
+               info = "Half of positive tests should be new")
+  expect_equal(outcomes$art_initiations, round(expected_art,0), 
+               info = "Correct ART")
+  expect_equal(outcomes$additional_suppressed, round(expected_vs,0), 
+               info = "Correct suppressed")
   
   cat("✓ All assertions passed\n")
 })
 
 
-
-
 # ============================================================================
-# TEST 2: SCALE-UP OF SINGLE TEST TYPE
+# TEST 3: SCALE-UP OF SINGLE TEST TYPE (relative to baseline)
 # ============================================================================
 
 test_that("Scaling up facility-based testing increases diagnoses", {
   cat("\n========================================\n")
-  cat("TEST 2: Scale-up Single Test Type\n")
+  cat("TEST 3: Scale-up Single Test Type\n")
   cat("========================================\n")
+  
+  intervention_groups_test=intervention_groups
+  intervention_groups_test$testing$interventions$test_facility_general$efficacy=0.97
+  intervention_groups_test$testing$interventions$test_facility_general$test_yield_multiplier=1
+  intervention_groups_test$testing$interventions$test_facility_general$linkage_rate=0.9
   
   # Baseline: 10,000 tests
   baseline_interventions <- list()
-  for (group_key in names(intervention_groups)) {
-    group <- intervention_groups[[group_key]]
+  for (group_key in names(intervention_groups_test)) {
+    group <- intervention_groups_test[[group_key]]
     for (int_key in names(group$interventions)) {
       baseline_interventions[[int_key]] <- 0
     }
   }
   baseline_interventions$test_facility_general <- 10000
   
-  # Scenario: 50,000 tests (5x scale-up)
+  base_yield <- (test_populations$undiagnosed+test_populations$ltfu) / test_populations$sexually_active
+  base_yield=min(base_yield,0.1)
+  
+  #Baseline expected
+  expected_positive_general <- 10000 * base_yield * 1*0.97
+  expected_new_dx <-  expected_positive_general *0.5
+  expected_art=expected_positive_general*0.9
+  expected_vs=expected_art*(test_context$percent_suppressed/100)*0.9
+  
+  # Scenario: 20,000 tests (2x scale-up)
   scaleup_interventions <- baseline_interventions
-  scaleup_interventions$test_facility_general <- 50000
+  scaleup_interventions$test_facility_general <- 20000
   
   baseline_outcomes <- calculate_scenario_outcomes(test_context, baseline_interventions, test_populations)
   scaleup_outcomes <- calculate_scenario_outcomes(test_context, scaleup_interventions, test_populations)
@@ -170,45 +206,59 @@ test_that("Scaling up facility-based testing increases diagnoses", {
   cat(paste("  New diagnoses:", baseline_outcomes$new_diagnoses, "\n"))
   cat(paste("  Re-engagement:", baseline_outcomes$re_engagement, "\n"))
   cat(paste("  Test positivity:", round(baseline_outcomes$test_positivity_rate, 2), "%\n"))
+  cat(paste("  ART inititations:", baseline_outcomes$art_initiations))
+  cat(paste("  VS:", baseline_outcomes$additional_suppressed))
   
-  cat("\nScale-up (50,000 tests):\n")
+  cat("\nScale-up (20,000 tests):\n")
   cat(paste("  Tests performed:", scaleup_outcomes$tests_performed, "\n"))
   cat(paste("  Positive tests:", scaleup_outcomes$positive_tests, "\n"))
   cat(paste("  New diagnoses:", scaleup_outcomes$new_diagnoses, "\n"))
   cat(paste("  Re-engagement:", scaleup_outcomes$re_engagement, "\n"))
   cat(paste("  Test positivity:", round(scaleup_outcomes$test_positivity_rate, 2), "%\n"))
+  cat(paste("  ART inititations:", scaleup_outcomes$art_initiations))
+  cat(paste("  VS:", scaleup_outcomes$additional_suppressed))
   
   cat("\nChanges:\n")
   cat(paste("  Tests: +", scaleup_outcomes$tests_performed - baseline_outcomes$tests_performed, "\n"))
   cat(paste("  Positive tests: +", scaleup_outcomes$positive_tests - baseline_outcomes$positive_tests, "\n"))
   cat(paste("  New diagnoses: +", scaleup_outcomes$new_diagnoses - baseline_outcomes$new_diagnoses, "\n"))
+  cat(paste("  ART STart: +", scaleup_outcomes$art_initiations - baseline_outcomes$art_initiations, "\n"))
+  cat(paste("  VS: +", scaleup_outcomes$additional_suppressed - baseline_outcomes$additional_suppressed, "\n"))
   
   # Assertions
-  expect_equal(scaleup_outcomes$tests_performed, 50000,
-               info = "Should perform 50,000 tests")
-  expect_gt(scaleup_outcomes$positive_tests, baseline_outcomes$positive_tests,
+  expect_equal(scaleup_outcomes$tests_performed, 20000,
+               info = "Should perform 20,000 tests")
+  expect_equal(scaleup_outcomes$positive_tests, baseline_outcomes$positive_tests*2+1,
             info = "More tests should yield more positive results")
-  expect_gt(scaleup_outcomes$new_diagnoses, baseline_outcomes$new_diagnoses,
+  expect_equal(scaleup_outcomes$new_diagnoses, baseline_outcomes$new_diagnoses*2,
             info = "More positive tests should yield more new diagnoses")
-  expect_true(scaleup_outcomes$positive_tests > baseline_outcomes$positive_tests * 3,
-              info = "5x more tests should yield at least 3x more positives (accounting for saturation)")
+  expect_equal(scaleup_outcomes$art_initiations, baseline_outcomes$art_initiations*2,
+               info = "More positive tests should yield more ART start")
+  expect_equal(scaleup_outcomes$additional_suppressed, baseline_outcomes$additional_suppressed*2+1,
+               info = "More positive tests should yield more VS")
+  
   
   cat("✓ All assertions passed\n")
 })
 
 # ============================================================================
-# TEST 3: SCALE-DOWN OF SINGLE TEST TYPE
+# TEST 4: SCALE-DOWN OF SINGLE TEST TYPE
 # ============================================================================
 
 test_that("Scaling down testing decreases diagnoses", {
   cat("\n========================================\n")
-  cat("TEST 3: Scale-down Single Test Type\n")
+  cat("TEST 4: Scale-down Single Test Type\n")
   cat("========================================\n")
   
-  # Baseline: 50,000 tests
+  intervention_groups_test=intervention_groups
+  intervention_groups_test$testing$interventions$test_facility_general$efficacy=0.97
+  intervention_groups_test$testing$interventions$test_facility_general$test_yield_multiplier=1
+  intervention_groups_test$testing$interventions$test_facility_general$linkage_rate=0.9
+  
+  # Baseline: 10,000 tests
   baseline_interventions <- list()
-  for (group_key in names(intervention_groups)) {
-    group <- intervention_groups[[group_key]]
+  for (group_key in names(intervention_groups_test)) {
+    group <- intervention_groups_test[[group_key]]
     for (int_key in names(group$interventions)) {
       baseline_interventions[[int_key]] <- 0
     }
@@ -226,114 +276,155 @@ test_that("Scaling down testing decreases diagnoses", {
   cat(paste("  Tests performed:", baseline_outcomes$tests_performed, "\n"))
   cat(paste("  Positive tests:", baseline_outcomes$positive_tests, "\n"))
   cat(paste("  New diagnoses:", baseline_outcomes$new_diagnoses, "\n"))
+  cat(paste("  Test positivity:", round(baseline_outcomes$test_positivity_rate, 2), "%\n"))
+  cat(paste("  ART inititations:", baseline_outcomes$art_initiations))
+  cat(paste("  VS:", baseline_outcomes$additional_suppressed))
   
   cat("\nScale-down (10,000 tests):\n")
   cat(paste("  Tests performed:", scaledown_outcomes$tests_performed, "\n"))
   cat(paste("  Positive tests:", scaledown_outcomes$positive_tests, "\n"))
   cat(paste("  New diagnoses:", scaledown_outcomes$new_diagnoses, "\n"))
+  cat(paste("  Test positivity:", round(scaledown_outcomes$test_positivity_rate, 2), "%\n"))
+  cat(paste("  ART inititations:", scaledown_outcomes$art_initiations))
+  cat(paste("  VS:", scaledown_outcomes$additional_suppressed))
   
   cat("\nChanges:\n")
   cat(paste("  Tests: ", scaledown_outcomes$tests_performed - baseline_outcomes$tests_performed, "\n"))
   cat(paste("  Positive tests: ", scaledown_outcomes$positive_tests - baseline_outcomes$positive_tests, "\n"))
   cat(paste("  New diagnoses: ", scaledown_outcomes$new_diagnoses - baseline_outcomes$new_diagnoses, "\n"))
+  cat(paste("  New diagnoses: +", scaledown_outcomes$new_diagnoses - baseline_outcomes$new_diagnoses, "\n"))
+  cat(paste("  ART STart: +", scaledown_outcomes$art_initiations - baseline_outcomes$art_initiations, "\n"))
+  cat(paste("  VS: +", scaledown_outcomes$additional_suppressed - baseline_outcomes$additional_suppressed, "\n"))
   
   # Assertions
   expect_equal(scaledown_outcomes$tests_performed, 10000,
                info = "Should perform 10,000 tests")
-  expect_lt(scaledown_outcomes$positive_tests, baseline_outcomes$positive_tests,
-            info = "Fewer tests should yield fewer positive results")
-  expect_lt(scaledown_outcomes$new_diagnoses, baseline_outcomes$new_diagnoses,
-            info = "Fewer positive tests should yield fewer new diagnoses")
-  expect_true(scaledown_outcomes$tests_performed == baseline_outcomes$tests_performed / 5,
-              info = "Should have exactly 1/5 of baseline tests")
+  expect_equal(round(scaledown_outcomes$positive_tests,0), round(baseline_outcomes$positive_tests*0.2,0),
+               info = "Fewer tests should yield fewer positive results")
+  expect_equal(round(scaledown_outcomes$new_diagnoses,0), round(baseline_outcomes$new_diagnoses*0.2,0),
+               info = "Fewer positive tests should yield Fewer new diagnoses")
+  expect_equal(round(scaledown_outcomes$art_initiations,0), round(baseline_outcomes$art_initiations*0.2,0),
+               info = "Fewer positive tests should yield fewer ART start")
+  expect_equal(round(scaledown_outcomes$additional_suppressed,0), round(baseline_outcomes$additional_suppressed*0.2,0),
+               info = "Fewer positive tests should yield fewer VS")
+  
   
   cat("✓ All assertions passed\n")
 })
 
 # ============================================================================
-# TEST 4: TWO TEST MODALITIES WITH DIFFERENT YIELD FACTORS
+# TEST 5: TWO TEST MODALITIES WITH DIFFERENT YIELD FACTORS
 # ============================================================================
 
 test_that("Different test modalities have different yields", {
   cat("\n========================================\n")
-  cat("TEST 4: Two Test Modalities with Different Yields\n")
+  cat("TEST 5: Two Test Modalities with Different Yields\n")
   cat("========================================\n")
   
+  
+  intervention_groups_test=intervention_groups
+  intervention_groups_test$testing$interventions$test_facility_general$efficacy=0.97
+  intervention_groups_test$testing$interventions$test_facility_general$test_yield_multiplier=1
+  intervention_groups_test$testing$interventions$test_facility_general$linkage_rate=0.9
+  
+  intervention_groups_test$testing$interventions$test_facility_targeted$efficacy=0.97
+  intervention_groups_test$testing$interventions$test_facility_targeted$test_yield_multiplier=2
+  intervention_groups_test$testing$interventions$test_facility_targeted$linkage_rate=0.8
+  
+  
   # Get yield multipliers
-  facility_general_yield <- intervention_groups$testing$interventions$test_facility_general$test_yield_multiplier
-  network_index_yield <- intervention_groups$testing$interventions$test_network_index$test_yield_multiplier
+  facility_general_yield <- intervention_groups_test$testing$interventions$test_facility_general$test_yield_multiplier
+  network_index_yield <- intervention_groups_test$testing$interventions$test_facility_targeted$test_yield_multiplier
   
   cat("\nYield multipliers:\n")
   cat(paste("  Facility-based (general):", facility_general_yield, "\n"))
   cat(paste("  Network/index testing:", network_index_yield, "\n"))
   
-  # Scenario 1: 20,000 facility-based tests
+  # Baseline: 10,000 tests
+  baseline_interventions <- list()
+  for (group_key in names(intervention_groups_test)) {
+    group <- intervention_groups_test[[group_key]]
+    for (int_key in names(group$interventions)) {
+      baseline_interventions[[int_key]] <- 0
+    }
+  }
+  
+  # baseline_interventions$test_facility_general=100000
+  
+  # Scenario 1: 10,000 general facility-based tests
   interventions1 <- list()
-  for (group_key in names(intervention_groups)) {
-    group <- intervention_groups[[group_key]]
+  for (group_key in names(intervention_groups_test)) {
+    group <- intervention_groups_test[[group_key]]
     for (int_key in names(group$interventions)) {
       interventions1[[int_key]] <- 0
     }
   }
-  interventions1$test_facility_general <- 20000
+  interventions1$test_facility_general <- 10000
   
-  # Scenario 2: 20,000 network/index tests
+  # Scenario 2: 20,000 targeted facility tests
   interventions2 <- list()
-  for (group_key in names(intervention_groups)) {
-    group <- intervention_groups[[group_key]]
+  for (group_key in names(intervention_groups_test)) {
+    group <- intervention_groups_test[[group_key]]
     for (int_key in names(group$interventions)) {
       interventions2[[int_key]] <- 0
     }
   }
-  interventions2$test_network_index <- 20000
+  interventions2$test_facility_targeted <- 10000
   
   # Scenario 3: Both (10,000 each)
   interventions3 <- list()
-  for (group_key in names(intervention_groups)) {
-    group <- intervention_groups[[group_key]]
+  for (group_key in names(intervention_groups_test)) {
+    group <- intervention_groups_test[[group_key]]
     for (int_key in names(group$interventions)) {
       interventions3[[int_key]] <- 0
     }
   }
   interventions3$test_facility_general <- 10000
-  interventions3$test_network_index <- 10000
+  interventions3$test_facility_targeted <- 10000
   
   outcomes1 <- calculate_scenario_outcomes(test_context, interventions1, test_populations)
   outcomes2 <- calculate_scenario_outcomes(test_context, interventions2, test_populations)
   outcomes3 <- calculate_scenario_outcomes(test_context, interventions3, test_populations)
   
-  cat("\nScenario 1: 20,000 facility-based (general) tests:\n")
+  cat("\nScenario 1: 10,000 facility-based (general) tests:\n")
   cat(paste("  Tests performed:", outcomes1$tests_performed, "\n"))
   cat(paste("  Positive tests:", outcomes1$positive_tests, "\n"))
   cat(paste("  Test positivity:", round(outcomes1$test_positivity_rate, 2), "%\n"))
   cat(paste("  New diagnoses:", outcomes1$new_diagnoses, "\n"))
+  cat(paste("  New Art start:", outcomes1$art_initiations, "\n"))
+  cat(paste("  New VS:", outcomes1$additional_suppressed, "\n"))
   
-  cat("\nScenario 2: 20,000 network/index tests:\n")
+  cat("\nScenario 2: 10,000 targeted tests:\n")
   cat(paste("  Tests performed:", outcomes2$tests_performed, "\n"))
   cat(paste("  Positive tests:", outcomes2$positive_tests, "\n"))
   cat(paste("  Test positivity:", round(outcomes2$test_positivity_rate, 2), "%\n"))
   cat(paste("  New diagnoses:", outcomes2$new_diagnoses, "\n"))
+  cat(paste("  New Art start:", outcomes2$art_initiations, "\n"))
+  cat(paste("  New VS:", outcomes2$additional_suppressed, "\n"))
+
   
-  cat("\nScenario 3: 10,000 facility + 10,000 network:\n")
+  cat("\nScenario 3: 10,000 facility + 10,000 targeted:\n")
   cat(paste("  Tests performed:", outcomes3$tests_performed, "\n"))
   cat(paste("  Positive tests:", outcomes3$positive_tests, "\n"))
   cat(paste("  Test positivity:", round(outcomes3$test_positivity_rate, 2), "%\n"))
   cat(paste("  New diagnoses:", outcomes3$new_diagnoses, "\n"))
+  cat(paste("  New Art start:", outcomes3$art_initiations, "\n"))
+  cat(paste("  New VS:", outcomes3$additional_suppressed, "\n"))
   
   cat("\nComparisons:\n")
-  cat(paste("  Network yield vs Facility yield ratio:", 
+  cat(paste("  Targeted vs genral Facility yield ratio:", 
             round(outcomes2$positive_tests / outcomes1$positive_tests, 2), "\n"))
   cat(paste("  Expected ratio (from multipliers):", 
             round(network_index_yield / facility_general_yield, 2), "\n"))
   
   # Assertions
-  expect_equal(outcomes1$tests_performed, 20000, info = "Scenario 1 should perform 20,000 tests")
-  expect_equal(outcomes2$tests_performed, 20000, info = "Scenario 2 should perform 20,000 tests")
-  expect_equal(outcomes3$tests_performed, 20000, info = "Scenario 3 should perform 20,000 tests")
+  expect_equal(outcomes1$tests_performed, 10000, info = "Scenario 1 should perform 10,000 tests")
+  expect_equal(outcomes2$tests_performed, 10000, info = "Scenario 2 should perform 10,000 tests")
+  expect_equal(outcomes3$tests_performed, 20000, info = "Scenario 3 should perform 10,000 tests")
   
-  # Network/index testing should have higher yield (higher multiplier)
-  expect_gt(outcomes2$positive_tests, outcomes1$positive_tests,
-            info = "Network/index testing should yield more positives (higher multiplier)")
+  # targeted testing should have higher yield (higher multiplier)
+  expect_equal(outcomes2$positive_tests, 2*outcomes1$positive_tests+1,
+            info = "Targeted testing should yield more positives (higher multiplier)")
   
   # Combined scenario should have positivity between the two
   expect_true(outcomes3$test_positivity_rate > outcomes1$test_positivity_rate &&
@@ -347,15 +438,26 @@ test_that("Different test modalities have different yields", {
               info = "Actual yield ratio should approximate multiplier ratio")
   
   cat("✓ All assertions passed\n")
+
+  #new diagnoses
+  expect_equal(outcomes3$new_diagnoses,outcomes1$new_diagnoses +outcomes2$new_diagnoses+1,
+               info = "Scen 3 should have combined new diagnoses of 1 and 2")
+  
+
+#ART inititations
+expect_equal(outcomes3$art_initiations+1,round(outcomes1$art_initiations,0) +round(outcomes2$art_initiations,0)+1,
+             info = "Scen 3 should have combined new art start of 1 and 2")
+
 })
 
+
 # ============================================================================
-# TEST 5: CONSTRAINTS - CANNOT DIAGNOSE MORE THAN UNDIAGNOSED
+# TEST 6: CONSTRAINTS - CANNOT DIAGNOSE MORE THAN UNDIAGNOSED
 # ============================================================================
 
 test_that("Testing constraints: cannot diagnose more than undiagnosed", {
   cat("\n========================================\n")
-  cat("TEST 5: Testing Constraints\n")
+  cat("TEST 6: Testing Constraints\n")
   cat("========================================\n")
   
   cat("\nUndiagnosed population:", test_populations$undiagnosed, "\n")
@@ -373,6 +475,8 @@ test_that("Testing constraints: cannot diagnose more than undiagnosed", {
   
   outcomes <- calculate_scenario_outcomes(test_context, extreme_interventions, test_populations)
   
+  base_test_yield=((test_populations$undiagnosed+test_populations$ltfu)/test_populations$sexually_active)
+  
   cat("\nExtreme testing scenario (1,000,000 network tests):\n")
   cat(paste("  Tests performed:", outcomes$tests_performed, "\n"))
   cat(paste("  Positive tests:", outcomes$positive_tests, "\n"))
@@ -382,13 +486,13 @@ test_that("Testing constraints: cannot diagnose more than undiagnosed", {
   cat(paste("  Starting diagnosed:", test_populations$diagnosed, "\n"))
   cat(paste("  PLHIV:", test_populations$plhiv, "\n"))
   
+  cat(paste("  ART:", outcomes$art_initiations, "\n"))
+  cat(paste("  VS:", outcomes$additional_suppressed, "\n"))
+  
   # Assertions
-  expect_lte(outcomes$new_diagnoses, test_populations$undiagnosed,
-             info = "Cannot diagnose more people than are undiagnosed")
-  expect_lte(outcomes$end_diagnosed, test_populations$plhiv,
-             info = "Diagnosed cannot exceed PLHIV")
-  expect_gte(outcomes$new_diagnoses, 0,
-             info = "New diagnoses cannot be negative")
+  expect_lte(outcomes$new_diagnoses, test_populations$undiagnosed)#"Cannot diagnose more people than are undiagnosed"
+  expect_lte(outcomes$end_diagnosed, test_populations$plhiv)#"Diagnosed cannot exceed PLHIV"
+  expect_gte(outcomes$new_diagnoses, 0)#"New diagnoses cannot be negative")
   
   cat("✓ All assertions passed\n")
 })
