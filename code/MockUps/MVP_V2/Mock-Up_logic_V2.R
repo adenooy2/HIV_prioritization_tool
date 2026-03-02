@@ -23,9 +23,9 @@ library(readxl)
 # MORTALITY RATES BY CASCADE STAGE (UPDATE THESE BASED ON LITERATURE)
 # ============================================================================
 MORTALITY_RATES <- list(
-  diagnosed_not_on_art = 0.0,      # 8% annual mortality for HIV+ diagnosed but not on ART
-  on_art_not_suppressed = 0.0,     # 4% annual mortality for on ART but not suppressed
-  on_art_suppressed = 0.00        # 0.8% annual mortality for on ART and suppressed
+  diagnosed_not_on_art = 0.08,      # 8% annual mortality for HIV+ diagnosed but not on ART
+  on_art_not_suppressed = 0.04,     # 4% annual mortality for on ART but not suppressed
+  on_art_suppressed = 0.008       # 0.8% annual mortality for on ART and suppressed
 )
 
 # ============================================================================
@@ -668,7 +668,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
       linked <- pos_tests * linkage_rate
       art_inititations_testing <- art_inititations_testing + linked
       
-      additional_suppressed_testing= additional_suppressed + 
+      additional_suppressed_testing= additional_suppressed_testing + 
         linked * ((context$percent_suppressed * 0.9) / 100)
       
       # # Additional suppressed
@@ -735,7 +735,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # ========================================================================
   # APPLY CONSTRAINTS - CAP AT REALISTIC MAXIMUMS
   # ========================================================================
-  
+
   
   
   # Cannot diagnose more people than 95% are undiagnosed
@@ -758,6 +758,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   ###tetsing elements -VS
   additional_suppressed_testing=min(art_initiations*((context$percent_suppressed * 0.9) / 100),additional_suppressed_testing)
   additional_suppressed <- additional_suppressed+additional_suppressed_testing
+  #additional_suppressed <- min(additional_suppressed, populations$unsuppressed)
   
   # Cannot initiate more people on ART than are diagnosed but not on ART
   # (including newly diagnosed people)
@@ -766,10 +767,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
 
   # Cannot suppress more people than are on ART but unsuppressed
   # (including new ART initiations)
-  max_additional_suppressed <- populations$on_art + art_initiations + retention_improvement - populations$suppressed
+  
+  max_additional_suppressed <- populations$on_art + art_initiations - populations$suppressed
   additional_suppressed <- min(additional_suppressed, max(0, max_additional_suppressed))
-  
-  
   # ========================================================================
   # CALCULATE END-OF-YEAR CASCADE VALUES
   # ========================================================================

@@ -13,6 +13,13 @@ library(testthat)
 # Source the logic file
 source("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/MVP_V2/Mock-Up_logic_V2.R")
 
+MORTALITY_RATES <- list(
+  diagnosed_not_on_art = 0.0,      # 8% annual mortality for HIV+ diagnosed but not on ART
+  on_art_not_suppressed = 0.0,     # 4% annual mortality for on ART but not suppressed
+  on_art_suppressed = 0.00     # 0.8% annual mortality for on ART and suppressed
+)
+
+
 # ============================================================================
 # SETUP TEST CONTEXT AND POPULATIONS
 # ============================================================================
