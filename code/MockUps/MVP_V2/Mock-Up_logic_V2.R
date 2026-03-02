@@ -604,8 +604,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   #   prop_reeng <- 0.5
   # }
   
-  prop_new_dx <- 0.5
-  prop_reeng <- 0.5
+  prop_new_dx <- 0.5 ###UPDATE
+  prop_reeng <- 0.5 ##UPDATE
   
   average_linkage=0.9
   

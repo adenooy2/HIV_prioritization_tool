@@ -117,14 +117,14 @@ test_that("Doubling oral PrEP coverage doubles infections averted", {
   cat("TEST 2: Oral PrEP Linear Scale-up\n")
   cat("========================================\n")
 
-  set_prevention_params("prep_oral", efficacy = 0.99, unit_cost = 120)
+  set_prevention_params("prep_oral", efficacy = 0.8, unit_cost = 120)
 
   incidence_rate <- test_context$new_infections_per_year / test_pops$hiv_negative
-  n_low  <- 1000
-  n_high <- 2000   # exact double
+  n_low  <- 10000
+  n_high <- 20000   # exact double
 
-  expected_low  <- round(n_low  * incidence_rate * 0.99)
-  expected_high <- round(n_high * incidence_rate * 0.99)
+  expected_low  <- round(n_low  * incidence_rate * 0.8)
+  expected_high <- round(n_high * incidence_rate * 0.8)
 
   ints_low  <- zero_interventions(); ints_low$prep_oral  <- n_low
   ints_high <- zero_interventions(); ints_high$prep_oral <- n_high
@@ -158,7 +158,7 @@ test_that("Reducing oral PrEP from 5000 to 1000 reduces infections averted propo
   cat("TEST 3: Oral PrEP Scale-down\n")
   cat("========================================\n")
 
-  set_prevention_params("prep_oral", efficacy = 0.99, unit_cost = 120)
+  set_prevention_params("prep_oral", efficacy = 0.8, unit_cost = 120)
 
   ints_base  <- zero_interventions(); ints_base$prep_oral  <- 5000
   ints_small <- zero_interventions(); ints_small$prep_oral <- 1000
