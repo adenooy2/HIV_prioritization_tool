@@ -593,7 +593,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   base_test_yield=((populations$undiagnosed+populations$ltfu)/populations$sexually_active)
   base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
   
-  print(paste("BY:",base_test_yield))
+  #print(paste("BY:",base_test_yield))
   
   # # Calculate proportion of positive tests that are new diagnoses vs re-engagement
   # if ((populations$undiagnosed + populations$ltfu) > 0) {
@@ -679,24 +679,15 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
       total_intervention_cost <- total_intervention_cost + 
         (number_reached * intervention$unit_cost + linked * intervention$linkage_cost)
       
-    } else if ("adult_infections" %in% intervention$outcomes) {
-      # Prevention interventions
-      incidence_rate <- context$new_infections_per_year / populations$hiv_negative
-      infections_averted <- infections_averted + 
-        number_reached * incidence_rate * intervention$efficacy
-      
-      total_intervention_cost <- total_intervention_cost + 
-        number_reached * intervention$unit_cost
-      
-    } else if ("infant_infections" %in% intervention$outcomes) {
-      infant_incidence_rate <- 0.15
+    }  else if ("infant_infections" %in% intervention$outcomes) {
+      infant_incidence_rate <- 0.15 ####UPDATE
       infant_infections_averted <- infant_infections_averted + 
         number_reached * infant_incidence_rate * intervention$efficacy
       
       total_intervention_cost <- total_intervention_cost + 
         number_reached * intervention$unit_cost
       
-    } else if ("viral_suppression" %in% intervention$outcomes) {
+    }else if ("viral_suppression" %in% intervention$outcomes) {
       additional_suppressed <- additional_suppressed + 
         number_reached * intervention$efficacy
       
@@ -736,7 +727,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # APPLY CONSTRAINTS - CAP AT REALISTIC MAXIMUMS
   # ========================================================================
 
-  
   
   # Cannot diagnose more people than 95% are undiagnosed
   new_diagnoses <- min(new_diagnoses, populations$undiagnosed*0.95)
@@ -834,12 +824,67 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   end_on_art <- min(end_on_art, end_diagnosed)
   
   # ========================================================================
-  # CALCULATE END-OF-YEAR INFECTIONS
+  # CALCULATE END-OF-YEAR INFECTIONS and PREVENTION interventions
   # ========================================================================
+    
+  infectious_prop = (populations$plhiv-end_suppressed)/populations$total
   
-  end_new_infections <- max(0, context$new_infections_per_year - infections_averted)
-  baseline_infant_infections <- populations$hiv_exposed_infants * 0.15
+  #print(populations)
+  print(paste("Inf prop ",infectious_prop))
+  force_inf=0.1###UPDATE
+  
+  force_inf=context$new_infections_per_year/(populations$plhiv-populations$suppressed)
+  print(paste("force inf ",force_inf))
+  
+  unprotected_pop=populations$hiv_negative
+  print(paste("unprotected pop ",unprotected_pop))
+  
+  infections=unprotected_pop*force_inf*infectious_prop
+  print(paste("Inf",infections))
+  
+  # Process prevention intervention
+  for (int_key in names(all_interventions)) {
+    intervention <- all_interventions[[int_key]]
+    intervention_value <- interventions[[int_key]]
+    
+    if (is.null(intervention_value)) intervention_value <- 0
+    if (intervention_value == 0) next
+    
+    # Get eligible population
+    eligible <- populations[[intervention$eligible_pop]]
+    if (is.null(eligible)) eligible <- 0
+    
+    # Calculate number reached
+    number_reached <- intervention_value
+    if (intervention$type == "coverage") {
+      number_reached <- eligible * (intervention_value / 100)
+    }
+    
+    # Cap at eligible population
+    if (intervention$type == "absolute") {
+      if (intervention_value >= eligible) {
+        number_reached <- eligible
+      }
+    }
+    number_reached <- min(number_reached, eligible)
+    
+    if ("adult_infections" %in% intervention$outcomes) {
+      # Prevention interventions
+      
+      infections_averted <- infections_averted + 
+        number_reached * force_inf*infectious_prop * (1-intervention$efficacy)
+      
+      total_intervention_cost <- total_intervention_cost + 
+        number_reached * intervention$unit_cost
+      
+    } 
+  }
+  
+  end_new_infections <- max(0, infections - infections_averted)
+  baseline_infant_infections <- populations$hiv_exposed_infants * 0.15 ###UPDATE
   end_infant_infections <- max(0, baseline_infant_infections - infant_infections_averted)
+  
+  
   
   # ========================================================================
   # CALCULATE COSTS
