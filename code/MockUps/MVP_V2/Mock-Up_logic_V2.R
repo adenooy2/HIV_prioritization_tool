@@ -267,15 +267,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "vl_monitoring_routine")$unit_cost,
           outcomes = c("viral_suppression")
         ),
-        vl_monitoring_targeted = list(
-          name = "VL monitoring: suspected failure",
-          type = "absolute",
-          unit_label = "people tested",
-          efficacy = subset(intervention_params, intervention_key == "vl_monitoring_targeted")$efficacy,
-          eligible_pop = "on_art_suspected_failure",
-          unit_cost = subset(intervention_params, intervention_key == "vl_monitoring_targeted")$unit_cost,
-          outcomes = c("viral_suppression")
-        ),   
         cotrimoxazole = list(
           name = "Cotrimoxazole prophylaxis (according to guidelines)",
           type = "coverage",
@@ -439,7 +430,7 @@ default_baseline_interventions <- list(
   test_network_index = 5000, test_community = 20000,
   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
   eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
-  vl_monitoring_routine = 60, vl_monitoring_targeted = 2000,
+  vl_monitoring_routine = 60, 
   oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
   adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
   cd4_testing = 92, ahd_package = 88
@@ -485,7 +476,6 @@ build_country_presets <- function(csv_data) {
         hivst_community = round(0.0035*pops$adult_pop, -4),
         eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
         vl_monitoring_routine = 60, 
-        vl_monitoring_targeted = 0.05*pops$on_art_suspected_failure,
         oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
         adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
         cd4_testing = 92, ahd_package = 88
@@ -541,7 +531,6 @@ build_country_presets <- function(csv_data) {
     anc_hiv_testing = 88, 
     pnc_hiv_testing = 70,
     vl_monitoring_routine = 60, 
-    vl_monitoring_targeted = 0.05*custom_pops$on_art_suspected_failure,
     oi_management = 50, 
     mmd_3month = 40, 
     mmd_6month = 20, 
