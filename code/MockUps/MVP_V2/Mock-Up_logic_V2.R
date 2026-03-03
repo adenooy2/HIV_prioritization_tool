@@ -335,7 +335,7 @@ build_intervention_groups <- function(intervention_params){
           efficacy = subset(intervention_params, intervention_key == "adherence_counseling")$efficacy,
           eligible_pop = "on_art",
           unit_cost = subset(intervention_params, intervention_key == "adherence_counseling")$unit_cost,
-          outcomes = c("viral_suppression", "retention")
+          outcomes = c("retention")
         ),
         tracking_tracing = list(
           name = "Tracking & tracing",
@@ -574,6 +574,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   positive_tests <- 0
   new_diagnoses <- 0
   re_engagement <- 0
+  re_engagement_testing <- 0
   additional_suppressed <- 0
   additional_suppressed_testing=0
   art_initiations <- 0
@@ -604,8 +605,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   #   prop_reeng <- 0.5
   # }
   
-  prop_new_dx <- 0.5 ###UPDATE
-  prop_reeng <- 0.5 ##UPDATE
+  prop_new_dx <- 0.7 ###UPDATE
+  prop_reeng <- (1-prop_new_dx) ##UPDATE
   
   average_linkage=0.9
   
@@ -661,7 +662,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
       re_eng <- pos_tests * prop_reeng
       
       new_diagnoses <- new_diagnoses + new_dx
-      re_engagement <- re_engagement + re_eng
+      re_engagement_testing <- re_engagement_testing + re_eng
       
       # ART initiations based on linkage rate
       linkage_rate <- intervention$linkage_rate
@@ -689,12 +690,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
       
     }else if ("viral_suppression" %in% intervention$outcomes) {
       additional_suppressed <- additional_suppressed + 
-        number_reached * intervention$efficacy
+        number_reached*(1-context$percent_suppressed/100)* intervention$efficacy
       
       total_intervention_cost <- total_intervention_cost + 
         number_reached * intervention$unit_cost
       
-    } else if ("retention" %in% intervention$outcomes) {
+    }
+    else if ("retention" %in% intervention$outcomes) {
       retention_improvement <- retention_improvement + 
         number_reached * intervention$efficacy
       
@@ -732,16 +734,17 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   new_diagnoses <- min(new_diagnoses, populations$undiagnosed*0.95)
   
   # Cannot re-engage more than 95% people than are LTFU
-  re_engagement <- min(re_engagement, populations$ltfu*0.95)
+  re_engagement_testing <- min(re_engagement_testing, populations$ltfu*0.95)
   
+  re_engagement=re_engagement_testing
   #positive tests
-  positive_tests=new_diagnoses+re_engagement
+  positive_tests=new_diagnoses+re_engagement_testing
   
   # Retention improvement cannot exceed LTFU (since it brings people back)
   retention_improvement <- min(retention_improvement, populations$ltfu)
   
   ###tetsing elements -ART
-  art_inititations_testing=min(art_inititations_testing,average_linkage*(new_diagnoses+re_engagement))
+  art_inititations_testing=min(art_inititations_testing,average_linkage*(new_diagnoses+re_engagement_testing))
   art_initiations=art_inititations_testing+art_initiations
   
   
@@ -830,17 +833,17 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   infectious_prop = (populations$plhiv-end_suppressed)/populations$total
   
   #print(populations)
-  print(paste("Inf prop ",infectious_prop))
+  #print(paste("Inf prop ",infectious_prop))
   force_inf=0.1###UPDATE
   
   force_inf=context$new_infections_per_year/(populations$plhiv-populations$suppressed)
-  print(paste("force inf ",force_inf))
+  #print(paste("force inf ",force_inf))
   
   unprotected_pop=populations$hiv_negative
-  print(paste("unprotected pop ",unprotected_pop))
+  #print(paste("unprotected pop ",unprotected_pop))
   
   infections=unprotected_pop*force_inf*infectious_prop
-  print(paste("Inf",infections))
+  #print(paste("Inf",infections))
   
   # Process prevention intervention
   for (int_key in names(all_interventions)) {
