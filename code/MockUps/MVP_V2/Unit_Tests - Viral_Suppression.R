@@ -14,7 +14,7 @@
 # - End-of-year cascade consistency
 # ============================================================================
 
-######CHECK Test 6 and 10
+######CHECK Test 6 and 10 and 12 - VS should impact infections averted
 
 library(testthat)
 
@@ -36,12 +36,12 @@ create_test_context <- function() {
   list(
     total_population        = 1000000,
     hiv_prevalence          = 0.05,   # 5% => 50,000 PLHIV
-    new_infections_per_year = 2500,
+    new_infections_per_year = 5000,
     percent_diagnosed       = 80,     # 40,000 diagnosed
     percent_on_art          = 75,     # 30,000 on ART
     percent_suppressed      = 85,     # 25,500 suppressed
     aids_deaths_per_year    = 1000,
-    birth_rate              = 25,
+    birth_rate              = 24,
     prop_pop_male           = 49,
     prop_pop_under_14       = 40
   )
