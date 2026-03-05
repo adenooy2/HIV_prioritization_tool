@@ -1144,10 +1144,20 @@ server <- function(input, output, session) {
     second_95 <- 0
     third_95 <- 0
     
-    if (!is.null(pops$plhiv) && !is.null(outcomes$end_diagnosed) && 
+    if (outcomes$end_plhiv>0 && !is.null(outcomes$end_diagnosed) && 
         !is.na(pops$plhiv) && !is.na(outcomes$end_diagnosed) && pops$plhiv > 0) {
-      first_95 <- (outcomes$end_diagnosed / pops$plhiv) * 100
+      first_95 <- (outcomes$end_diagnosed / outcomes$end_plhiv) * 100
     }
+    
+    #FLAG if improvement from excess deaths
+    first_95_counterfactual <- ifelse(
+      (outcomes$end_plhiv + outcomes$deaths_undiagnosed) > 0,
+      (outcomes$end_diagnosed / (outcomes$end_plhiv + outcomes$deaths_undiagnosed)) * 100,
+      0
+    )
+    
+    mortality_inflated_1st95 <- outcomes$deaths_undiagnosed > 0 & 
+      first_95 > first_95_counterfactual
     
     if (!is.null(outcomes$end_diagnosed) && !is.null(outcomes$end_on_art) &&
         !is.na(outcomes$end_diagnosed) && !is.na(outcomes$end_on_art) && outcomes$end_diagnosed > 0) {
@@ -1197,10 +1207,20 @@ server <- function(input, output, session) {
     third_95_base <- 0
     
     # Scenario 1 values
-    if (!is.null(pops$plhiv) && !is.null(outcomes$end_diagnosed) && 
+    if (outcomes$end_plhiv>0 && !is.null(outcomes$end_diagnosed) && 
         !is.na(pops$plhiv) && !is.na(outcomes$end_diagnosed) && pops$plhiv > 0) {
-      first_95 <- (outcomes$end_diagnosed / pops$plhiv) * 100
+      first_95 <- (outcomes$end_diagnosed / outcomes$end_plhiv) * 100
     }
+    
+    #FLAG if improvement from excess deaths
+    first_95_counterfactual <- ifelse(
+      (outcomes$end_plhiv + outcomes$deaths_undiagnosed) > 0,
+      (outcomes$end_diagnosed / (outcomes$end_plhiv + outcomes$deaths_undiagnosed)) * 100,
+      0
+    )
+    
+    mortality_inflated_1st95 <- outcomes$deaths_undiagnosed > 0 & 
+      first_95 > first_95_counterfactual
     if (!is.null(outcomes$end_diagnosed) && !is.null(outcomes$end_on_art) &&
         !is.na(outcomes$end_diagnosed) && !is.na(outcomes$end_on_art) && outcomes$end_diagnosed > 0) {
       second_95 <- (outcomes$end_on_art / outcomes$end_diagnosed) * 100
@@ -1211,9 +1231,9 @@ server <- function(input, output, session) {
     }
     
     # Baseline values
-    if (!is.null(pops$plhiv) && !is.null(outcomes_base$end_diagnosed) && 
+    if ( outcomes$end_plhiv>0 && !is.null(outcomes_base$end_diagnosed) && 
         !is.na(pops$plhiv) && !is.na(outcomes_base$end_diagnosed) && pops$plhiv > 0) {
-      first_95_base <- (outcomes_base$end_diagnosed / pops$plhiv) * 100
+      first_95_base <- (outcomes$end_diagnosed / outcomes$end_plhiv) * 100
     }
     if (!is.null(outcomes_base$end_diagnosed) && !is.null(outcomes_base$end_on_art) &&
         !is.na(outcomes_base$end_diagnosed) && !is.na(outcomes_base$end_on_art) && outcomes_base$end_diagnosed > 0) {
@@ -1290,10 +1310,20 @@ server <- function(input, output, session) {
     third_95_base <- 0
     
     # Scenario 2 values
-    if (!is.null(pops$plhiv) && !is.null(outcomes$end_diagnosed) && 
+    if ( outcomes$end_plhiv>0 && !is.null(outcomes$end_diagnosed) && 
         !is.na(pops$plhiv) && !is.na(outcomes$end_diagnosed) && pops$plhiv > 0) {
-      first_95 <- (outcomes$end_diagnosed / pops$plhiv) * 100
+      first_95 <- (outcomes$end_diagnosed / outcomes$end_plhiv) * 100
     }
+    
+    #FLAG if improvement from excess deaths
+    first_95_counterfactual <- ifelse(
+      (outcomes$end_plhiv + outcomes$deaths_undiagnosed) > 0,
+      (outcomes$end_diagnosed / (outcomes$end_plhiv + outcomes$deaths_undiagnosed)) * 100,
+      0
+    )
+    
+    mortality_inflated_1st95 <- outcomes$deaths_undiagnosed > 0 & 
+      first_95 > first_95_counterfactual
     if (!is.null(outcomes$end_diagnosed) && !is.null(outcomes$end_on_art) &&
         !is.na(outcomes$end_diagnosed) && !is.na(outcomes$end_on_art) && outcomes$end_diagnosed > 0) {
       second_95 <- (outcomes$end_on_art / outcomes$end_diagnosed) * 100
@@ -1304,9 +1334,9 @@ server <- function(input, output, session) {
     }
     
     # Baseline values
-    if (!is.null(pops$plhiv) && !is.null(outcomes_base$end_diagnosed) && 
+    if ( outcomes$end_plhiv>0 && !is.null(outcomes_base$end_diagnosed) && 
         !is.na(pops$plhiv) && !is.na(outcomes_base$end_diagnosed) && pops$plhiv > 0) {
-      first_95_base <- (outcomes_base$end_diagnosed / pops$plhiv) * 100
+      first_95_base <- (outcomes_base$end_diagnosed / outcomes_base$end_plhiv) * 100
     }
     if (!is.null(outcomes_base$end_diagnosed) && !is.null(outcomes_base$end_on_art) &&
         !is.na(outcomes_base$end_diagnosed) && !is.na(outcomes_base$end_on_art) && outcomes_base$end_diagnosed > 0) {

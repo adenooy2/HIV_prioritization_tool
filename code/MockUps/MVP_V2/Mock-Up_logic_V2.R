@@ -23,11 +23,10 @@ library(readxl)
 # MORTALITY RATES BY CASCADE STAGE (UPDATE THESE BASED ON LITERATURE)
 # ============================================================================
 MORTALITY_RATES <- list(
-  diagnosed_not_on_art = 0.08,      # 8% annual mortality for HIV+ diagnosed but not on ART
-  on_art_not_suppressed = 0.04,     # 4% annual mortality for on ART but not suppressed
-  on_art_suppressed = 0.008       # 0.8% annual mortality for on ART and suppressed
+  undiagnosed_or_untreated = 0.1,   # undiagnosed PLHIV + diagnosed not on ART
+  on_art_not_suppressed = 0.008,      # on ART but not virally suppressed
+  suppressed = 0.003                 # on ART and virally suppressed
 )
-
 # ============================================================================
 # LOAD DATA
 # ============================================================================
@@ -781,13 +780,15 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   on_art_suppressed <- max(0, end_suppressed_pre_mort)
   
   # Calculate deaths by stage
-  deaths_diagnosed_not_art <- diagnosed_not_on_art * MORTALITY_RATES$diagnosed_not_on_art
+  undiagnosed_count <- max(0, populations$plhiv - end_diagnosed_pre_mort)
+  deaths_undiagnosed <- undiagnosed_count * MORTALITY_RATES$undiagnosed_or_untreated
+  deaths_diagnosed_not_art <- diagnosed_not_on_art * MORTALITY_RATES$undiagnosed_or_untreated
   deaths_on_art_not_suppressed <- on_art_not_suppressed * MORTALITY_RATES$on_art_not_suppressed
-  deaths_on_art_suppressed <- on_art_suppressed * MORTALITY_RATES$on_art_suppressed
+  deaths_on_art_suppressed <- on_art_suppressed * MORTALITY_RATES$suppressed
   
-  # Total HIV-related deaths
-  total_hiv_deaths <- deaths_diagnosed_not_art + deaths_on_art_not_suppressed + 
-    deaths_on_art_suppressed
+  # Total HIV-related deaths (now includes undiagnosed)
+  total_hiv_deaths <- deaths_undiagnosed + deaths_diagnosed_not_art + 
+    deaths_on_art_not_suppressed + deaths_on_art_suppressed
   
   # Deaths averted by interventions (additional to baseline mortality)
   total_deaths_averted <- deaths_averted_interventions
@@ -814,6 +815,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # Ensure cascade consistency (should already be true, but just in case)
   end_suppressed <- min(end_suppressed, end_on_art)
   end_on_art <- min(end_on_art, end_diagnosed)
+  end_plhiv <- max(0, populations$plhiv - deaths_undiagnosed - deaths_diagnosed_not_art - 
+                     deaths_on_art_not_suppressed - deaths_on_art_suppressed)
+  
   
   # ========================================================================
   # CALCULATE END-OF-YEAR INFECTIONS and PREVENTION interventions
@@ -941,11 +945,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
     deaths_averted = round(total_deaths_averted),
     
     # End-of-year cascade (absolute values after mortality)
+    end_plhiv = round(end_plhiv),
     end_diagnosed = round(end_diagnosed),
     end_on_art = round(end_on_art),
     end_suppressed = round(end_suppressed),
     
     # Mortality breakdown
+    deaths_undiagnosed = round(deaths_undiagnosed),
     deaths_diagnosed_not_art = round(deaths_diagnosed_not_art),
     deaths_on_art_not_suppressed = round(deaths_on_art_not_suppressed),
     deaths_on_art_suppressed = round(deaths_on_art_suppressed),
