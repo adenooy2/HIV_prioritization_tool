@@ -14,12 +14,13 @@ library(testthat)
 source("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/MVP_V2/Mock-Up_logic_V2.R")
 
 MORTALITY_RATES <- list(
-  diagnosed_not_on_art = 0.0,      # 8% annual mortality for HIV+ diagnosed but not on ART
-  on_art_not_suppressed = 0.0,     # 4% annual mortality for on ART but not suppressed
-  on_art_suppressed = 0.00     # 0.8% annual mortality for on ART and suppressed
+  untreated_undiagnosed = 0.0,  # undiagnosed PLHIV + diagnosed not on ART
+  new_art_initiations   = 0.00,  # first year on ART (pre-stabilisation)
+  treated               = 0.00, # established on ART, not virally suppressed
+  suppressed            = 0.00, # established on ART, virally suppressed
+  ahd                   = 0,  # advanced HIV disease (CD4 < 200), any stage
+  prop_ahd              = 0   # proportion with AHD in each cascade group
 )
-
-
 # ============================================================================
 # SETUP TEST CONTEXT AND POPULATIONS
 # ============================================================================
@@ -111,6 +112,7 @@ test_that("Baseline general facility_testing - 10,000 tests", {
   # Calculate base yield
   base_yield <- (test_populations$undiagnosed+test_populations$ltfu) / test_populations$sexually_active
   base_yield=min(base_yield,0.1)
+ 
   
   cat(sprintf("  Base yield: %.4f (%.2f per 1000)\n", 
               base_yield, base_yield * 1000))

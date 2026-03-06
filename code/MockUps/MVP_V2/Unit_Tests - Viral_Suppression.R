@@ -23,9 +23,12 @@ source("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritiza
 
 # Zero out mortality rates so cascade tests are not confounded by deaths
 MORTALITY_RATES <- list(
-  diagnosed_not_on_art  = 0.0,
-  on_art_not_suppressed = 0.0,
-  on_art_suppressed     = 0.0
+  untreated_undiagnosed = 0.0,  # undiagnosed PLHIV + diagnosed not on ART
+  new_art_initiations   = 0.00,  # first year on ART (pre-stabilisation)
+  treated               = 0.00, # established on ART, not virally suppressed
+  suppressed            = 0.00, # established on ART, virally suppressed
+  ahd                   = 0,  # advanced HIV disease (CD4 < 200), any stage
+  prop_ahd              = 0   # proportion with AHD in each cascade group
 )
 
 # ============================================================================

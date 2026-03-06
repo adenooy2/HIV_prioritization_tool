@@ -23,9 +23,12 @@ library(readxl)
 # MORTALITY RATES BY CASCADE STAGE (UPDATE THESE BASED ON LITERATURE)
 # ============================================================================
 MORTALITY_RATES <- list(
-  undiagnosed_or_untreated = 0.1,   # undiagnosed PLHIV + diagnosed not on ART
-  on_art_not_suppressed = 0.008,      # on ART but not virally suppressed
-  suppressed = 0.003                 # on ART and virally suppressed
+  untreated_undiagnosed = 0.10,  # undiagnosed PLHIV + diagnosed not on ART
+  new_art_initiations   = 0.06,  # first year on ART (pre-stabilisation)
+  treated               = 0.008, # established on ART, not virally suppressed
+  suppressed            = 0.003, # established on ART, virally suppressed
+  ahd                   = 0.20,  # advanced HIV disease (CD4 < 200), any stage
+  prop_ahd              = 0.20   # proportion with AHD in each cascade group
 )
 # ============================================================================
 # LOAD DATA
@@ -269,9 +272,9 @@ build_intervention_groups <- function(intervention_params){
         cotrimoxazole = list(
           name = "Cotrimoxazole prophylaxis (according to guidelines)",
           type = "coverage",
-          unit_label = "% of PLHIV",
+          unit_label = "% of new ART initiations",
           efficacy = subset(intervention_params, intervention_key == "cotrimoxazole")$efficacy,
-          eligible_pop = "plhiv",
+          eligible_pop = "new_art_initiations",
           unit_cost = subset(intervention_params, intervention_key == "cotrimoxazole")$unit_cost,
           outcomes = c("mortality")
         ),
@@ -364,10 +367,9 @@ build_intervention_groups <- function(intervention_params){
         ahd_package = list(
           name = "Full AHD package (LAM, CrAg, fluconazole)",
           type = "coverage",
-          unit_label = "% of those with CD4<200",
+          unit_label = "% of PLHIV on treatment with AHD",
           efficacy = subset(intervention_params, intervention_key == "ahd_package")$efficacy,
-          eligible_pop = "advanced_disease",
-          proportion_advanced = subset(intervention_params, intervention_key == "ahd_package")$proportion_advanced,
+          eligible_pop = "on_art_total",
           unit_cost = subset(intervention_params, intervention_key == "ahd_package")$unit_cost,
           outcomes = c("mortality")
         )
@@ -558,7 +560,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # Initialize outcome counters
   infections_averted <- 0
   infant_infections_averted <- 0
-  deaths_averted_interventions <- 0
   positive_tests <- 0
   new_diagnoses <- 0
   re_engagement <- 0
@@ -581,8 +582,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   
   base_test_yield=((populations$undiagnosed+populations$ltfu)/populations$sexually_active)
   base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
-  
-  base_test_yield=0.02 ###UPDATE
   
   #print(paste("BY:",base_test_yield))
   
@@ -616,8 +615,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
     
     if (is.null(intervention_value)) intervention_value <- 0
     if (intervention_value == 0) next
-    # Skip interventions that depend on dynamic art_initiations — handled in second pass below
-    if (intervention$eligible_pop %in% c("new_art_initiations", "advanced_disease")) next
+    
+    # Skip mortality interventions whose eligible population depends on
+    # art_initiations — handled in second pass after that count is finalised
+    if (intervention$eligible_pop %in% c("new_art_initiations", "on_art_total")) next
     
     # Get eligible population
     eligible <- populations[[intervention$eligible_pop]]
@@ -699,14 +700,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
       total_intervention_cost <- total_intervention_cost + 
         number_reached * intervention$unit_cost
       
-    } else if ("mortality" %in% intervention$outcomes) {
-      mortality_rate <- context$aids_deaths_per_year / populations$plhiv
-      deaths_averted_interventions <- deaths_averted_interventions + 
-        number_reached * mortality_rate * intervention$efficacy
-      
-      total_intervention_cost <- total_intervention_cost + 
-        number_reached * intervention$unit_cost
-      
     } else if ("pmtct" %in% intervention$outcomes) {
       mtct_rate <- 0.15
       infant_infections_averted <- infant_infections_averted + 
@@ -720,127 +713,181 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # ========================================================================
   # APPLY CONSTRAINTS - CAP AT REALISTIC MAXIMUMS
   # ========================================================================
-
+  
   
   # Cannot diagnose more people than 95% are undiagnosed
-  new_diagnoses <- min(new_diagnoses, populations$undiagnosed*0.95)
+  new_diagnoses <- min(new_diagnoses, populations$undiagnosed * 0.95)
   
-  # Cannot re-engage more than 95% people than are LTFU
-  re_engagement_testing <- min(re_engagement_testing, populations$ltfu*0.95)
+  # Cannot re-engage more than 95% of LTFU
+  re_engagement_testing <- min(re_engagement_testing, populations$ltfu * 0.95)
+  re_engagement  <- re_engagement_testing
+  positive_tests <- new_diagnoses + re_engagement_testing
   
-  re_engagement=re_engagement_testing
-  #positive tests
-  positive_tests=new_diagnoses+re_engagement_testing
-  
-  # Retention improvement cannot exceed LTFU (since it brings people back)
+  # Retention improvement cannot exceed LTFU
   retention_improvement <- min(retention_improvement, populations$ltfu)
   
-  ###tetsing elements -ART
-  art_inititations_testing=min(art_inititations_testing,average_linkage*(new_diagnoses+re_engagement_testing))
-  art_initiations=art_inititations_testing+art_initiations
+  # ART initiations from testing
+  art_inititations_testing <- min(art_inititations_testing,
+                                  average_linkage * (new_diagnoses + re_engagement_testing))
+  art_initiations <- art_inititations_testing + art_initiations
   
+  # Additional suppressed from testing
+  additional_suppressed_testing <- min(
+    art_initiations * ((context$percent_suppressed * 0.9) / 100),
+    additional_suppressed_testing
+  )
+  additional_suppressed <- additional_suppressed + additional_suppressed_testing
   
-  ###tetsing elements -VS
-  additional_suppressed_testing=min(art_initiations*((context$percent_suppressed * 0.9) / 100),additional_suppressed_testing)
-  additional_suppressed <- additional_suppressed+additional_suppressed_testing
-  #additional_suppressed <- min(additional_suppressed, populations$unsuppressed)
-  
-  # Cannot initiate more people on ART than are diagnosed but not on ART
-  # (including newly diagnosed people)
+  # Cannot initiate more on ART than are diagnosed but not yet on ART
   max_art_initiations <- populations$diagnosed + new_diagnoses - populations$on_art + re_engagement
-  art_initiations <- min(art_initiations, max(0, max_art_initiations))
-
-  # Cannot suppress more people than are on ART but unsuppressed
-  # (including new ART initiations)
+  art_initiations     <- min(art_initiations, max(0, max_art_initiations))
   
+  # Cannot suppress more than are currently unsuppressed on ART (including new initiations)
   max_additional_suppressed <- populations$on_art + art_initiations - populations$suppressed
-  additional_suppressed <- min(additional_suppressed, max(0, max_additional_suppressed))
-  # ========================================================================
-  # CALCULATE END-OF-YEAR CASCADE VALUES
-  # ========================================================================
-  
-  # Calculate cascade before mortality
-  end_diagnosed_pre_mort <- populations$diagnosed + new_diagnoses
-  end_on_art_pre_mort <- populations$on_art + art_initiations + retention_improvement
-  end_suppressed_pre_mort <- populations$suppressed + additional_suppressed
-  
-  # Apply floors - can't drop below starting populations
-  end_diagnosed_pre_mort <- max(end_diagnosed_pre_mort, populations$diagnosed)
-  end_on_art_pre_mort <- max(end_on_art_pre_mort, populations$on_art)
-  end_suppressed_pre_mort <- max(end_suppressed_pre_mort, populations$suppressed)
-  
-  # Apply ceilings - can't exceed biological maximums
-  end_diagnosed_pre_mort <- min(end_diagnosed_pre_mort, populations$plhiv)
-  end_on_art_pre_mort <- min(end_on_art_pre_mort, end_diagnosed_pre_mort)
-  end_suppressed_pre_mort <- min(end_suppressed_pre_mort, end_on_art_pre_mort)
+  additional_suppressed     <- min(additional_suppressed, max(0, max_additional_suppressed))
   
   # ========================================================================
-  # CALCULATE HIV-RELATED MORTALITY BY CASCADE STAGE
+  # SECOND PASS: Mortality interventions (cotrimoxazole, ahd_package)
+  # Eligible populations depend on finalised art_initiations.
+  # Outputs are coverage fractions used to modulate the AHD mortality rate below.
   # ========================================================================
   
-  # People in each stage (before mortality) - ensure non-negative
-  diagnosed_not_on_art <- max(0, end_diagnosed_pre_mort - end_on_art_pre_mort)
-  on_art_not_suppressed <- max(0, end_on_art_pre_mort - end_suppressed_pre_mort)
-  on_art_suppressed <- max(0, end_suppressed_pre_mort)
+  # Total on-ART population this year (new initiations + established)
+  on_art_total_est <- populations$on_art + art_initiations + retention_improvement
   
-  # Calculate deaths by stage
-  undiagnosed_count <- max(0, populations$plhiv - end_diagnosed_pre_mort)
-  deaths_undiagnosed <- undiagnosed_count * MORTALITY_RATES$undiagnosed_or_untreated
-  deaths_diagnosed_not_art <- diagnosed_not_on_art * MORTALITY_RATES$undiagnosed_or_untreated
-  deaths_on_art_not_suppressed <- on_art_not_suppressed * MORTALITY_RATES$on_art_not_suppressed
-  deaths_on_art_suppressed <- on_art_suppressed * MORTALITY_RATES$suppressed
+  cotrix_eff_reduction  <- 0  # coverage × efficacy: reduces base rate for new initiations
+  oi_eff_reduction      <- 0  # coverage × efficacy: reduces base rate for new initiations
+  ahd_pkg_eff_reduction <- 0  # coverage × efficacy: reduces AHD rate for all on treatment
   
-  # Total HIV-related deaths (now includes undiagnosed)
-  total_hiv_deaths <- deaths_undiagnosed + deaths_diagnosed_not_art + 
-    deaths_on_art_not_suppressed + deaths_on_art_suppressed
-  
-  # Deaths averted by interventions (additional to baseline mortality)
-  total_deaths_averted <- deaths_averted_interventions
-  
-  # Net deaths this year
-  end_deaths <- max(0, total_hiv_deaths - deaths_averted_interventions)
+  for (int_key in names(all_interventions)) {
+    intervention <- all_interventions[[int_key]]
+    if (!(intervention$eligible_pop %in% c("new_art_initiations", "on_art_total"))) next
+    
+    intervention_value <- interventions[[int_key]]
+    if (is.null(intervention_value) || intervention_value == 0) next
+    
+    eligible <- if (intervention$eligible_pop == "new_art_initiations") {
+      art_initiations
+    } else {
+      on_art_total_est
+    }
+    
+    number_reached <- min(eligible * (intervention_value / 100), eligible)
+    coverage_frac  <- if (eligible > 0) number_reached / eligible else 0
+    
+    if (int_key == "cotrimoxazole") {
+      cotrix_eff_reduction  <- coverage_frac * intervention$efficacy
+    } else if (int_key == "oi_management") {
+      oi_eff_reduction      <- coverage_frac * intervention$efficacy
+    } else if (int_key == "ahd_package") {
+      ahd_pkg_eff_reduction <- coverage_frac * intervention$efficacy
+    }
+    
+    total_intervention_cost <- total_intervention_cost + number_reached * intervention$unit_cost
+  }
   
   # ========================================================================
-  # CALCULATE END-OF-YEAR CASCADE VALUES (AFTER MORTALITY)
+  # CASCADE POPULATIONS (PRE-MORTALITY)
   # ========================================================================
   
-  # Simple approach: subtract deaths proportionally from each group
-  # If a group has 0 people, no deaths occur from that group
+  end_diagnosed_pre_mort  <- min(max(populations$diagnosed + new_diagnoses,
+                                     populations$diagnosed), populations$plhiv)
+  end_on_art_pre_mort     <- min(max(populations$on_art + art_initiations + retention_improvement,
+                                     populations$on_art), end_diagnosed_pre_mort)
+  end_suppressed_pre_mort <- min(max(populations$suppressed + additional_suppressed,
+                                     populations$suppressed), end_on_art_pre_mort)
   
-  remaining_diagnosed_not_on_art <- max(0, diagnosed_not_on_art - deaths_diagnosed_not_art)
-  remaining_on_art_not_suppressed <- max(0, on_art_not_suppressed - deaths_on_art_not_suppressed)
-  remaining_suppressed <- max(0, on_art_suppressed - deaths_on_art_suppressed)
+  # ========================================================================
+  # FIVE CASCADE GROUPS (mutually exclusive, before mortality)
+  # ========================================================================
   
-  # Rebuild cascade from bottom up
-  end_suppressed <- remaining_suppressed
-  end_on_art <- remaining_on_art_not_suppressed + remaining_suppressed
-  end_diagnosed <- remaining_diagnosed_not_on_art + end_on_art
+  n_undiagnosed        <- max(0, populations$plhiv - end_diagnosed_pre_mort)
+  n_diagnosed_not_art  <- max(0, end_diagnosed_pre_mort  - end_on_art_pre_mort)
+  n_new_initiations    <- min(art_initiations, end_on_art_pre_mort)
+  n_established_on_art <- max(0, end_on_art_pre_mort - n_new_initiations)
+  # Suppression attributed to established patients (new initiates counted at new_art rate)
+  n_established_supp   <- min(end_suppressed_pre_mort, n_established_on_art)
+  n_established_treated<- max(0, n_established_on_art - n_established_supp)
   
-  # Ensure cascade consistency (should already be true, but just in case)
+  # ========================================================================
+  # EFFECTIVE AHD MORTALITY RATES (intervention-adjusted where applicable)
+  # ========================================================================
+  
+  prop_ahd <- MORTALITY_RATES$prop_ahd
+  
+  # Untreated groups: no interventions reach them
+  eff_base_rate_untreated <- MORTALITY_RATES$untreated_undiagnosed
+  eff_ahd_rate_untreated  <- MORTALITY_RATES$ahd
+  
+  # New initiations: cotrimoxazole + OI management reduce the base rate
+  #                  AHD package reduces the AHD rate
+  eff_base_rate_new_init <- MORTALITY_RATES$new_art_initiations *
+    (1 - cotrix_eff_reduction) * (1 - oi_eff_reduction)
+  eff_ahd_rate_new_init  <- MORTALITY_RATES$ahd *
+    (1 - ahd_pkg_eff_reduction)
+  
+  # Established on ART: AHD package reduces the AHD rate only; base rates unchanged
+  eff_ahd_rate_established <- MORTALITY_RATES$ahd *
+    (1 - ahd_pkg_eff_reduction)
+  
+  # ========================================================================
+  # DEATHS BY GROUP
+  # Each person appears in exactly one group.
+  # Within each group: 80% face base rate, 20% face effective AHD rate.
+  # ========================================================================
+  
+  calc_deaths <- function(n, base_rate, ahd_rate, prop_ahd) {
+    n * ((1 - prop_ahd) * base_rate + prop_ahd * ahd_rate)
+  }
+  
+  deaths_undiagnosed         <- calc_deaths(n_undiagnosed,         eff_base_rate_untreated,             eff_ahd_rate_untreated,   prop_ahd)
+  deaths_diagnosed_not_art   <- calc_deaths(n_diagnosed_not_art,   eff_base_rate_untreated,             eff_ahd_rate_untreated,   prop_ahd)
+  deaths_new_initiations     <- calc_deaths(n_new_initiations,     eff_base_rate_new_init,              eff_ahd_rate_new_init,    prop_ahd)
+  deaths_established_treated <- calc_deaths(n_established_treated, MORTALITY_RATES$treated,             eff_ahd_rate_established, prop_ahd)
+  deaths_established_supp    <- calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed,          eff_ahd_rate_established, prop_ahd)
+  
+  total_hiv_deaths <- deaths_undiagnosed + deaths_diagnosed_not_art +
+    deaths_new_initiations + deaths_established_treated + deaths_established_supp
+  
+  # Deaths averted = difference between unadjusted (no interventions) and adjusted deaths
+  # Only on-treatment groups are affected by interventions
+  unadjusted_deaths_on_treatment <-
+    calc_deaths(n_new_initiations,     MORTALITY_RATES$new_art_initiations, MORTALITY_RATES$ahd, prop_ahd) +
+    calc_deaths(n_established_treated, MORTALITY_RATES$treated,             MORTALITY_RATES$ahd, prop_ahd) +
+    calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed,          MORTALITY_RATES$ahd, prop_ahd)
+  
+  adjusted_deaths_on_treatment <- deaths_new_initiations + deaths_established_treated + deaths_established_supp
+  
+  total_deaths_averted <- max(0, unadjusted_deaths_on_treatment - adjusted_deaths_on_treatment)
+  end_deaths           <- max(0, total_hiv_deaths)
+  
+  # ========================================================================
+  # CASCADE (POST-MORTALITY)
+  # ========================================================================
+  
+  remaining_undiagnosed      <- max(0, n_undiagnosed        - deaths_undiagnosed)
+  remaining_diagnosed_not_art<- max(0, n_diagnosed_not_art  - deaths_diagnosed_not_art)
+  remaining_new_init         <- max(0, n_new_initiations     - deaths_new_initiations)
+  remaining_est_treated      <- max(0, n_established_treated - deaths_established_treated)
+  remaining_est_supp         <- max(0, n_established_supp    - deaths_established_supp)
+  
+  end_suppressed <- remaining_est_supp
+  end_on_art     <- remaining_est_treated + remaining_est_supp + remaining_new_init
+  end_diagnosed  <- remaining_diagnosed_not_art + end_on_art
+  end_plhiv      <- max(0, remaining_undiagnosed + end_diagnosed)
+  
+  # Ensure cascade consistency
   end_suppressed <- min(end_suppressed, end_on_art)
-  end_on_art <- min(end_on_art, end_diagnosed)
-  end_plhiv <- max(0, populations$plhiv - deaths_undiagnosed - deaths_diagnosed_not_art - 
-                     deaths_on_art_not_suppressed - deaths_on_art_suppressed)
-  
+  end_on_art     <- min(end_on_art, end_diagnosed)
   
   # ========================================================================
   # CALCULATE END-OF-YEAR INFECTIONS and PREVENTION interventions
   # ========================================================================
-    
-  infectious_prop = (populations$plhiv-end_suppressed)/populations$total
   
-  #print(populations)
-  #print(paste("Inf prop ",infectious_prop))
-  force_inf=0.1###UPDATE
-  
-  force_inf=context$new_infections_per_year/(populations$plhiv-populations$suppressed)
-  #print(paste("force inf ",force_inf))
-  
-  unprotected_pop=populations$hiv_negative
-  #print(paste("unprotected pop ",unprotected_pop))
-  
-  infections=unprotected_pop*force_inf*infectious_prop
-  #print(paste("Inf",infections))
+  infectious_prop <- (populations$plhiv - end_suppressed) / populations$total
+  force_inf       <- context$new_infections_per_year / (populations$plhiv - populations$suppressed)
+  unprotected_pop <- populations$hiv_negative
+  infections      <- unprotected_pop * force_inf * infectious_prop
   
   # Process prevention intervention
   for (int_key in names(all_interventions)) {
@@ -957,9 +1004,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
     # Mortality breakdown
     deaths_undiagnosed = round(deaths_undiagnosed),
     deaths_diagnosed_not_art = round(deaths_diagnosed_not_art),
-    deaths_on_art_not_suppressed = round(deaths_on_art_not_suppressed),
-    deaths_on_art_suppressed = round(deaths_on_art_suppressed),
-    total_hiv_deaths_before_interventions = round(total_hiv_deaths + deaths_averted_interventions),
+    deaths_new_initiations = round(deaths_new_initiations),
+    deaths_established_treated = round(deaths_established_treated),
+    deaths_established_suppressed = round(deaths_established_supp),
+    total_hiv_deaths_before_interventions = round(total_hiv_deaths + total_deaths_averted),
     
     # End-of-year epidemiological outcomes (absolute values)
     end_new_infections = round(end_new_infections),
