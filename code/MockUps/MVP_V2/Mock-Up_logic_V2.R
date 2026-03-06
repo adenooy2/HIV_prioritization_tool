@@ -582,6 +582,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   base_test_yield=((populations$undiagnosed+populations$ltfu)/populations$sexually_active)
   base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
   
+  base_test_yield=0.02 ###UPDATE
+  
   #print(paste("BY:",base_test_yield))
   
   # # Calculate proportion of positive tests that are new diagnoses vs re-engagement
@@ -614,6 +616,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
     
     if (is.null(intervention_value)) intervention_value <- 0
     if (intervention_value == 0) next
+    # Skip interventions that depend on dynamic art_initiations — handled in second pass below
+    if (intervention$eligible_pop %in% c("new_art_initiations", "advanced_disease")) next
     
     # Get eligible population
     eligible <- populations[[intervention$eligible_pop]]
