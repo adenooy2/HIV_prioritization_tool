@@ -28,7 +28,13 @@ MORTALITY_RATES <- list(
   treated               = 0.008, # established on ART, not virally suppressed
   suppressed            = 0.003, # established on ART, virally suppressed
   ahd                   = 0.20,  # advanced HIV disease (CD4 < 200), any stage
-  prop_ahd              = 0.20   # proportion with AHD in each cascade group
+  prop_ahd = list(
+    undiagnosed        = 0.20,   # undiagnosed PLHIV
+    diagnosed_not_art  = 0.20,   # diagnosed but not on ART
+    new_initiations    = 0.20,   # first year on ART
+    established_treated= 0.00,   # established on ART, not suppressed
+    established_supp   = 0.00    # established on ART, suppressed
+  )
 )
 # ============================================================================
 # LOAD DATA
@@ -367,9 +373,9 @@ build_intervention_groups <- function(intervention_params){
         ahd_package = list(
           name = "Full AHD package (LAM, CrAg, fluconazole)",
           type = "coverage",
-          unit_label = "% of PLHIV on treatment with AHD",
+          unit_label = "% of AHD-diagnosed new initiations",
           efficacy = subset(intervention_params, intervention_key == "ahd_package")$efficacy,
-          eligible_pop = "on_art_total",
+          eligible_pop = "new_art_initiations",
           unit_cost = subset(intervention_params, intervention_key == "ahd_package")$unit_cost,
           outcomes = c("mortality")
         )
@@ -747,43 +753,67 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   additional_suppressed     <- min(additional_suppressed, max(0, max_additional_suppressed))
   
   # ========================================================================
-  # SECOND PASS: Mortality interventions (cotrimoxazole, ahd_package)
-  # Eligible populations depend on finalised art_initiations.
-  # Outputs are coverage fractions used to modulate the AHD mortality rate below.
+  # SECOND PASS: Mortality interventions
+  # All depend on finalised art_initiations.
+  #
+  # Chain for new initiations:
+  #   cd4_tested    = art_initiations × cd4_coverage
+  #   ahd_diagnosed = cd4_tested × prop_ahd$new_initiations
+  #   AHD package effect gated by: cd4_coverage × ahd_pkg_coverage × ahd_pkg_efficacy
+  #
+  # Cotrimoxazole and OI management apply to all new initiations (no CD4 test required).
+  # AHD package applies only to those diagnosed with AHD via CD4 test.
   # ========================================================================
   
-  # Total on-ART population this year (new initiations + established)
   on_art_total_est <- populations$on_art + art_initiations + retention_improvement
   
-  cotrix_eff_reduction  <- 0  # coverage × efficacy: reduces base rate for new initiations
-  oi_eff_reduction      <- 0  # coverage × efficacy: reduces base rate for new initiations
-  ahd_pkg_eff_reduction <- 0  # coverage × efficacy: reduces AHD rate for all on treatment
+  # Initialise scalars
+  cd4_coverage_frac     <- 0   # proportion of new initiates who receive a CD4 test
+  cotrix_eff_reduction  <- 0   # reduces base mortality rate for new initiations
+  oi_eff_reduction      <- 0   # reduces base mortality rate for new initiations
+  ahd_pkg_eff_reduction <- 0   # reduces AHD mortality rate, gated by CD4 diagnosis
   
-  for (int_key in names(all_interventions)) {
-    intervention <- all_interventions[[int_key]]
-    if (!(intervention$eligible_pop %in% c("new_art_initiations", "on_art_total"))) next
-    
-    intervention_value <- interventions[[int_key]]
-    if (is.null(intervention_value) || intervention_value == 0) next
-    
-    eligible <- if (intervention$eligible_pop == "new_art_initiations") {
-      art_initiations
-    } else {
-      on_art_total_est
-    }
-    
-    number_reached <- min(eligible * (intervention_value / 100), eligible)
-    coverage_frac  <- if (eligible > 0) number_reached / eligible else 0
-    
-    if (int_key == "cotrimoxazole") {
-      cotrix_eff_reduction  <- coverage_frac * intervention$efficacy
-    } else if (int_key == "oi_management") {
-      oi_eff_reduction      <- coverage_frac * intervention$efficacy
-    } else if (int_key == "ahd_package") {
-      ahd_pkg_eff_reduction <- coverage_frac * intervention$efficacy
-    }
-    
-    total_intervention_cost <- total_intervention_cost + number_reached * intervention$unit_cost
+  # Collect intervention values first (need cd4 before ahd_package)
+  cd4_value     <- ifelse(is.null(interventions$cd4_testing),    0, interventions$cd4_testing)
+  cotrix_value  <- ifelse(is.null(interventions$cotrimoxazole),  0, interventions$cotrimoxazole)
+  oi_value      <- ifelse(is.null(interventions$oi_management),  0, interventions$oi_management)
+  ahd_pkg_value <- ifelse(is.null(interventions$ahd_package),    0, interventions$ahd_package)
+  
+  # ── CD4 testing ──────────────────────────────────────────────────────────
+  if (cd4_value > 0 && art_initiations > 0) {
+    n_cd4_tested      <- min(art_initiations * (cd4_value / 100), art_initiations)
+    cd4_coverage_frac <- n_cd4_tested / art_initiations
+    cd4_cost          <- n_cd4_tested * all_interventions$cd4_testing$unit_cost
+    total_intervention_cost <- total_intervention_cost + cd4_cost
+  }
+  
+  # ── Cotrimoxazole (all new initiations, no CD4 required) ─────────────────
+  if (cotrix_value > 0 && art_initiations > 0) {
+    n_cotrix          <- min(art_initiations * (cotrix_value / 100), art_initiations)
+    cotrix_cov_frac   <- n_cotrix / art_initiations
+    cotrix_eff_reduction <- cotrix_cov_frac * all_interventions$cotrimoxazole$efficacy
+    total_intervention_cost <- total_intervention_cost + n_cotrix * all_interventions$cotrimoxazole$unit_cost
+  }
+  
+  # ── OI management (all new initiations, no CD4 required) ─────────────────
+  if (oi_value > 0 && art_initiations > 0) {
+    n_oi              <- min(art_initiations * (oi_value / 100), art_initiations)
+    oi_cov_frac       <- n_oi / art_initiations
+    oi_eff_reduction  <- oi_cov_frac * all_interventions$oi_management$efficacy
+    total_intervention_cost <- total_intervention_cost + n_oi * all_interventions$oi_management$unit_cost
+  }
+  
+  # ── AHD package (only those diagnosed with AHD via CD4 test) ─────────────
+  if (ahd_pkg_value > 0 && art_initiations > 0) {
+    prop_ahd_new_init  <- MORTALITY_RATES$prop_ahd$new_initiations
+    n_ahd_diagnosed    <- art_initiations * cd4_coverage_frac * prop_ahd_new_init
+    n_ahd_pkg_reached  <- min(n_ahd_diagnosed * (ahd_pkg_value / 100), n_ahd_diagnosed)
+    # Express as fraction of the full new-initiation AHD subgroup for rate modulation
+    ahd_pkg_cov_frac_of_ahd <- if (n_ahd_diagnosed > 0) n_ahd_pkg_reached / n_ahd_diagnosed else 0
+    # Gate effect by CD4 coverage: only diagnosed AHD individuals can benefit
+    ahd_pkg_eff_reduction <- cd4_coverage_frac * ahd_pkg_cov_frac_of_ahd *
+      all_interventions$ahd_package$efficacy
+    total_intervention_cost <- total_intervention_cost + n_ahd_pkg_reached * all_interventions$ahd_package$unit_cost
   }
   
   # ========================================================================
@@ -833,18 +863,18 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # ========================================================================
   # DEATHS BY GROUP
   # Each person appears in exactly one group.
-  # Within each group: 80% face base rate, 20% face effective AHD rate.
+  # Within each group: (1 - prop_ahd) face base rate, prop_ahd face AHD rate.
   # ========================================================================
   
   calc_deaths <- function(n, base_rate, ahd_rate, prop_ahd) {
     n * ((1 - prop_ahd) * base_rate + prop_ahd * ahd_rate)
   }
   
-  deaths_undiagnosed         <- calc_deaths(n_undiagnosed,         eff_base_rate_untreated,             eff_ahd_rate_untreated,   prop_ahd)
-  deaths_diagnosed_not_art   <- calc_deaths(n_diagnosed_not_art,   eff_base_rate_untreated,             eff_ahd_rate_untreated,   prop_ahd)
-  deaths_new_initiations     <- calc_deaths(n_new_initiations,     eff_base_rate_new_init,              eff_ahd_rate_new_init,    prop_ahd)
-  deaths_established_treated <- calc_deaths(n_established_treated, MORTALITY_RATES$treated,             eff_ahd_rate_established, prop_ahd)
-  deaths_established_supp    <- calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed,          eff_ahd_rate_established, prop_ahd)
+  deaths_undiagnosed         <- calc_deaths(n_undiagnosed,         eff_base_rate_untreated,    eff_ahd_rate_untreated,   prop_ahd$undiagnosed)
+  deaths_diagnosed_not_art   <- calc_deaths(n_diagnosed_not_art,   eff_base_rate_untreated,    eff_ahd_rate_untreated,   prop_ahd$diagnosed_not_art)
+  deaths_new_initiations     <- calc_deaths(n_new_initiations,     eff_base_rate_new_init,     eff_ahd_rate_new_init,    prop_ahd$new_initiations)
+  deaths_established_treated <- calc_deaths(n_established_treated, MORTALITY_RATES$treated,    eff_ahd_rate_established, prop_ahd$established_treated)
+  deaths_established_supp    <- calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed, eff_ahd_rate_established, prop_ahd$established_supp)
   
   total_hiv_deaths <- deaths_undiagnosed + deaths_diagnosed_not_art +
     deaths_new_initiations + deaths_established_treated + deaths_established_supp
@@ -852,9 +882,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # Deaths averted = difference between unadjusted (no interventions) and adjusted deaths
   # Only on-treatment groups are affected by interventions
   unadjusted_deaths_on_treatment <-
-    calc_deaths(n_new_initiations,     MORTALITY_RATES$new_art_initiations, MORTALITY_RATES$ahd, prop_ahd) +
-    calc_deaths(n_established_treated, MORTALITY_RATES$treated,             MORTALITY_RATES$ahd, prop_ahd) +
-    calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed,          MORTALITY_RATES$ahd, prop_ahd)
+    calc_deaths(n_new_initiations,     MORTALITY_RATES$new_art_initiations, MORTALITY_RATES$ahd, prop_ahd$new_initiations) +
+    calc_deaths(n_established_treated, MORTALITY_RATES$treated,             MORTALITY_RATES$ahd, prop_ahd$established_treated) +
+    calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed,          MORTALITY_RATES$ahd, prop_ahd$established_supp)
   
   adjusted_deaths_on_treatment <- deaths_new_initiations + deaths_established_treated + deaths_established_supp
   
