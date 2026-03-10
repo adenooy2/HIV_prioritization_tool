@@ -45,6 +45,12 @@ MORTALITY_RATES <- list(
 ANNUAL_LTFU_RATE_SUPPRESSED   <- 0.05   # 5%  of suppressed on ART become LTFU per year
 ANNUAL_LTFU_RATE_UNSUPPRESSED <- 0.15   # 15% of unsuppressed on ART become LTFU per year
 
+# Proportion of *retained* unsuppressed patients who achieve viral suppression
+# as a direct result of the improved adherence that prevented their dropout.
+# i.e. the intervention both keeps them in care AND improves their adherence enough
+# to suppress. ###UPDATE based on literature
+RETENTION_SUPPRESSION_RATE <- 0.30
+
 # ============================================================================
 # LOAD DATA
 # ============================================================================
@@ -596,8 +602,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   art_initiations <- 0
   art_inititations_testing <- 0
   # Retention: two distinct counters replacing the old single retention_improvement
-  ltfu_prevented <- 0   # people kept on ART by prevention interventions (MMD, adherence)
-  ltfu_reengaged <- 0   # LTFU people brought back by tracking/tracing
+  # ltfu_retained_frac: cumulative fraction of at-risk people retained, built
+  #   multiplicatively across prevention interventions so the same person cannot
+  #   be counted twice (MMD + adherence counseling acting on the same pool)
+  ltfu_retained_frac <- 0  # grows as: 1 - prod(1 - coverage_i * efficacy_i)
+  ltfu_prevented     <- 0  # converted to people after the loop (ltfu_new * ltfu_retained_frac)
+  ltfu_reengaged     <- 0  # LTFU people brought back by tracking/tracing
   total_intervention_cost <- 0
   tests_performed <- 0
   
@@ -705,7 +715,19 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
       if (intervention$eligible_pop == "ltfu") {
         ltfu_reengaged <- ltfu_reengaged + number_reached * intervention$efficacy
       } else {
-        ltfu_prevented <- ltfu_prevented + number_reached * intervention$efficacy
+        # Prevention interventions: COST applies to everyone reached (all on ART),
+        # but EFFECT can only act on the at-risk fraction (those who would drop out).
+        # Built multiplicatively so overlapping interventions (MMD + adherence
+        # counseling) cannot double-count the same at-risk person:
+        #   marginal_retained = (fraction not yet retained) * coverage * efficacy
+        # where coverage = fraction of on_art population reached by this intervention.
+        coverage_frac <- ifelse(
+          populations$on_art > 0,
+          number_reached / populations$on_art,
+          0
+        )
+        marginal_retained  <- (1 - ltfu_retained_frac) * coverage_frac * intervention$efficacy
+        ltfu_retained_frac <- ltfu_retained_frac + marginal_retained
       }
       
       total_intervention_cost <- total_intervention_cost +
@@ -732,6 +754,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # Cannot diagnose more people than 95% are undiagnosed
   new_diagnoses <- min(new_diagnoses, populations$undiagnosed * 0.95)
   
+  # ── LTFU PREVENTION: convert retained fraction to people ─────────────────
+  # ltfu_retained_frac is the multiplicatively-combined fraction of the at-risk
+  # on-ART population that prevention interventions will retain.
+  # Apply to the incident LTFU pool (those actually at risk of dropping out).
+  ltfu_retained_frac <- min(ltfu_retained_frac, 1)  # cap at 100%
+  ltfu_prevented     <- populations$ltfu_new * ltfu_retained_frac
+  
   # ── LTFU FLOW ─────────────────────────────────────────────────────────────
   # Prevention interventions reduce incident LTFU, split proportionally across
   # the suppressed and unsuppressed dropout sub-groups.
@@ -745,6 +774,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   
   ltfu_prevented_supp   <- ltfu_prevented * prop_ltfu_supp
   ltfu_prevented_unsupp <- ltfu_prevented * prop_ltfu_unsupp
+  
+  # Suppression gain from retention: unsuppressed patients who were kept in care
+  # by prevention interventions have improved adherence; a proportion will achieve
+  # viral suppression. Added to additional_suppressed here — BEFORE the
+  # max_additional_suppressed cap — so it is correctly bounded downstream.
+  additional_suppressed <- additional_suppressed +
+    ltfu_prevented_unsupp * RETENTION_SUPPRESSION_RATE
   
   # Net incident LTFU after prevention interventions, by suppression status
   suppressed_ltfu   <- max(0, populations$ltfu_new_suppressed   - ltfu_prevented_supp)
@@ -781,10 +817,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   max_art_initiations <- populations$diagnosed + new_diagnoses - effective_on_art + re_engagement
   art_initiations     <- min(art_initiations, max(0, max_art_initiations))
   
-  # Cannot suppress more than are currently unsuppressed on ART
-  # (after LTFU losses, net unsuppressed on ART is also reduced)
-  max_additional_suppressed <- effective_on_art + art_initiations - populations$suppressed +
-    suppressed_ltfu   # suppressed who became LTFU are no longer counted as suppressed
+  # Cannot suppress more than are currently unsuppressed on ART.
+  # Denominator = everyone on ART at end of year (effective_on_art + new initiations
+  # + re-engaged) minus those already suppressed (net of LTFU losses).
+  # ltfu_reengaged must be included: they are on ART and some were previously
+  # suppressed before dropping out, so the ceiling must account for them.
+  max_additional_suppressed <- effective_on_art + art_initiations + ltfu_reengaged -
+    populations$suppressed + suppressed_ltfu
   additional_suppressed <- min(additional_suppressed, max(0, max_additional_suppressed))
   
   # ========================================================================
