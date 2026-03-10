@@ -36,6 +36,15 @@ MORTALITY_RATES <- list(
     established_supp   = 0.00    # established on ART, suppressed
   )
 )
+
+# ============================================================================
+# LTFU RATES BY SUPPRESSION STATUS (UPDATE THESE BASED ON LITERATURE)
+# Suppressed patients: stable, feel well, lower side-effect burden -> lower dropout
+# Unsuppressed patients: treatment struggling, side effects, stigma -> higher dropout
+# ============================================================================
+ANNUAL_LTFU_RATE_SUPPRESSED   <- 0.05   # 5%  of suppressed on ART become LTFU per year
+ANNUAL_LTFU_RATE_UNSUPPRESSED <- 0.15   # 15% of unsuppressed on ART become LTFU per year
+
 # ============================================================================
 # LOAD DATA
 # ============================================================================
@@ -395,10 +404,17 @@ calculate_populations <- function(context) {
   diagnosed <- plhiv * (context$percent_diagnosed/100)
   on_art <- diagnosed * (context$percent_on_art / 100)
   suppressed <- on_art * (context$percent_suppressed / 100)
+  unsuppressed_on_art <- on_art - suppressed
   hiv_negative <- context$total_population - plhiv
   sexually_active <- context$total_population * 0.60
   births <- (context$total_population * context$birth_rate)/1000
   hiv_positive_births <- births * context$hiv_prevalence * 1.5
+  
+  # LTFU flow: people dropping off ART during the year, split by suppression status.
+  # Suppressed patients have lower dropout (stable, feel well, fewer side effects).
+  # Unsuppressed patients have higher dropout (side effects, treatment fatigue, stigma).
+  ltfu_new_suppressed   <- suppressed       * ANNUAL_LTFU_RATE_SUPPRESSED
+  ltfu_new_unsuppressed <- unsuppressed_on_art * ANNUAL_LTFU_RATE_UNSUPPRESSED
   
   list(
     total = context$total_population,
@@ -413,8 +429,13 @@ calculate_populations <- function(context) {
     on_art_stable = on_art * 0.85,
     on_art_suspected_failure = on_art * 0.08,
     suppressed = suppressed,
-    unsuppressed = on_art - suppressed,
+    unsuppressed = unsuppressed_on_art,
+    # Prevalent LTFU stock (people already lost before the year begins)
     ltfu = on_art * 0.15,
+    # Incident LTFU flow (people becoming LTFU during the year), by suppression status
+    ltfu_new_suppressed   = ltfu_new_suppressed,
+    ltfu_new_unsuppressed = ltfu_new_unsuppressed,
+    ltfu_new              = ltfu_new_suppressed + ltfu_new_unsuppressed,
     high_risk_negative = hiv_negative * 0.05,
     uncircumcised_males = (hiv_negative * context$prop_pop_male/100) * 0.25,
     sexually_active_negative = (hiv_negative * 0.60),
@@ -571,39 +592,25 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   re_engagement <- 0
   re_engagement_testing <- 0
   additional_suppressed <- 0
-  additional_suppressed_testing=0
+  additional_suppressed_testing <- 0
   art_initiations <- 0
-  art_inititations_testing=0
-  retention_improvement <- 0
+  art_inititations_testing <- 0
+  # Retention: two distinct counters replacing the old single retention_improvement
+  ltfu_prevented <- 0   # people kept on ART by prevention interventions (MMD, adherence)
+  ltfu_reengaged <- 0   # LTFU people brought back by tracking/tracing
   total_intervention_cost <- 0
   tests_performed <- 0
   
   # Calculate dynamic testing yield
   # Yield = probability that a test is positive
   # This is based on undiagnosed (true new positives) + LTFU (re-engagement)
-  # undiagnosed_yield <- populations$undiagnosed / populations$sexually_active
-  # ltfu_yield <- populations$ltfu / populations$sexually_active
-  # base_test_yield <- (undiagnosed_yield + ltfu_yield) * 0.9
-  # 
-  
-  base_test_yield=((populations$undiagnosed+populations$ltfu)/populations$sexually_active)
+  base_test_yield <- ((populations$undiagnosed + populations$ltfu) / populations$sexually_active)
   base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
   
-  #print(paste("BY:",base_test_yield))
-  
-  # # Calculate proportion of positive tests that are new diagnoses vs re-engagement
-  # if ((populations$undiagnosed + populations$ltfu) > 0) {
-  #   prop_new_dx <- populations$undiagnosed / (populations$undiagnosed + populations$ltfu)
-  #   prop_reeng <- populations$ltfu / (populations$undiagnosed + populations$ltfu)
-  # } else {
-  #   prop_new_dx <- 0.5
-  #   prop_reeng <- 0.5
-  # }
-  
   prop_new_dx <- 0.7 ###UPDATE
-  prop_reeng <- (1-prop_new_dx) ##UPDATE
+  prop_reeng  <- (1 - prop_new_dx) ###UPDATE
   
-  average_linkage=0.9
+  average_linkage <- 0.9
   
   # Flatten intervention structure
   all_interventions <- list()
@@ -658,9 +665,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
       
       # Split into new diagnoses vs re-engagement based on pool composition
       new_dx <- pos_tests * prop_new_dx
-      re_eng <- pos_tests * prop_reeng
+      re_eng  <- pos_tests * prop_reeng
       
-      new_diagnoses <- new_diagnoses + new_dx
+      new_diagnoses       <- new_diagnoses + new_dx
       re_engagement_testing <- re_engagement_testing + re_eng
       
       # ART initiations based on linkage rate
@@ -668,50 +675,52 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
       linked <- pos_tests * linkage_rate
       art_inititations_testing <- art_inititations_testing + linked
       
-      additional_suppressed_testing= additional_suppressed_testing + 
+      additional_suppressed_testing <- additional_suppressed_testing +
         linked * ((context$percent_suppressed * 0.9) / 100)
       
-      # # Additional suppressed
-      # additional_suppressed <- additional_suppressed + 
-      #   linked * ((context$percent_suppressed * 0.9) / 100)
-      
       # Costs
-      total_intervention_cost <- total_intervention_cost + 
+      total_intervention_cost <- total_intervention_cost +
         (number_reached * intervention$unit_cost + linked * intervention$linkage_cost)
       
-    }  else if ("infant_infections" %in% intervention$outcomes) {
+    } else if ("infant_infections" %in% intervention$outcomes) {
       infant_incidence_rate <- 0.15 ####UPDATE
-      infant_infections_averted <- infant_infections_averted + 
+      infant_infections_averted <- infant_infections_averted +
         number_reached * infant_incidence_rate * intervention$efficacy
       
-      total_intervention_cost <- total_intervention_cost + 
+      total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
       
-    }else if ("viral_suppression" %in% intervention$outcomes) {
-      additional_suppressed <- additional_suppressed + 
-        number_reached*(1-context$percent_suppressed/100)* intervention$efficacy
+    } else if ("viral_suppression" %in% intervention$outcomes) {
+      additional_suppressed <- additional_suppressed +
+        number_reached * (1 - context$percent_suppressed / 100) * intervention$efficacy
       
-      total_intervention_cost <- total_intervention_cost + 
+      total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
       
-    }
-    else if ("retention" %in% intervention$outcomes) {
-      retention_improvement <- retention_improvement + 
-        number_reached * intervention$efficacy
+    } else if ("retention" %in% intervention$outcomes) {
+      # ── Two distinct retention pathways ──────────────────────────────────
+      # tracking_tracing (eligible_pop == "ltfu"): re-engages people already LTFU
+      # MMD / adherence_counseling (eligible_pop != "ltfu"): prevents people
+      #   from becoming LTFU in the first place
+      if (intervention$eligible_pop == "ltfu") {
+        ltfu_reengaged <- ltfu_reengaged + number_reached * intervention$efficacy
+      } else {
+        ltfu_prevented <- ltfu_prevented + number_reached * intervention$efficacy
+      }
       
-      total_intervention_cost <- total_intervention_cost + 
+      total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
       
     } else if ("ahd_screening" %in% intervention$outcomes) {
-      total_intervention_cost <- total_intervention_cost + 
+      total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
       
     } else if ("pmtct" %in% intervention$outcomes) {
       mtct_rate <- 0.15
-      infant_infections_averted <- infant_infections_averted + 
+      infant_infections_averted <- infant_infections_averted +
         number_reached * mtct_rate * 0.30
       
-      total_intervention_cost <- total_intervention_cost + 
+      total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
     }
   }
@@ -720,19 +729,41 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # APPLY CONSTRAINTS - CAP AT REALISTIC MAXIMUMS
   # ========================================================================
   
-  
   # Cannot diagnose more people than 95% are undiagnosed
   new_diagnoses <- min(new_diagnoses, populations$undiagnosed * 0.95)
   
-  # Cannot re-engage more than 95% of LTFU
-  re_engagement_testing <- min(re_engagement_testing, populations$ltfu * 0.95)
-  re_engagement  <- re_engagement_testing
-  positive_tests <- new_diagnoses + re_engagement_testing
+  # ── LTFU FLOW ─────────────────────────────────────────────────────────────
+  # Prevention interventions reduce incident LTFU, split proportionally across
+  # the suppressed and unsuppressed dropout sub-groups.
+  # If ltfu_new == 0 (no dropout), prevention has nothing to act on.
+  prop_ltfu_supp <- ifelse(
+    populations$ltfu_new > 0,
+    populations$ltfu_new_suppressed / populations$ltfu_new,
+    0
+  )
+  prop_ltfu_unsupp <- 1 - prop_ltfu_supp
   
-  # Retention improvement cannot exceed LTFU
-  retention_improvement <- min(retention_improvement, populations$ltfu)
+  ltfu_prevented_supp   <- ltfu_prevented * prop_ltfu_supp
+  ltfu_prevented_unsupp <- ltfu_prevented * prop_ltfu_unsupp
   
-  # ART initiations from testing
+  # Net incident LTFU after prevention interventions, by suppression status
+  suppressed_ltfu   <- max(0, populations$ltfu_new_suppressed   - ltfu_prevented_supp)
+  unsuppressed_ltfu <- max(0, populations$ltfu_new_unsuppressed - ltfu_prevented_unsupp)
+  ltfu_new_effective <- suppressed_ltfu + unsuppressed_ltfu
+  
+  # Full pool available for re-engagement = prevalent stock + net incident LTFU
+  total_ltfu_pool <- populations$ltfu + ltfu_new_effective
+  
+  # Testing re-engagement draws from the full pool first;
+  # tracking/tracing takes from whatever remains (up to 95% total)
+  re_engagement_testing <- min(re_engagement_testing, total_ltfu_pool * 0.95)
+  re_engagement         <- re_engagement_testing
+  positive_tests        <- new_diagnoses + re_engagement_testing
+  
+  ltfu_reengaged <- min(ltfu_reengaged,
+                        max(0, total_ltfu_pool * 0.95 - re_engagement_testing))
+  
+  # ── ART INITIATIONS ───────────────────────────────────────────────────────
   art_inititations_testing <- min(art_inititations_testing,
                                   average_linkage * (new_diagnoses + re_engagement_testing))
   art_initiations <- art_inititations_testing + art_initiations
@@ -745,27 +776,31 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   additional_suppressed <- additional_suppressed + additional_suppressed_testing
   
   # Cannot initiate more on ART than are diagnosed but not yet on ART
-  max_art_initiations <- populations$diagnosed + new_diagnoses - populations$on_art + re_engagement
+  # (accounting for on_art being reduced by net LTFU losses)
+  effective_on_art <- populations$on_art - ltfu_new_effective
+  max_art_initiations <- populations$diagnosed + new_diagnoses - effective_on_art + re_engagement
   art_initiations     <- min(art_initiations, max(0, max_art_initiations))
   
-  # Cannot suppress more than are currently unsuppressed on ART (including new initiations)
-  max_additional_suppressed <- populations$on_art + art_initiations - populations$suppressed
-  additional_suppressed     <- min(additional_suppressed, max(0, max_additional_suppressed))
+  # Cannot suppress more than are currently unsuppressed on ART
+  # (after LTFU losses, net unsuppressed on ART is also reduced)
+  max_additional_suppressed <- effective_on_art + art_initiations - populations$suppressed +
+    suppressed_ltfu   # suppressed who became LTFU are no longer counted as suppressed
+  additional_suppressed <- min(additional_suppressed, max(0, max_additional_suppressed))
   
   # ========================================================================
   # SECOND PASS: Mortality interventions
   # All depend on finalised art_initiations.
   #
   # Chain for new initiations:
-  #   cd4_tested    = art_initiations × cd4_coverage
-  #   ahd_diagnosed = cd4_tested × prop_ahd$new_initiations
-  #   AHD package effect gated by: cd4_coverage × ahd_pkg_coverage × ahd_pkg_efficacy
+  #   cd4_tested    = art_initiations x cd4_coverage
+  #   ahd_diagnosed = cd4_tested x prop_ahd$new_initiations
+  #   AHD package effect gated by: cd4_coverage x ahd_pkg_coverage x ahd_pkg_efficacy
   #
   # Cotrimoxazole and OI management apply to all new initiations (no CD4 test required).
   # AHD package applies only to those diagnosed with AHD via CD4 test.
   # ========================================================================
   
-  on_art_total_est <- populations$on_art + art_initiations + retention_improvement
+  on_art_total_est <- effective_on_art + art_initiations + ltfu_reengaged
   
   # Initialise scalars
   cd4_coverage_frac     <- 0   # proportion of new initiates who receive a CD4 test
@@ -789,50 +824,49 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   
   # ── Cotrimoxazole (all new initiations, no CD4 required) ─────────────────
   if (cotrix_value > 0 && art_initiations > 0) {
-    n_cotrix          <- min(art_initiations * (cotrix_value / 100), art_initiations)
-    cotrix_cov_frac   <- n_cotrix / art_initiations
+    n_cotrix             <- min(art_initiations * (cotrix_value / 100), art_initiations)
+    cotrix_cov_frac      <- n_cotrix / art_initiations
     cotrix_eff_reduction <- cotrix_cov_frac * all_interventions$cotrimoxazole$efficacy
     total_intervention_cost <- total_intervention_cost + n_cotrix * all_interventions$cotrimoxazole$unit_cost
   }
   
   # ── OI management (all new initiations, no CD4 required) ─────────────────
   if (oi_value > 0 && art_initiations > 0) {
-    n_oi              <- min(art_initiations * (oi_value / 100), art_initiations)
-    oi_cov_frac       <- n_oi / art_initiations
-    oi_eff_reduction  <- oi_cov_frac * all_interventions$oi_management$efficacy
+    n_oi             <- min(art_initiations * (oi_value / 100), art_initiations)
+    oi_cov_frac      <- n_oi / art_initiations
+    oi_eff_reduction <- oi_cov_frac * all_interventions$oi_management$efficacy
     total_intervention_cost <- total_intervention_cost + n_oi * all_interventions$oi_management$unit_cost
   }
   
   # ── AHD package (only those diagnosed with AHD via CD4 test) ─────────────
   if (ahd_pkg_value > 0 && art_initiations > 0) {
-    prop_ahd_new_init  <- MORTALITY_RATES$prop_ahd$new_initiations
-    n_ahd_diagnosed    <- art_initiations * cd4_coverage_frac * prop_ahd_new_init
-    n_ahd_pkg_reached  <- min(n_ahd_diagnosed * (ahd_pkg_value / 100), n_ahd_diagnosed)
-    # Express as fraction of the full new-initiation AHD subgroup for rate modulation
-    ahd_pkg_cov_frac_of_ahd <- if (n_ahd_diagnosed > 0) n_ahd_pkg_reached / n_ahd_diagnosed else 0
-    # Gate effect by CD4 coverage: only diagnosed AHD individuals can benefit
-    ahd_pkg_eff_reduction <- cd4_coverage_frac * ahd_pkg_cov_frac_of_ahd *
+    prop_ahd_new_init        <- MORTALITY_RATES$prop_ahd$new_initiations
+    n_ahd_diagnosed          <- art_initiations * cd4_coverage_frac * prop_ahd_new_init
+    n_ahd_pkg_reached        <- min(n_ahd_diagnosed * (ahd_pkg_value / 100), n_ahd_diagnosed)
+    ahd_pkg_cov_frac_of_ahd  <- if (n_ahd_diagnosed > 0) n_ahd_pkg_reached / n_ahd_diagnosed else 0
+    ahd_pkg_eff_reduction    <- cd4_coverage_frac * ahd_pkg_cov_frac_of_ahd *
       all_interventions$ahd_package$efficacy
-    total_intervention_cost <- total_intervention_cost + n_ahd_pkg_reached * all_interventions$ahd_package$unit_cost
+    total_intervention_cost  <- total_intervention_cost + n_ahd_pkg_reached * all_interventions$ahd_package$unit_cost
   }
   
   # ========================================================================
   # CASCADE POPULATIONS (PRE-MORTALITY)
+  # on_art and suppressed are reduced by net LTFU before gains are added.
   # ========================================================================
   
-  end_diagnosed_pre_mort  <- min(max(populations$diagnosed + new_diagnoses,
-                                     populations$diagnosed), populations$plhiv)
-  end_on_art_pre_mort     <- min(max(populations$on_art + art_initiations + retention_improvement,
-                                     populations$on_art), end_diagnosed_pre_mort)
-  end_suppressed_pre_mort <- min(max(populations$suppressed + additional_suppressed,
-                                     populations$suppressed), end_on_art_pre_mort)
+  end_diagnosed_pre_mort  <- min(max(populations$diagnosed + new_diagnoses, 0),
+                                 populations$plhiv)
+  end_on_art_pre_mort     <- min(max(effective_on_art + art_initiations + ltfu_reengaged, 0),
+                                 end_diagnosed_pre_mort)
+  end_suppressed_pre_mort <- min(max(populations$suppressed - suppressed_ltfu + additional_suppressed, 0),
+                                 end_on_art_pre_mort)
   
   # ========================================================================
   # FIVE CASCADE GROUPS (mutually exclusive, before mortality)
   # ========================================================================
   
   n_undiagnosed        <- max(0, populations$plhiv - end_diagnosed_pre_mort)
-  n_diagnosed_not_art  <- max(0, end_diagnosed_pre_mort  - end_on_art_pre_mort)
+  n_diagnosed_not_art  <- max(0, end_diagnosed_pre_mort - end_on_art_pre_mort)
   n_new_initiations    <- min(art_initiations, end_on_art_pre_mort)
   n_established_on_art <- max(0, end_on_art_pre_mort - n_new_initiations)
   # Suppression attributed to established patients (new initiates counted at new_art rate)
@@ -919,7 +953,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   unprotected_pop <- populations$hiv_negative
   infections      <- unprotected_pop * force_inf * infectious_prop
   
-  # Process prevention intervention
+  # Process prevention interventions
   for (int_key in names(all_interventions)) {
     intervention <- all_interventions[[int_key]]
     intervention_value <- interventions[[int_key]]
@@ -946,22 +980,17 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
     number_reached <- min(number_reached, eligible)
     
     if ("adult_infections" %in% intervention$outcomes) {
-      # Prevention interventions
+      infections_averted <- infections_averted +
+        number_reached * force_inf * infectious_prop * (1 - intervention$efficacy)
       
-      infections_averted <- infections_averted + 
-        number_reached * force_inf*infectious_prop * (1-intervention$efficacy)
-      
-      total_intervention_cost <- total_intervention_cost + 
+      total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
-      
-    } 
+    }
   }
   
-  end_new_infections <- max(0, infections - infections_averted)
+  end_new_infections     <- max(0, infections - infections_averted)
   baseline_infant_infections <- populations$hiv_exposed_infants * 0.15 ###UPDATE
-  end_infant_infections <- max(0, baseline_infant_infections - infant_infections_averted)
-  
-  
+  end_infant_infections  <- max(0, baseline_infant_infections - infant_infections_averted)
   
   # ========================================================================
   # CALCULATE COSTS
@@ -977,24 +1006,25 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # FINAL SANITY CHECKS - ENSURE NO NaN OR INVALID VALUES
   # ========================================================================
   
-  # Check for any NaN or Inf values and replace with starting values
+  # Check for any NaN or Inf values and replace with 0
   if (is.na(end_diagnosed) | is.nan(end_diagnosed) | is.infinite(end_diagnosed)) {
-    end_diagnosed <- populations$diagnosed
-    warning("end_diagnosed was invalid, using starting value")
+    end_diagnosed <- 0
+    warning("end_diagnosed was invalid, set to 0")
   }
   if (is.na(end_on_art) | is.nan(end_on_art) | is.infinite(end_on_art)) {
-    end_on_art <- populations$on_art
-    warning("end_on_art was invalid, using starting value")
+    end_on_art <- 0
+    warning("end_on_art was invalid, set to 0")
   }
   if (is.na(end_suppressed) | is.nan(end_suppressed) | is.infinite(end_suppressed)) {
-    end_suppressed <- populations$suppressed
-    warning("end_suppressed was invalid, using starting value")
+    end_suppressed <- 0
+    warning("end_suppressed was invalid, set to 0")
   }
   
-  # Ensure cascade makes sense (apply floors and ceilings)
-  end_diagnosed <- max(populations$diagnosed, min(end_diagnosed, populations$plhiv))
-  end_on_art <- max(populations$on_art, min(end_on_art, end_diagnosed))
-  end_suppressed <- max(populations$suppressed, min(end_suppressed, end_on_art))
+  # Ensure cascade makes sense — floors at 0 (not starting population) so that
+  # LTFU-driven reductions are preserved
+  end_diagnosed  <- max(0, min(end_diagnosed,  populations$plhiv))
+  end_on_art     <- max(0, min(end_on_art,     end_diagnosed))
+  end_suppressed <- max(0, min(end_suppressed, end_on_art))
   
   # Final verification - these should NEVER be NaN at this point
   if (is.na(end_diagnosed) | is.na(end_on_art) | is.na(end_suppressed)) {
@@ -1009,7 +1039,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
     # Testing outcomes
     tests_performed = round(tests_performed),
     positive_tests = round(positive_tests),
-    test_positivity_rate = ifelse(tests_performed > 0, 
+    test_positivity_rate = ifelse(tests_performed > 0,
                                   round((positive_tests / tests_performed) * 100, 2), 0),
     new_diagnoses = round(new_diagnoses),
     re_engagement = round(re_engagement),
@@ -1017,7 +1047,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
     # Treatment outcomes
     art_initiations = round(art_initiations),
     additional_suppressed = round(additional_suppressed),
-    retention_improvement = round(retention_improvement),
+    # LTFU flow outputs (replacing old single retention_improvement)
+    ltfu_new_effective  = round(ltfu_new_effective),   # net people lost to follow-up
+    ltfu_prevented      = round(ltfu_prevented),        # prevented from dropping off by MMD/adherence
+    ltfu_reengaged      = round(ltfu_reengaged),        # re-engaged by tracking/tracing
+    suppressed_ltfu     = round(suppressed_ltfu),       # suppressed patients lost (cascade impact)
+    unsuppressed_ltfu   = round(unsuppressed_ltfu),     # unsuppressed patients lost
     
     # Health outcomes (infections/deaths averted)
     adult_infections_averted = round(infections_averted),
@@ -1058,33 +1093,38 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
 calculate_scenario_difference <- function(scenario, baseline) {
   list(
     # Cascade differences
-    diff_diagnosed = scenario$end_diagnosed - baseline$end_diagnosed,
-    diff_on_art = scenario$end_on_art - baseline$end_on_art,
-    diff_suppressed = scenario$end_suppressed - baseline$end_suppressed,
+    diff_diagnosed   = scenario$end_diagnosed  - baseline$end_diagnosed,
+    diff_on_art      = scenario$end_on_art     - baseline$end_on_art,
+    diff_suppressed  = scenario$end_suppressed - baseline$end_suppressed,
     
     # Testing differences
     diff_tests_performed = scenario$tests_performed - baseline$tests_performed,
-    diff_positive_tests = scenario$positive_tests - baseline$positive_tests,
-    diff_new_diagnoses = scenario$new_diagnoses - baseline$new_diagnoses,
+    diff_positive_tests  = scenario$positive_tests  - baseline$positive_tests,
+    diff_new_diagnoses   = scenario$new_diagnoses   - baseline$new_diagnoses,
     diff_art_initiations = scenario$art_initiations - baseline$art_initiations,
     
+    # LTFU flow differences
+    diff_ltfu_new_effective = scenario$ltfu_new_effective - baseline$ltfu_new_effective,
+    diff_ltfu_prevented     = scenario$ltfu_prevented     - baseline$ltfu_prevented,
+    diff_ltfu_reengaged     = scenario$ltfu_reengaged     - baseline$ltfu_reengaged,
+    
     # Epidemiological differences
-    diff_new_infections = scenario$end_new_infections - baseline$end_new_infections,
+    diff_new_infections    = scenario$end_new_infections    - baseline$end_new_infections,
     diff_infant_infections = scenario$end_infant_infections - baseline$end_infant_infections,
-    diff_total_infections = scenario$end_total_infections - baseline$end_total_infections,
-    diff_deaths = scenario$end_deaths - baseline$end_deaths,
+    diff_total_infections  = scenario$end_total_infections  - baseline$end_total_infections,
+    diff_deaths            = scenario$end_deaths            - baseline$end_deaths,
     
     # Infections/deaths averted (relative to baseline)
     additional_infections_averted = scenario$total_infections_averted - baseline$total_infections_averted,
-    additional_deaths_averted = scenario$deaths_averted - baseline$deaths_averted,
+    additional_deaths_averted     = scenario$deaths_averted           - baseline$deaths_averted,
     
     # Cost differences
-    diff_intervention_cost = scenario$total_intervention_cost - baseline$total_intervention_cost,
-    diff_art_provision_cost = scenario$art_provision_cost - baseline$art_provision_cost,
-    diff_total_cost = scenario$total_cost - baseline$total_cost,
+    diff_intervention_cost  = scenario$total_intervention_cost - baseline$total_intervention_cost,
+    diff_art_provision_cost = scenario$art_provision_cost      - baseline$art_provision_cost,
+    diff_total_cost         = scenario$total_cost              - baseline$total_cost,
     
     # For display: scale up vs scale down
-    scale_up_cost = max(0, scenario$total_intervention_cost - baseline$total_intervention_cost),
+    scale_up_cost      = max(0, scenario$total_intervention_cost - baseline$total_intervention_cost),
     scale_down_savings = max(0, baseline$total_intervention_cost - scenario$total_intervention_cost)
   )
 }
@@ -1094,4 +1134,4 @@ calculate_scenario_difference <- function(scenario, baseline) {
 # ============================================================================
 intervention_params <- load_intervention_params()
 intervention_groups <- build_intervention_groups(intervention_params)
-regional_presets <- build_country_presets(country_data_csv)
+regional_presets    <- build_country_presets(country_data_csv)
