@@ -79,6 +79,18 @@ ui <- page_sidebar(
     nav_panel(
       "Results Comparison",
       div(
+        style = "background-color: #fffbeb; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px;",
+        tags$strong(style = "color: #92400e;", "\u26a0 Interpretation note: "),
+        tags$span(style = "color: #78350f; font-size: 0.9em;",
+                  "Percentages (95-95-95 targets) can be misleading when patient numbers change. ",
+                  "For example, scaling down retention support causes unsuppressed patients to drop out at higher rates than suppressed patients, ",
+                  "which can ",
+                  tags$em("improve"),
+                  " the reported 3rd 95% even though fewer people are actually suppressed. ",
+                  "Always check the absolute population numbers in the cascade chart and epidemiological outcomes before drawing conclusions."
+        )
+      ),
+      div(
         style = "height: 80vh; overflow-y: auto; padding-right: 15px;",
         
         # 95-95-95 Goals Tracker
@@ -1232,7 +1244,7 @@ server <- function(input, output, session) {
     
     # Baseline values
     if ( outcomes$end_plhiv>0 && !is.null(outcomes_base$end_diagnosed) && 
-        !is.na(pops$plhiv) && !is.na(outcomes_base$end_diagnosed) && pops$plhiv > 0) {
+         !is.na(pops$plhiv) && !is.na(outcomes_base$end_diagnosed) && pops$plhiv > 0) {
       first_95_base <- (outcomes$end_diagnosed / outcomes$end_plhiv) * 100
     }
     if (!is.null(outcomes_base$end_diagnosed) && !is.null(outcomes_base$end_on_art) &&
@@ -1311,7 +1323,7 @@ server <- function(input, output, session) {
     
     # Scenario 2 values
     if ( outcomes$end_plhiv>0 && !is.null(outcomes$end_diagnosed) && 
-        !is.na(pops$plhiv) && !is.na(outcomes$end_diagnosed) && pops$plhiv > 0) {
+         !is.na(pops$plhiv) && !is.na(outcomes$end_diagnosed) && pops$plhiv > 0) {
       first_95 <- (outcomes$end_diagnosed / outcomes$end_plhiv) * 100
     }
     
@@ -1335,7 +1347,7 @@ server <- function(input, output, session) {
     
     # Baseline values
     if ( outcomes$end_plhiv>0 && !is.null(outcomes_base$end_diagnosed) && 
-        !is.na(pops$plhiv) && !is.na(outcomes_base$end_diagnosed) && pops$plhiv > 0) {
+         !is.na(pops$plhiv) && !is.na(outcomes_base$end_diagnosed) && pops$plhiv > 0) {
       first_95_base <- (outcomes_base$end_diagnosed / outcomes_base$end_plhiv) * 100
     }
     if (!is.null(outcomes_base$end_diagnosed) && !is.null(outcomes_base$end_on_art) &&
@@ -1430,6 +1442,11 @@ server <- function(input, output, session) {
           span(strong("HIV-Related Deaths:")),
           span(style = "font-size: 1.3em; font-weight: bold;",
                format(outcomes$end_deaths, big.mark = ","))
+      ),
+      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
+          span(strong("New LTFU:")),
+          span(style = "font-size: 1.3em; font-weight: bold;",
+               format(outcomes$ltfu_new_effective, big.mark = ","))
       )
     )
   })
@@ -1483,6 +1500,21 @@ server <- function(input, output, session) {
                  paste0("(", ifelse(diff$diff_deaths > 0, "+", ""),
                         format(diff$diff_deaths, big.mark = ","), ")"))
           )
+      ),
+      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
+          span(strong("New LTFU:")),
+          span(
+            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
+                                ifelse(diff$diff_ltfu_new_effective < 0, "green",
+                                       ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
+                 format(outcomes$ltfu_new_effective, big.mark = ",")),
+            br(),
+            span(style = paste0("font-size: 0.9em; color: ",
+                                ifelse(diff$diff_ltfu_new_effective < 0, "green",
+                                       ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
+                 paste0("(", ifelse(diff$diff_ltfu_new_effective > 0, "+", ""),
+                        format(diff$diff_ltfu_new_effective, big.mark = ","), ")"))
+          )
       )
     )
   })
@@ -1535,6 +1567,21 @@ server <- function(input, output, session) {
                                        ifelse(diff$diff_deaths > 0, "red", "gray")), ";"),
                  paste0("(", ifelse(diff$diff_deaths > 0, "+", ""),
                         format(diff$diff_deaths, big.mark = ","), ")"))
+          )
+      ),
+      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
+          span(strong("New LTFU:")),
+          span(
+            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
+                                ifelse(diff$diff_ltfu_new_effective < 0, "green",
+                                       ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
+                 format(outcomes$ltfu_new_effective, big.mark = ",")),
+            br(),
+            span(style = paste0("font-size: 0.9em; color: ",
+                                ifelse(diff$diff_ltfu_new_effective < 0, "green",
+                                       ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
+                 paste0("(", ifelse(diff$diff_ltfu_new_effective > 0, "+", ""),
+                        format(diff$diff_ltfu_new_effective, big.mark = ","), ")"))
           )
       )
     )
@@ -1952,16 +1999,16 @@ server <- function(input, output, session) {
     pops <- populations()
     
     cascade_data <- data.frame(
-      Stage = rep(c("Diagnosed", "On ART", "Suppressed"), 3),
-      Scenario = rep(c("Baseline", "Scenario 1", "Scenario 2"), each = 3),
+      Stage = rep(c("PLHIV", "Diagnosed", "On ART", "Suppressed"), 3),
+      Scenario = rep(c("Baseline", "Scenario 1", "Scenario 2"), each = 4),
       Value = c(
-        outcomes_base$end_diagnosed, outcomes_base$end_on_art, outcomes_base$end_suppressed,
-        outcomes_s1$end_diagnosed, outcomes_s1$end_on_art, outcomes_s1$end_suppressed,
-        outcomes_s2$end_diagnosed, outcomes_s2$end_on_art, outcomes_s2$end_suppressed
+        outcomes_base$end_plhiv, outcomes_base$end_diagnosed, outcomes_base$end_on_art, outcomes_base$end_suppressed,
+        outcomes_s1$end_plhiv,   outcomes_s1$end_diagnosed,   outcomes_s1$end_on_art,   outcomes_s1$end_suppressed,
+        outcomes_s2$end_plhiv,   outcomes_s2$end_diagnosed,   outcomes_s2$end_on_art,   outcomes_s2$end_suppressed
       )
     )
     
-    cascade_data$Stage <- factor(cascade_data$Stage, levels = c("Diagnosed", "On ART", "Suppressed"))
+    cascade_data$Stage <- factor(cascade_data$Stage, levels = c("PLHIV", "Diagnosed", "On ART", "Suppressed"))
     cascade_data$Scenario <- factor(cascade_data$Scenario, levels = c("Baseline", "Scenario 1", "Scenario 2"))
     
     ggplot(cascade_data, aes(x = Stage, y = Value, color = Scenario, group = Scenario, linetype = Scenario)) +

@@ -5,6 +5,6 @@ account: tier-plus-mvp-test
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 16846993
-bundleId: 11682683
+bundleId: 11688637
 url: https://tier-plus-mvp-test.shinyapps.io/app_deployment/
 version: 1
