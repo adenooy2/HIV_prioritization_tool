@@ -334,6 +334,24 @@ build_intervention_groups <- function(intervention_params){
           eligible_pop = "on_art_stable",
           unit_cost = subset(intervention_params, intervention_key == "mmd_12month")$unit_cost,
           outcomes = c("retention")
+        ),
+        fast_track = list(
+          name = "Fast-track",
+          type = "coverage",
+          unit_label = "% of stable clients",
+          efficacy = subset(intervention_params, intervention_key == "fast_track")$efficacy,
+          eligible_pop = "on_art_stable",
+          unit_cost =  subset(intervention_params, intervention_key == "fast_track")$unit_cost,     
+          outcomes = c("retention")
+        ),
+        community_pickup = list(
+          name = "Community ART pick-up",
+          type = "coverage",
+          unit_label = "% of stable clients",
+          efficacy = subset(intervention_params, intervention_key == "community_pickup")$efficacy,
+          eligible_pop = "on_art_stable",
+          unit_cost = subset(intervention_params, intervention_key == "community_pickup")$unit_cost,     
+          outcomes = c("retention")
         )
       )
     ),
@@ -465,7 +483,7 @@ default_baseline_interventions <- list(
   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
   eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
   vl_monitoring_routine = 60, 
-  oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
+  oi_management = 50, mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track =5, community_pickup=5,
   adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
   cd4_testing = 92, ahd_package = 88
 )
@@ -510,7 +528,7 @@ build_country_presets <- function(csv_data) {
         hivst_community = round(0.0035*pops$adult_pop, -4),
         eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
         vl_monitoring_routine = 60, 
-        oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
+        oi_management = 50, mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track=5, community_pickup =5, 
         adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
         cd4_testing = 92, ahd_package = 88
       )
@@ -686,7 +704,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
       art_inititations_testing <- art_inititations_testing + linked
       
       additional_suppressed_testing <- additional_suppressed_testing +
-        linked * ((context$percent_suppressed * 0.8) / 100)
+        linked * ((context$percent_suppressed * 0.9) / 100)
       
       # Costs
       total_intervention_cost <- total_intervention_cost +
@@ -802,6 +820,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   # Suppression gain from re-engaged patients (tracking/tracing).
   # Re-engaged patients return to ART; those who were previously suppressed
   # are assumed to re-achieve suppression at 80% of the background rate
+  # (lower than the 90% used for new testing initiations, reflecting the
+  # greater disruption of a period out of care). ###UPDATE
   additional_suppressed <- additional_suppressed +
     ltfu_reengaged * ((context$percent_suppressed * 0.8) / 100)
   
@@ -812,7 +832,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   
   # Additional suppressed from testing
   additional_suppressed_testing <- min(
-    art_initiations * ((context$percent_suppressed * 0.8) / 100),
+    art_initiations * ((context$percent_suppressed * 0.9) / 100),
     additional_suppressed_testing
   )
   additional_suppressed <- additional_suppressed + additional_suppressed_testing
