@@ -686,7 +686,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
       art_inititations_testing <- art_inititations_testing + linked
       
       additional_suppressed_testing <- additional_suppressed_testing +
-        linked * ((context$percent_suppressed * 0.9) / 100)
+        linked * ((context$percent_suppressed * 0.8) / 100)
       
       # Costs
       total_intervention_cost <- total_intervention_cost +
@@ -799,6 +799,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   ltfu_reengaged <- min(ltfu_reengaged,
                         max(0, total_ltfu_pool * 0.95 - re_engagement_testing))
   
+  # Suppression gain from re-engaged patients (tracking/tracing).
+  # Re-engaged patients return to ART; those who were previously suppressed
+  # are assumed to re-achieve suppression at 80% of the background rate
+  additional_suppressed <- additional_suppressed +
+    ltfu_reengaged * ((context$percent_suppressed * 0.8) / 100)
+  
   # ── ART INITIATIONS ───────────────────────────────────────────────────────
   art_inititations_testing <- min(art_inititations_testing,
                                   average_linkage * (new_diagnoses + re_engagement_testing))
@@ -806,7 +812,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   
   # Additional suppressed from testing
   additional_suppressed_testing <- min(
-    art_initiations * ((context$percent_suppressed * 0.9) / 100),
+    art_initiations * ((context$percent_suppressed * 0.8) / 100),
     additional_suppressed_testing
   )
   additional_suppressed <- additional_suppressed + additional_suppressed_testing
