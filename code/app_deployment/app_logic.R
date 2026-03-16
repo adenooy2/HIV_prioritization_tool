@@ -55,17 +55,17 @@ RETENTION_SUPPRESSION_RATE <- 0.30
 # LOAD DATA
 # ============================================================================
 # Load country data
-response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQBCFFlfF2AaRLcGuaCvNAcJAbE-8Ak2_gDyNJnL0GQu8Ag?e=k5dAU1&download=1")
-country_data_csv <- content(response, as = "parsed", type = "text/csv")
+
+country_data_csv <- read.csv("data/country_data.csv")
 
 # Load intervention parameters from Excel
 load_intervention_params <- function(){
-  sharepoint_url_interventions <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
-  
-  temp_file_int <- tempfile(fileext = ".xlsx")
-  download.file(sharepoint_url_interventions, temp_file_int, mode = "wb", method = "libcurl")
-  
-  intervention_params <- read_excel(temp_file_int, col_names = FALSE)
+  # sharepoint_url_interventions <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
+  # 
+  # temp_file_int <- tempfile(fileext = ".xlsx")
+  # download.file(sharepoint_url_interventions, temp_file_int, mode = "wb", method = "libcurl")
+  # 
+  intervention_params <- read_excel("data/parameters.xlsx", col_names = FALSE)
   
   colnames(intervention_params) <- as.character(intervention_params[2, ])
   intervention_params <- intervention_params[-1, ]
@@ -334,6 +334,24 @@ build_intervention_groups <- function(intervention_params){
           eligible_pop = "on_art_stable",
           unit_cost = subset(intervention_params, intervention_key == "mmd_12month")$unit_cost,
           outcomes = c("retention")
+        ),
+        fast_track = list(
+          name = "Fast-track",
+          type = "coverage",
+          unit_label = "% of stable clients",
+          efficacy = subset(intervention_params, intervention_key == "fast_track")$efficacy,
+          eligible_pop = "on_art_stable",
+          unit_cost =  subset(intervention_params, intervention_key == "fast_track")$unit_cost,     
+          outcomes = c("retention")
+        ),
+        community_pickup = list(
+          name = "Community ART pick-up",
+          type = "coverage",
+          unit_label = "% of stable clients",
+          efficacy = subset(intervention_params, intervention_key == "community_pickup")$efficacy,
+          eligible_pop = "on_art_stable",
+          unit_cost = subset(intervention_params, intervention_key == "community_pickup")$unit_cost,     
+          outcomes = c("retention")
         )
       )
     ),
@@ -465,7 +483,7 @@ default_baseline_interventions <- list(
   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
   eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
   vl_monitoring_routine = 60, 
-  oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
+  oi_management = 50, mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track =5, community_pickup=5,
   adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
   cd4_testing = 92, ahd_package = 88
 )
@@ -510,7 +528,7 @@ build_country_presets <- function(csv_data) {
         hivst_community = round(0.0035*pops$adult_pop, -4),
         eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
         vl_monitoring_routine = 60, 
-        oi_management = 50, mmd_3month = 40, mmd_6month = 20, mmd_12month = 5,
+        oi_management = 50, mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track=5, community_pickup =5, 
         adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
         cd4_testing = 92, ahd_package = 88
       )
@@ -798,6 +816,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations) {
   
   ltfu_reengaged <- min(ltfu_reengaged,
                         max(0, total_ltfu_pool * 0.95 - re_engagement_testing))
+  
+  # Suppression gain from re-engaged patients (tracking/tracing).
+  # Re-engaged patients return to ART; those who were previously suppressed
+  # are assumed to re-achieve suppression at 80% of the background rate
+  # (lower than the 90% used for new testing initiations, reflecting the
+  # greater disruption of a period out of care). ###UPDATE
+  additional_suppressed <- additional_suppressed +
+    ltfu_reengaged * ((context$percent_suppressed * 0.8) / 100)
   
   # ── ART INITIATIONS ───────────────────────────────────────────────────────
   art_inititations_testing <- min(art_inititations_testing,

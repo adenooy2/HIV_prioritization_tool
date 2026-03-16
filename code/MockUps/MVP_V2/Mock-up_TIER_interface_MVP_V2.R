@@ -364,23 +364,27 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$baseline_prep_lenacapavir)
   
-  # Baseline MMD Validation - 3 month
+  # Baseline DSD Validation - 3 month
   observe({
     isolate({
       mmd3 <- input$baseline_mmd_3month
       mmd6 <- input$baseline_mmd_6month
       mmd12 <- input$baseline_mmd_12month
+      ft   <- input$baseline_fast_track
+      cpu  <- input$baseline_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
-        if (mmd3 + mmd6 + mmd12 > 100) {
-          max_mmd3 <- max(0, 100 - mmd6 - mmd12)
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_mmd3 <- max(0, 100 - mmd6 - mmd12 - ft - cpu)
           updateNumericInput(session, "baseline_mmd_3month", 
                              value = round(max_mmd3, 1),
                              max = 100)
           showNotification(
             paste0("Baseline: 3-month MMD capped at ", round(max_mmd3, 1), 
-                   "% (total MMD cannot exceed 100%)"),
+                   "% (total DSD cannot exceed 100%)"),
             type = "warning",
             duration = 4
           )
@@ -389,23 +393,27 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$baseline_mmd_3month)
   
-  # Baseline MMD Validation - 6 month
+  # Baseline DSD Validation - 6 month
   observe({
     isolate({
       mmd3 <- input$baseline_mmd_3month
       mmd6 <- input$baseline_mmd_6month
       mmd12 <- input$baseline_mmd_12month
+      ft   <- input$baseline_fast_track
+      cpu  <- input$baseline_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
-        if (mmd3 + mmd6 + mmd12 > 100) {
-          max_mmd6 <- max(0, 100 - mmd3 - mmd12)
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_mmd6 <- max(0, 100 - mmd3 - mmd12 - ft - cpu)
           updateNumericInput(session, "baseline_mmd_6month", 
                              value = round(max_mmd6, 1),
                              max = 100)
           showNotification(
             paste0("Baseline: 6-month MMD capped at ", round(max_mmd6, 1), 
-                   "% (total MMD cannot exceed 100%)"),
+                   "% (total DSD cannot exceed 100%)"),
             type = "warning",
             duration = 4
           )
@@ -414,23 +422,27 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$baseline_mmd_6month)
   
-  # Baseline MMD Validation - 12 month
+  # Baseline DSD Validation - 12 month
   observe({
     isolate({
       mmd3 <- input$baseline_mmd_3month
       mmd6 <- input$baseline_mmd_6month
       mmd12 <- input$baseline_mmd_12month
+      ft   <- input$baseline_fast_track
+      cpu  <- input$baseline_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
-        if (mmd3 + mmd6 + mmd12 > 100) {
-          max_mmd12 <- max(0, 100 - mmd3 - mmd6)
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_mmd12 <- max(0, 100 - mmd3 - mmd6 - ft - cpu)
           updateNumericInput(session, "baseline_mmd_12month", 
                              value = round(max_mmd12, 1),
                              max = 100)
           showNotification(
             paste0("Baseline: 12-month MMD capped at ", round(max_mmd12, 1), 
-                   "% (total MMD cannot exceed 100%)"),
+                   "% (total DSD cannot exceed 100%)"),
             type = "warning",
             duration = 4
           )
@@ -438,6 +450,64 @@ server <- function(input, output, session) {
       }
     })
   }) %>% bindEvent(input$baseline_mmd_12month)
+  
+  # Baseline DSD Validation - Fast-track
+  observe({
+    isolate({
+      mmd3 <- input$baseline_mmd_3month
+      mmd6 <- input$baseline_mmd_6month
+      mmd12 <- input$baseline_mmd_12month
+      ft   <- input$baseline_fast_track
+      cpu  <- input$baseline_community_pickup
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_ft <- max(0, 100 - mmd3 - mmd6 - mmd12 - cpu)
+          updateNumericInput(session, "baseline_fast_track",
+                             value = round(max_ft, 1),
+                             max = 100)
+          showNotification(
+            paste0("Baseline: Fast-track capped at ", round(max_ft, 1),
+                   "% (total DSD cannot exceed 100%)"),
+            type = "warning",
+            duration = 4
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$baseline_fast_track)
+  
+  # Baseline DSD Validation - Community pick-up
+  observe({
+    isolate({
+      mmd3 <- input$baseline_mmd_3month
+      mmd6 <- input$baseline_mmd_6month
+      mmd12 <- input$baseline_mmd_12month
+      ft   <- input$baseline_fast_track
+      cpu  <- input$baseline_community_pickup
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_cpu <- max(0, 100 - mmd3 - mmd6 - mmd12 - ft)
+          updateNumericInput(session, "baseline_community_pickup",
+                             value = round(max_cpu, 1),
+                             max = 100)
+          showNotification(
+            paste0("Baseline: Community pick-up capped at ", round(max_cpu, 1),
+                   "% (total DSD cannot exceed 100%)"),
+            type = "warning",
+            duration = 4
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$baseline_community_pickup)
   
   # ========================================================================
   # SCENARIO 1 INTERVENTION VALIDATION
@@ -518,17 +588,21 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$scenario1_prep_lenacapavir)
   
-  # Scenario 1 MMD Validation
+  # Scenario 1 DSD Validation
   observe({
     isolate({
       mmd3 <- input$scenario1_mmd_3month
       mmd6 <- input$scenario1_mmd_6month
       mmd12 <- input$scenario1_mmd_12month
+      ft   <- input$scenario1_fast_track
+      cpu  <- input$scenario1_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
-        if (mmd3 + mmd6 + mmd12 > 100) {
-          max_mmd3 <- max(0, 100 - mmd6 - mmd12)
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_mmd3 <- max(0, 100 - mmd6 - mmd12 - ft - cpu)
           updateNumericInput(session, "scenario1_mmd_3month", 
                              value = round(max_mmd3, 1),
                              max = 100)
@@ -547,11 +621,15 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario1_mmd_3month
       mmd6 <- input$scenario1_mmd_6month
       mmd12 <- input$scenario1_mmd_12month
+      ft   <- input$scenario1_fast_track
+      cpu  <- input$scenario1_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
-        if (mmd3 + mmd6 + mmd12 > 100) {
-          max_mmd6 <- max(0, 100 - mmd3 - mmd12)
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_mmd6 <- max(0, 100 - mmd3 - mmd12 - ft - cpu)
           updateNumericInput(session, "scenario1_mmd_6month", 
                              value = round(max_mmd6, 1),
                              max = 100)
@@ -570,11 +648,15 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario1_mmd_3month
       mmd6 <- input$scenario1_mmd_6month
       mmd12 <- input$scenario1_mmd_12month
+      ft   <- input$scenario1_fast_track
+      cpu  <- input$scenario1_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
-        if (mmd3 + mmd6 + mmd12 > 100) {
-          max_mmd12 <- max(0, 100 - mmd3 - mmd6)
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_mmd12 <- max(0, 100 - mmd3 - mmd6 - ft - cpu)
           updateNumericInput(session, "scenario1_mmd_12month", 
                              value = round(max_mmd12, 1),
                              max = 100)
@@ -587,6 +669,60 @@ server <- function(input, output, session) {
       }
     })
   }) %>% bindEvent(input$scenario1_mmd_12month)
+  
+  observe({
+    isolate({
+      mmd3 <- input$scenario1_mmd_3month
+      mmd6 <- input$scenario1_mmd_6month
+      mmd12 <- input$scenario1_mmd_12month
+      ft   <- input$scenario1_fast_track
+      cpu  <- input$scenario1_community_pickup
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_ft <- max(0, 100 - mmd3 - mmd6 - mmd12 - cpu)
+          updateNumericInput(session, "scenario1_fast_track",
+                             value = round(max_ft, 1),
+                             max = 100)
+          showNotification(
+            paste0("Scenario 1: Fast-track capped at ", round(max_ft, 1), "%"),
+            type = "warning",
+            duration = 4
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario1_fast_track)
+  
+  observe({
+    isolate({
+      mmd3 <- input$scenario1_mmd_3month
+      mmd6 <- input$scenario1_mmd_6month
+      mmd12 <- input$scenario1_mmd_12month
+      ft   <- input$scenario1_fast_track
+      cpu  <- input$scenario1_community_pickup
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_cpu <- max(0, 100 - mmd3 - mmd6 - mmd12 - ft)
+          updateNumericInput(session, "scenario1_community_pickup",
+                             value = round(max_cpu, 1),
+                             max = 100)
+          showNotification(
+            paste0("Scenario 1: Community pick-up capped at ", round(max_cpu, 1), "%"),
+            type = "warning",
+            duration = 4
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario1_community_pickup)
   
   # ========================================================================
   # SCENARIO 2 INTERVENTION VALIDATION
@@ -667,17 +803,21 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$scenario2_prep_lenacapavir)
   
-  # Scenario 2 MMD Validation
+  # Scenario 2 DSD Validation
   observe({
     isolate({
       mmd3 <- input$scenario2_mmd_3month
       mmd6 <- input$scenario2_mmd_6month
       mmd12 <- input$scenario2_mmd_12month
+      ft   <- input$scenario2_fast_track
+      cpu  <- input$scenario2_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
-        if (mmd3 + mmd6 + mmd12 > 100) {
-          max_mmd3 <- max(0, 100 - mmd6 - mmd12)
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_mmd3 <- max(0, 100 - mmd6 - mmd12 - ft - cpu)
           updateNumericInput(session, "scenario2_mmd_3month", 
                              value = round(max_mmd3, 1),
                              max = 100)
@@ -696,11 +836,15 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario2_mmd_3month
       mmd6 <- input$scenario2_mmd_6month
       mmd12 <- input$scenario2_mmd_12month
+      ft   <- input$scenario2_fast_track
+      cpu  <- input$scenario2_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
-        if (mmd3 + mmd6 + mmd12 > 100) {
-          max_mmd6 <- max(0, 100 - mmd3 - mmd12)
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_mmd6 <- max(0, 100 - mmd3 - mmd12 - ft - cpu)
           updateNumericInput(session, "scenario2_mmd_6month", 
                              value = round(max_mmd6, 1),
                              max = 100)
@@ -719,11 +863,15 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario2_mmd_3month
       mmd6 <- input$scenario2_mmd_6month
       mmd12 <- input$scenario2_mmd_12month
+      ft   <- input$scenario2_fast_track
+      cpu  <- input$scenario2_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.na(mmd3) && !is.na(mmd6) && !is.na(mmd12)) {
-        if (mmd3 + mmd6 + mmd12 > 100) {
-          max_mmd12 <- max(0, 100 - mmd3 - mmd6)
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_mmd12 <- max(0, 100 - mmd3 - mmd6 - ft - cpu)
           updateNumericInput(session, "scenario2_mmd_12month", 
                              value = round(max_mmd12, 1),
                              max = 100)
@@ -736,6 +884,60 @@ server <- function(input, output, session) {
       }
     })
   }) %>% bindEvent(input$scenario2_mmd_12month)
+  
+  observe({
+    isolate({
+      mmd3 <- input$scenario2_mmd_3month
+      mmd6 <- input$scenario2_mmd_6month
+      mmd12 <- input$scenario2_mmd_12month
+      ft   <- input$scenario2_fast_track
+      cpu  <- input$scenario2_community_pickup
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_ft <- max(0, 100 - mmd3 - mmd6 - mmd12 - cpu)
+          updateNumericInput(session, "scenario2_fast_track",
+                             value = round(max_ft, 1),
+                             max = 100)
+          showNotification(
+            paste0("Scenario 2: Fast-track capped at ", round(max_ft, 1), "%"),
+            type = "warning",
+            duration = 4
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario2_fast_track)
+  
+  observe({
+    isolate({
+      mmd3 <- input$scenario2_mmd_3month
+      mmd6 <- input$scenario2_mmd_6month
+      mmd12 <- input$scenario2_mmd_12month
+      ft   <- input$scenario2_fast_track
+      cpu  <- input$scenario2_community_pickup
+      
+      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
+          !is.null(ft)   && !is.null(cpu)  &&
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
+          !is.na(ft)    && !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
+          max_cpu <- max(0, 100 - mmd3 - mmd6 - mmd12 - ft)
+          updateNumericInput(session, "scenario2_community_pickup",
+                             value = round(max_cpu, 1),
+                             max = 100)
+          showNotification(
+            paste0("Scenario 2: Community pick-up capped at ", round(max_cpu, 1), "%"),
+            type = "warning",
+            duration = 4
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario2_community_pickup)
   
   # ========================================================================
   # BASELINE VALUES AND UI GENERATION
@@ -806,7 +1008,7 @@ server <- function(input, output, session) {
         interventions_ui <- c(interventions_ui, list(
           div(
             style = "margin-top: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;",
-            h6("Total MMD Coverage:", style = "margin-bottom: 5px;"),
+            h6("Total DSD Coverage:", style = "margin-bottom: 5px;"),
             uiOutput("mmd_total_baseline")
           )
         ))
@@ -995,13 +1197,16 @@ server <- function(input, output, session) {
   })
   
   output$mmd_total_baseline <- renderUI({
-    mmd3 <- input$baseline_mmd_3month
-    mmd6 <- input$baseline_mmd_6month
+    mmd3  <- input$baseline_mmd_3month
+    mmd6  <- input$baseline_mmd_6month
     mmd12 <- input$baseline_mmd_12month
+    ft    <- input$baseline_fast_track
+    cpu   <- input$baseline_community_pickup
     
-    if (is.null(mmd3) || is.null(mmd6) || is.null(mmd12)) return(NULL)
+    if (is.null(mmd3) || is.null(mmd6) || is.null(mmd12) ||
+        is.null(ft)   || is.null(cpu)) return(NULL)
     
-    total <- mmd3 + mmd6 + mmd12
+    total <- mmd3 + mmd6 + mmd12 + ft + cpu
     color <- ifelse(total > 100, "red", ifelse(total > 90, "orange", "green"))
     
     tags$div(
@@ -1011,13 +1216,16 @@ server <- function(input, output, session) {
   })
   
   output$mmd_total_scenario1 <- renderUI({
-    mmd3 <- input$scenario1_mmd_3month
-    mmd6 <- input$scenario1_mmd_6month
+    mmd3  <- input$scenario1_mmd_3month
+    mmd6  <- input$scenario1_mmd_6month
     mmd12 <- input$scenario1_mmd_12month
+    ft    <- input$scenario1_fast_track
+    cpu   <- input$scenario1_community_pickup
     
-    if (is.null(mmd3) || is.null(mmd6) || is.null(mmd12)) return(NULL)
+    if (is.null(mmd3) || is.null(mmd6) || is.null(mmd12) ||
+        is.null(ft)   || is.null(cpu)) return(NULL)
     
-    total <- mmd3 + mmd6 + mmd12
+    total <- mmd3 + mmd6 + mmd12 + ft + cpu
     color <- ifelse(total > 100, "red", ifelse(total > 90, "orange", "green"))
     
     tags$div(
@@ -1027,13 +1235,16 @@ server <- function(input, output, session) {
   })
   
   output$mmd_total_scenario2 <- renderUI({
-    mmd3 <- input$scenario2_mmd_3month
-    mmd6 <- input$scenario2_mmd_6month
+    mmd3  <- input$scenario2_mmd_3month
+    mmd6  <- input$scenario2_mmd_6month
     mmd12 <- input$scenario2_mmd_12month
+    ft    <- input$scenario2_fast_track
+    cpu   <- input$scenario2_community_pickup
     
-    if (is.null(mmd3) || is.null(mmd6) || is.null(mmd12)) return(NULL)
+    if (is.null(mmd3) || is.null(mmd6) || is.null(mmd12) ||
+        is.null(ft)   || is.null(cpu)) return(NULL)
     
-    total <- mmd3 + mmd6 + mmd12
+    total <- mmd3 + mmd6 + mmd12 + ft + cpu
     color <- ifelse(total > 100, "red", ifelse(total > 90, "orange", "green"))
     
     tags$div(

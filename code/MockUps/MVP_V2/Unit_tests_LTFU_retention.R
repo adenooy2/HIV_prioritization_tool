@@ -5,9 +5,12 @@
 #   - LTFU flow fields in calculate_populations()
 #   - Zero coverage: LTFU flows unimpeded
 #   - MMD reduces new LTFU (prevention pathway)
+#   - Fast-track reduces new LTFU (same prevention pathway as MMD)
+#   - Community ART pick-up reduces new LTFU (same prevention pathway as MMD)
 #   - Adherence counseling reduces new LTFU (prevention pathway)
-#   - Multiplicative stacking: MMD + adherence counseling
-#   - Tracking/tracing re-engages from LTFU pool (separate pathway)
+#   - Multiplicative stacking: all five DSD interventions
+#   - Tracking/tracing re-engages from LTFU pool and generates suppression gain
+#   - Tracking/tracing suppression gain scales with background suppression rate
 #   - Prevention shrinks the re-engagement pool
 #   - Cascade accounting: suppressed_ltfu + unsuppressed_ltfu = ltfu_new_effective
 #   - Differential attrition: unsuppressed drop out faster, inflating 3rd 95
@@ -78,15 +81,23 @@ restore_ltfu_rates <- function() {
 set_retention_params <- function(mmd3_eff   = 0.20,
                                  adh_eff    = 0.15,
                                  track_eff  = 0.60,
+                                 ft_eff     = 0.15,
+                                 cpu_eff    = 0.15,
                                  mmd3_cost  = 5,
                                  adh_cost   = 10,
-                                 track_cost = 30) {
-  intervention_groups$treatment_monitoring$interventions$mmd_3month$efficacy        <<- mmd3_eff
-  intervention_groups$treatment_monitoring$interventions$mmd_3month$unit_cost       <<- mmd3_cost
+                                 track_cost = 30,
+                                 ft_cost    = 5,
+                                 cpu_cost   = 5) {
+  intervention_groups$treatment_monitoring$interventions$mmd_3month$efficacy          <<- mmd3_eff
+  intervention_groups$treatment_monitoring$interventions$mmd_3month$unit_cost         <<- mmd3_cost
+  intervention_groups$treatment_monitoring$interventions$fast_track$efficacy          <<- ft_eff
+  intervention_groups$treatment_monitoring$interventions$fast_track$unit_cost         <<- ft_cost
+  intervention_groups$treatment_monitoring$interventions$community_pickup$efficacy    <<- cpu_eff
+  intervention_groups$treatment_monitoring$interventions$community_pickup$unit_cost   <<- cpu_cost
   intervention_groups$treatment_monitoring$interventions$adherence_counseling$efficacy  <<- adh_eff
   intervention_groups$treatment_monitoring$interventions$adherence_counseling$unit_cost <<- adh_cost
-  intervention_groups$treatment_monitoring$interventions$tracking_tracing$efficacy  <<- track_eff
-  intervention_groups$treatment_monitoring$interventions$tracking_tracing$unit_cost <<- track_cost
+  intervention_groups$treatment_monitoring$interventions$tracking_tracing$efficacy    <<- track_eff
+  intervention_groups$treatment_monitoring$interventions$tracking_tracing$unit_cost   <<- track_cost
 }
 
 ctx  <- make_context()
@@ -538,6 +549,144 @@ test_that("Zero LTFU rates produce zero LTFU losses", {
 })
 
 # ============================================================================
+# TEST 16: FAST-TRACK AND COMMUNITY PICK-UP PREVENTION PATHWAY
+# ============================================================================
+
+test_that("Fast-track and community pick-up reduce ltfu_new_effective (same pathway as MMD)", {
+  cat("\n========================================\n")
+  cat("TEST 16: Fast-Track and Community Pick-Up Prevention Pathway\n")
+  cat("========================================\n")
+  
+  set_retention_params(ft_eff = 0.15, cpu_eff = 0.15)
+  
+  ints_none <- zero_interventions()
+  ints_ft   <- zero_interventions(); ints_ft$fast_track        <- 60
+  ints_cpu  <- zero_interventions(); ints_cpu$community_pickup <- 60
+  
+  out_none <- calculate_scenario_outcomes(ctx, ints_none, pops)
+  out_ft   <- calculate_scenario_outcomes(ctx, ints_ft,   pops)
+  out_cpu  <- calculate_scenario_outcomes(ctx, ints_cpu,  pops)
+  
+  cat(sprintf("  ltfu_new_effective (none):              %g\n", out_none$ltfu_new_effective))
+  cat(sprintf("  ltfu_new_effective (fast-track 60%%):   %g\n", out_ft$ltfu_new_effective))
+  cat(sprintf("  ltfu_new_effective (community 60%%):    %g\n", out_cpu$ltfu_new_effective))
+  cat(sprintf("  ltfu_prevented     (fast-track 60%%):   %g\n", out_ft$ltfu_prevented))
+  cat(sprintf("  ltfu_prevented     (community 60%%):    %g\n", out_cpu$ltfu_prevented))
+  
+  expect_lt(out_ft$ltfu_new_effective,  out_none$ltfu_new_effective) # Fast-track prevents dropouts among stable clients
+  expect_lt(out_cpu$ltfu_new_effective, out_none$ltfu_new_effective) # Community pick-up prevents dropouts among stable clients
+  expect_gt(out_ft$ltfu_prevented,      out_none$ltfu_prevented)     # Fast-track registers patients retained
+  expect_gt(out_cpu$ltfu_prevented,     out_none$ltfu_prevented)     # Community pick-up registers patients retained
+  
+  cat("✓ All assertions passed\n")
+})
+
+# ============================================================================
+# TEST 17: ALL FIVE DSD INTERVENTIONS — COMBINED AND CAPPED
+# ============================================================================
+
+test_that("All five DSD interventions combined prevent more than any alone, stack multiplicatively, and cannot exceed gross ltfu_new", {
+  cat("\n========================================\n")
+  cat("TEST 17: All Five DSD Interventions — Combined, Multiplicative, Capped\n")
+  cat("========================================\n")
+  
+  set_retention_params(mmd3_eff = 0.20, adh_eff = 0.15, ft_eff = 0.15, cpu_eff = 0.15)
+  
+  ints_none <- zero_interventions()
+  ints_mmd3 <- zero_interventions(); ints_mmd3$mmd_3month          <- 20
+  ints_mmd6 <- zero_interventions(); ints_mmd6$mmd_6month          <- 20
+  ints_mmd12<- zero_interventions(); ints_mmd12$mmd_12month        <- 20
+  ints_ft   <- zero_interventions(); ints_ft$fast_track             <- 20
+  ints_cpu  <- zero_interventions(); ints_cpu$community_pickup      <- 20
+  ints_all  <- zero_interventions()
+  ints_all$mmd_3month <- 20; ints_all$mmd_6month <- 20; ints_all$mmd_12month <- 20
+  ints_all$fast_track <- 20; ints_all$community_pickup <- 20
+  
+  out_none  <- calculate_scenario_outcomes(ctx, ints_none,  pops)
+  out_mmd3  <- calculate_scenario_outcomes(ctx, ints_mmd3,  pops)
+  out_ft    <- calculate_scenario_outcomes(ctx, ints_ft,    pops)
+  out_cpu   <- calculate_scenario_outcomes(ctx, ints_cpu,   pops)
+  out_all   <- calculate_scenario_outcomes(ctx, ints_all,   pops)
+  out_mmd6  <- calculate_scenario_outcomes(ctx, ints_mmd6,  pops)
+  out_mmd12 <- calculate_scenario_outcomes(ctx, ints_mmd12, pops)
+  
+  base <- out_none$ltfu_new_effective
+  additive_sum <- (base - out_mmd3$ltfu_new_effective)  +
+    (base - out_mmd6$ltfu_new_effective)  +
+    (base - out_mmd12$ltfu_new_effective) +
+    (base - out_ft$ltfu_new_effective)    +
+    (base - out_cpu$ltfu_new_effective)
+  combined_prevented <- base - out_all$ltfu_new_effective
+  
+  cat(sprintf("  ltfu_new_effective (none):     %g\n", base))
+  cat(sprintf("  ltfu_new_effective (all five): %g\n", out_all$ltfu_new_effective))
+  cat(sprintf("  Additive sum of 5 effects:     %g\n", additive_sum))
+  cat(sprintf("  Combined prevented (all five): %g\n", combined_prevented))
+  cat(sprintf("  ltfu_prevented (all five):     %g\n", out_all$ltfu_prevented))
+  cat(sprintf("  pops$ltfu_new:                 %g\n", pops$ltfu_new))
+  
+  expect_lt(out_all$ltfu_new_effective, out_mmd3$ltfu_new_effective) # All five combined beats MMD3 alone
+  expect_lt(out_all$ltfu_new_effective, out_ft$ltfu_new_effective)   # All five combined beats fast-track alone
+  expect_lt(out_all$ltfu_new_effective, out_cpu$ltfu_new_effective)  # All five combined beats community pick-up alone
+  expect_lt(combined_prevented, additive_sum)                        # Multiplicative stacking: combined < sum of parts, no double-counting
+  expect_lte(out_all$ltfu_prevented, round(pops$ltfu_new),
+             label = "Cannot prevent more LTFU than the gross incident flow")
+  expect_gte(out_all$ltfu_new_effective, 0,
+             label = "ltfu_new_effective must remain non-negative")
+  
+  cat("✓ All assertions passed\n")
+})
+
+# ============================================================================
+# TEST 18: TRACKING/TRACING GENERATES SUPPRESSION GAIN FROM RE-ENGAGEMENT
+# ============================================================================
+
+test_that("Tracking/tracing increases end_suppressed; gain scales with coverage and background suppression rate", {
+  cat("\n========================================\n")
+  cat("TEST 18: Tracking/Tracing Suppression Gain From Re-engagement\n")
+  cat("========================================\n")
+  
+  set_retention_params(track_eff = 0.60)
+  
+  ints_none <- zero_interventions()
+  ints_low  <- zero_interventions(); ints_low$tracking_tracing  <- 20
+  ints_high <- zero_interventions(); ints_high$tracking_tracing <- 80
+  
+  out_none <- calculate_scenario_outcomes(ctx, ints_none, pops)
+  out_low  <- calculate_scenario_outcomes(ctx, ints_low,  pops)
+  out_high <- calculate_scenario_outcomes(ctx, ints_high, pops)
+  
+  cat(sprintf("  end_suppressed (no tracking):   %g\n", out_none$end_suppressed))
+  cat(sprintf("  end_suppressed (20%% tracking):  %g\n", out_low$end_suppressed))
+  cat(sprintf("  end_suppressed (80%% tracking):  %g\n", out_high$end_suppressed))
+  
+  expect_gt(out_low$end_suppressed,  out_none$end_suppressed) # Re-engaged patients contribute suppression gain at 80% of background rate
+  expect_gt(out_high$end_suppressed, out_low$end_suppressed)  # More re-engaged patients means more suppression gain
+  
+  # Gain scales with background suppression rate:
+  # higher background rate → more of the re-engaged pool was previously suppressed
+  ctx_low_supp  <- modifyList(make_context(), list(percent_suppressed = 60))
+  ctx_high_supp <- modifyList(make_context(), list(percent_suppressed = 90))
+  pops_low_supp  <- calculate_populations(ctx_low_supp)
+  pops_high_supp <- calculate_populations(ctx_high_supp)
+  
+  ints_track <- zero_interventions(); ints_track$tracking_tracing <- 60
+  
+  out_bg_low  <- calculate_scenario_outcomes(ctx_low_supp,  ints_track, pops_low_supp)
+  out_bg_high <- calculate_scenario_outcomes(ctx_high_supp, ints_track, pops_high_supp)
+  
+  supp_gain_low  <- out_bg_low$end_suppressed  - (pops_low_supp$suppressed  - out_bg_low$suppressed_ltfu)
+  supp_gain_high <- out_bg_high$end_suppressed - (pops_high_supp$suppressed - out_bg_high$suppressed_ltfu)
+  
+  cat(sprintf("  Suppression gain (60%% background): %g\n", supp_gain_low))
+  cat(sprintf("  Suppression gain (90%% background): %g\n", supp_gain_high))
+  
+  expect_gt(supp_gain_high, supp_gain_low) # Higher background suppression rate → larger re-engagement suppression gain
+  
+  cat("✓ All assertions passed\n")
+})
+
+# ============================================================================
 # SUMMARY
 # ============================================================================
 
@@ -559,3 +708,7 @@ cat("✓ TEST 12: Cascade consistency — suppressed <= on_art <= diagnosed\n")
 cat("✓ TEST 13: Differential attrition — 3rd 95 inflation mechanism\n")
 cat("✓ TEST 14: Prevention protects absolute suppressed count\n")
 cat("✓ TEST 15: Zero LTFU rates produce zero losses\n")
+cat("✓ TEST 16: Fast-track and community pick-up prevention pathway\n")
+cat("✓ TEST 17: All five DSD interventions — combined, multiplicative, capped\n")
+cat("✓ TEST 18: Tracking/tracing suppression gain from re-engagement\n")
+
