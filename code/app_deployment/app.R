@@ -9,7 +9,7 @@
 # - Complete input validation with dynamic limits
 # - Clear user feedback for constraint violations
 # ============================================================================
-
+options(shiny.port = suppressWarnings(as.integer(Sys.getenv("SHINY_PORT", "3838"))))
 library(shiny)
 library(bslib)
 library(DT)
@@ -17,9 +17,11 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(scales)
-library(httr)
+#library(httr)
 library(readr)
 library(readxl)
+
+port <- NULL
 
 # Source logic file
 tryCatch(
