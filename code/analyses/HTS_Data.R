@@ -274,3 +274,74 @@ freezePane(wb, "HTS Multipliers", firstActiveRow = 3, firstActiveCol = 2)
 
 saveWorkbook(wb, OUTPUT_XLS, overwrite = TRUE)
 message("Saved: ", OUTPUT_XLS)
+
+# =============================================================================
+# SUMMARY SHEET – median / mean / min / max multiplier per modality
+# Paste after the main script (wb and wide must already exist)
+# =============================================================================
+
+addWorksheet(wb, "Multiplier Summary")
+
+# Collect modalities that have a multiplier column
+mult_mods <- vapply(MODALITIES, `[[`, character(1), 1)
+mult_mods <- mult_mods[mult_mods != "Total" & mult_mods != "Self-Test"]
+mult_mods <- mult_mods[paste0(mult_mods, "_multiplier") %in% names(wide)]
+
+# Build summary data frame
+summary_df <- bind_rows(lapply(mult_mods, function(nm) {
+  vals <- wide[[paste0(nm, "_multiplier")]]
+  vals <- vals[!is.na(vals)]
+  data.frame(
+    Modality          = nm,
+    N_countries       = length(vals),
+    Median            = if (length(vals)) round(median(vals), 2) else NA_real_,
+    Mean              = if (length(vals)) round(mean(vals),   2) else NA_real_,
+    Min               = if (length(vals)) round(min(vals),    2) else NA_real_,
+    Max               = if (length(vals)) round(max(vals),    2) else NA_real_,
+    Countries_2x_plus = if (length(vals)) sum(vals >= 2)         else NA_integer_,
+    stringsAsFactors  = FALSE
+  )
+}))
+
+# Write headers
+sum_headers <- c("Modality", "N countries", "Median", "Mean", "Min", "Max", "≥2x countries")
+writeData(wb, "Multiplier Summary", as.data.frame(t(sum_headers)),
+          startRow = 1, startCol = 1, colNames = FALSE)
+addStyle(wb, "Multiplier Summary",
+         createStyle(fontName = "Arial", fontSize = 9, textDecoration = "bold",
+                     fgFill = "#2E5DA6", fontColour = "#FFFFFF",
+                     halign = "center", valign = "center", wrapText = TRUE),
+         rows = 1, cols = 1:7, gridExpand = TRUE)
+
+# Write data
+writeData(wb, "Multiplier Summary", summary_df,
+          startRow = 2, startCol = 1, colNames = FALSE)
+
+# Alternating shading
+for (i in seq_len(nrow(summary_df))) {
+  if (i %% 2 == 0)
+    addStyle(wb, "Multiplier Summary", createStyle(fgFill = "#F2F7FF"),
+             rows = i + 1, cols = 1:7, gridExpand = TRUE)
+}
+
+# Number format on multiplier columns (3–6)
+addStyle(wb, "Multiplier Summary",
+         createStyle(numFmt = '0.0"x"', halign = "center"),
+         rows = 2:(nrow(summary_df) + 1), cols = 3:6, gridExpand = TRUE, stack = TRUE)
+addStyle(wb, "Multiplier Summary",
+         createStyle(halign = "center"),
+         rows = 2:(nrow(summary_df) + 1), cols = c(2, 7), gridExpand = TRUE, stack = TRUE)
+
+# Colour-scale on Median column (col 3)
+conditionalFormatting(wb, "Multiplier Summary",
+                      cols = 3, rows = 2:(nrow(summary_df) + 1),
+                      style = c("#DCE6F1", "#F2F2F2", "#FFC000"),
+                      rule  = c(0.3, 1.0, 5.0), type = "colorScale")
+
+setColWidths(wb, "Multiplier Summary", cols = 1,   widths = 22)
+setColWidths(wb, "Multiplier Summary", cols = 2:7, widths = 13)
+setRowHeights(wb, "Multiplier Summary", rows = 1, heights = 28)
+
+# Re-save
+saveWorkbook(wb, OUTPUT_XLS, overwrite = TRUE)
+message("Summary sheet added – saved: ", OUTPUT_XLS)
