@@ -399,6 +399,7 @@ test_that("Higher tracking/tracing coverage re-engages more patients", {
   cat(sprintf("  ltfu_reengaged (80%% tracking): %g\n", out_high$ltfu_reengaged))
   
   expect_gt(out_high$ltfu_reengaged, out_low$ltfu_reengaged) # More coverage = more re-engagement
+  expect_equal(out_high$ltfu_reengaged, 4*out_low$ltfu_reengaged) # More coverage = more re-engagement proprtionally
   
   cat("✓ All assertions passed\n")
 })

@@ -1331,21 +1331,27 @@ server <- function(input, output, session) {
     req(populations())
     baseline <- baseline_input_values()
     req(baseline)
-    calculate_scenario_outcomes(context(), baseline, populations())
+    calculate_scenario_outcomes(context(), baseline, populations(),
+                                is_baseline           = TRUE,
+                                baseline_interventions = baseline)
   })
   
   outcomes_scenario1 <- reactive({
     req(populations())
     scenario <- scenario1_values()
     req(scenario)
-    calculate_scenario_outcomes(context(), scenario, populations())
+    calculate_scenario_outcomes(context(), scenario, populations(),
+                                baseline_interventions          = baseline_input_values(),
+                                baseline_additional_suppressed  = outcomes_baseline()$additional_suppressed)
   })
   
   outcomes_scenario2 <- reactive({
     req(populations())
     scenario <- scenario2_values()
     req(scenario)
-    calculate_scenario_outcomes(context(), scenario, populations())
+    calculate_scenario_outcomes(context(), scenario, populations(),
+                                baseline_interventions          = baseline_input_values(),
+                                baseline_additional_suppressed  = outcomes_baseline()$additional_suppressed)
   })
   
   diff_scenario1 <- reactive({
