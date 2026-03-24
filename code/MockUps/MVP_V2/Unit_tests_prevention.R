@@ -79,7 +79,7 @@ make_baseline_interventions <- function() {
   ints <- zero_interventions()
   ints$prep_oral   <- round(pops$high_risk_negative      * 0.01)
   ints$vmmc        <- round(pops$uncircumcised_males      * 0.01)
-  ints$condoms     <- round(pops$sexually_active_negative * 0.60)
+  ints$condoms     <- round(pops$sexually_active_negative * 0.30)
   ints$pep         <- round(pops$recent_exposure          * 0.20)
   ints
 }
@@ -299,10 +299,7 @@ test_that("Baseline interventions reproduce new_infections_per_year; zero preven
   out_baseline <- run_baseline()
   
   # Zero prevention calibrated against itself — removes protection beta absorbed
-  ints_zero   <- zero_interventions()
-  out_zero    <- calculate_scenario_outcomes(ctx, ints_zero, pops,
-                                             is_baseline            = TRUE,
-                                             baseline_interventions = ints_zero)
+  out_zero <- run_scenario(zero_interventions())
   
   cat(sprintf("  new_infections_per_year (observed):       %g\n", ctx$new_infections_per_year))
   cat(sprintf("  end_new_infections (baseline):            %g\n", out_baseline$end_new_infections))

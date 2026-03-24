@@ -437,6 +437,18 @@ calculate_populations <- function(context) {
   births <- (context$total_population * context$birth_rate)/1000
   hiv_positive_births <- births * context$hiv_prevalence * 1.5
   
+  # Safe defaults — prevents NULL propagation if CSV columns are missing/misnamed.
+  # prop_pop_male drives uncircumcised_males and all FOI strata; if NULL, vmmc
+  # baseline and FOI strata would silently become NULL and display as 0.
+  prop_male_pct <- if (!is.null(context$prop_pop_male) && !is.na(context$prop_pop_male))
+                     context$prop_pop_male else 49
+  prop_under14  <- if (!is.null(context$prop_pop_under_14) && !is.na(context$prop_pop_under_14))
+                     context$prop_pop_under_14 else 40
+  circ_prev     <- if (!is.null(context$circ_prevalence) && !is.na(context$circ_prevalence))
+                     context$circ_prevalence else 0.20
+  prop_hr       <- if (!is.null(context$prop_high_risk) && !is.na(context$prop_high_risk))
+                     context$prop_high_risk else 0.05
+  
   # LTFU flow: people dropping off ART during the year, split by suppression status.
   # Suppressed patients have lower dropout (stable, feel well, fewer side effects).
   # Unsuppressed patients have higher dropout (side effects, treatment fatigue, stigma).
@@ -445,7 +457,7 @@ calculate_populations <- function(context) {
   
   list(
     total = context$total_population,
-    adult_pop = context$total_population * (1 - context$prop_pop_under_14/100),
+    adult_pop = context$total_population * (1 - prop_under14/100),
     plhiv = plhiv,
     hiv_negative = hiv_negative,
     sexually_active = sexually_active,
@@ -464,17 +476,12 @@ calculate_populations <- function(context) {
     ltfu_new_unsuppressed = ltfu_new_unsuppressed,
     ltfu_new              = ltfu_new_suppressed + ltfu_new_unsuppressed,
     # ── FOI strata (used by stratified infection model) ──────────────────
-    high_risk_negative       = hiv_negative * (if (!is.null(context$prop_high_risk)) context$prop_high_risk else 0.05),
-    general_female           = hiv_negative * (1 - context$prop_pop_male/100) *
-      (1 - (if (!is.null(context$prop_high_risk)) context$prop_high_risk else 0.05)),
-    uncirc_male              = hiv_negative * (context$prop_pop_male/100) *
-      (1 - (if (!is.null(context$circ_prevalence)) context$circ_prevalence else 0.20)) *
-      (1 - (if (!is.null(context$prop_high_risk)) context$prop_high_risk else 0.05)),
-    circ_male                = hiv_negative * (context$prop_pop_male/100) *
-      (if (!is.null(context$circ_prevalence)) context$circ_prevalence else 0.20),
+    high_risk_negative       = hiv_negative * prop_hr,
+    general_female           = hiv_negative * (1 - prop_male_pct/100) * (1 - prop_hr),
+    uncirc_male              = hiv_negative * (prop_male_pct/100) * (1 - circ_prev) * (1 - prop_hr),
+    circ_male                = hiv_negative * (prop_male_pct/100) * circ_prev,
     # kept for VMMC eligible_pop reference in cost loop
-    uncircumcised_males      = hiv_negative * (context$prop_pop_male/100) *
-      (1 - (if (!is.null(context$circ_prevalence)) context$circ_prevalence else 0.20)),
+    uncircumcised_males      = hiv_negative * (prop_male_pct/100) * (1 - circ_prev),
     sexually_active_negative = hiv_negative * 0.60,
     recent_exposure = hiv_negative * 0.002,
     hiv_exposed_infants = hiv_positive_births,
@@ -522,8 +529,10 @@ build_country_presets <- function(csv_data) {
         percent_suppressed = row$percent_suppressed,
         aids_deaths_per_year = row$aids_deaths_per_year,
         birth_rate = row$birth_rate,
-        prop_pop_male = row$prop_male,
-        prop_pop_under_14 = row$prop_under14,
+        prop_pop_male = if (!is.null(row$prop_male) && !is.na(row$prop_male))
+                           as.numeric(row$prop_male) else 49,
+        prop_pop_under_14 = if (!is.null(row$prop_under14) && !is.na(row$prop_under14))
+                               as.numeric(row$prop_under14) else 40,
         # FOI parameters (optional CSV columns; defaults used if absent)
         circ_prevalence = if (!is.null(row$circ_prevalence) && !is.na(row$circ_prevalence)) row$circ_prevalence else 0.20,
         prop_high_risk  = if (!is.null(row$prop_high_risk)  && !is.na(row$prop_high_risk))  row$prop_high_risk  else 0.05,
@@ -552,8 +561,13 @@ build_country_presets <- function(csv_data) {
       
       baseline <- default_baseline_interventions
       for (int_name in names(default_baseline_interventions)) {
-        if (int_name %in% names(row)) {
-          baseline[[int_name]] <- row[[int_name]]
+        csv_val <- row[[int_name]]
+        # Only override the proportional default when the CSV has an explicit
+        # non-NA value. A missing or NA column means "use the computed default"
+        # — previously, a 0 or NA in the CSV silently overwrote the default
+        # (e.g. VMMC = 0 in the CSV wiped out 0.01 * uncircumcised_males).
+        if (int_name %in% names(row) && !is.null(csv_val) && !is.na(csv_val)) {
+          baseline[[int_name]] <- csv_val
         }
       }
       
@@ -651,7 +665,7 @@ define_strata_params <- function(context = NULL) {
   prop_male_general   <- if (!is.null(context$prop_pop_male))       context$prop_pop_male / 100 else 0.50
   circ_prevalence     <- if (!is.null(context$circ_prevalence))     context$circ_prevalence     else 0.20
   vmmc_risk_reduction <- if (!is.null(context$vmmc_risk_reduction)) context$vmmc_risk_reduction else 0.60
-  
+
   list(
     prop_high_risk      = prop_high_risk,
     prop_general        = 1 - prop_high_risk,
@@ -667,19 +681,19 @@ define_strata_params <- function(context = NULL) {
 # ----------------------------------------------------------------------------
 partition_into_strata <- function(populations, strata_params) {
   hiv_neg_active <- populations$sexually_active_negative
-  
+
   n_high_risk           <- hiv_neg_active * strata_params$prop_high_risk
   n_general             <- hiv_neg_active * strata_params$prop_general
   n_general_male        <- n_general * strata_params$prop_male_general
   n_general_male_uncirc <- n_general_male * (1 - strata_params$circ_prevalence)
   n_general_male_circ   <- n_general_male * strata_params$circ_prevalence
   n_general_female      <- n_general * (1 - strata_params$prop_male_general)
-  
+
   # Total unsuppressed = on ART not suppressed + diagnosed not on ART + undiagnosed
   n_unsuppressed <- populations$unsuppressed +
-    populations$diagnosed_not_on_art +
-    populations$undiagnosed
-  
+                    populations$diagnosed_not_on_art +
+                    populations$undiagnosed
+
   list(
     n_high_risk           = n_high_risk,
     n_general             = n_general,
@@ -702,53 +716,54 @@ calibrate_beta <- function(context, populations, strata, strata_params,
   # This means the same baseline prevention inputs reproduce the observed count
   # exactly, while scale-up/down scenarios deviate correctly from it.
   # When NULL (backward-compatible default), β absorbs prevention implicitly.
-  
+
   observed_infections <- context$new_infections_per_year
   infectious_pressure <- strata$n_unsuppressed / populations$total
-  
+
   # Effective susceptible counts after baseline prevention
   if (!is.null(baseline_prev_adj)) {
     n_newly_circ_base <- baseline_prev_adj$vmmc_coverage_frac * strata$n_general_male_uncirc
     eff_high   <- strata$n_high_risk            * (1 - baseline_prev_adj$protection_high)
     eff_genfem <- strata$n_general_female       * (1 - baseline_prev_adj$protection_gen_female)
     eff_uncirc <- (strata$n_general_male_uncirc - n_newly_circ_base) *
-      (1 - baseline_prev_adj$protection_gen_male_unc)
-    eff_circ   <- strata$n_general_male_circ + n_newly_circ_base
+                  (1 - baseline_prev_adj$protection_gen_male_unc)
+    eff_circ   <- (strata$n_general_male_circ + n_newly_circ_base) *
+                  (1 - baseline_prev_adj$protection_gen_male_circ)
   } else {
     eff_high   <- strata$n_high_risk
     eff_genfem <- strata$n_general_female
     eff_uncirc <- strata$n_general_male_uncirc
     eff_circ   <- strata$n_general_male_circ
   }
-  
+
   w_high            <- strata_params$rr_high
   w_gen_female      <- 1.0
   w_gen_male_uncirc <- 1.0
   w_gen_male_circ   <- 1.0 - strata_params$vmmc_risk_reduction
-  
+
   weighted_high          <- w_high            * eff_high
   weighted_gen_female    <- w_gen_female      * eff_genfem
   weighted_gen_male_unc  <- w_gen_male_uncirc * eff_uncirc
   weighted_gen_male_circ <- w_gen_male_circ   * eff_circ
-  
+
   total_weight <- weighted_high + weighted_gen_female +
-    weighted_gen_male_unc + weighted_gen_male_circ
-  
+                  weighted_gen_male_unc + weighted_gen_male_circ
+
   frac_high          <- weighted_high          / total_weight
   frac_gen_female    <- weighted_gen_female    / total_weight
   frac_gen_male_unc  <- weighted_gen_male_unc  / total_weight
   frac_gen_male_circ <- weighted_gen_male_circ / total_weight
-  
+
   inf_high          <- observed_infections * frac_high
   inf_gen_female    <- observed_infections * frac_gen_female
   inf_gen_male_unc  <- observed_infections * frac_gen_male_unc
   inf_gen_male_circ <- observed_infections * frac_gen_male_circ
-  
+
   safe_beta <- function(inf, pressure, n) {
     if (is.null(n) || n == 0 || pressure == 0) return(0)
     inf / (pressure * n)
   }
-  
+
   list(
     beta_high          = safe_beta(inf_high,          infectious_pressure, eff_high),
     beta_gen_female    = safe_beta(inf_gen_female,    infectious_pressure, eff_genfem),
@@ -768,52 +783,67 @@ calibrate_beta <- function(context, populations, strata, strata_params,
 # Multiplicative stacking prevents double-counting when interventions overlap.
 compute_prevention_adjustments <- function(scenario_interventions, strata, populations, strata_params) {
   clip <- function(x) max(0, min(1, x))
-  
+
   # Pull efficacies — with fallbacks if not supplied
   eff_prep_oral <- scenario_interventions$eff_prep_oral %||% 0.99
   eff_prep_len  <- scenario_interventions$eff_prep_len  %||% 1.00
   eff_condom    <- scenario_interventions$eff_condom    %||% 0.80
   eff_pep       <- scenario_interventions$eff_pep       %||% 0.80
-  
+
   # ---- High-risk stratum: PrEP (oral + LEN) + condoms ----
   prep_oral_cov_high <- clip((scenario_interventions$prep_oral       %||% 0) / max(strata$n_high_risk, 1))
   prep_len_cov_high  <- clip((scenario_interventions$prep_lenacapavir %||% 0) / max(strata$n_high_risk, 1))
   condom_cov_high    <- clip((scenario_interventions$condoms          %||% 0) * strata_params$prop_high_risk /
                                max(strata$n_high_risk, 1))
-  
+
   residual_high    <- (1 - prep_oral_cov_high * eff_prep_oral) *
-    (1 - prep_len_cov_high  * eff_prep_len)  *
-    (1 - condom_cov_high     * eff_condom)
+                      (1 - prep_len_cov_high  * eff_prep_len)  *
+                      (1 - condom_cov_high     * eff_condom)
   protection_high  <- 1 - residual_high
-  
+
   # ---- General female: condoms + PEP ----
   condom_cov_gen_f <- clip((scenario_interventions$condoms %||% 0) * strata_params$prop_general *
-                             (1 - strata_params$prop_male_general) / max(strata$n_general_female, 1))
+                              (1 - strata_params$prop_male_general) / max(strata$n_general_female, 1))
   pep_cov_gen_f    <- clip((scenario_interventions$pep %||% 0) * 0.5 / max(strata$n_general_female, 1))
-  
+
   residual_gen_female    <- (1 - condom_cov_gen_f * eff_condom) *
-    (1 - pep_cov_gen_f    * eff_pep)
+                            (1 - pep_cov_gen_f    * eff_pep)
   protection_gen_female  <- 1 - residual_gen_female
-  
+
   # ---- General uncircumcised male: condoms + PEP ----
   condom_cov_gen_mu <- clip((scenario_interventions$condoms %||% 0) * strata_params$prop_general *
-                              strata_params$prop_male_general * (1 - strata_params$circ_prevalence) /
-                              max(strata$n_general_male_uncirc, 1))
+                               strata_params$prop_male_general * (1 - strata_params$circ_prevalence) /
+                               max(strata$n_general_male_uncirc, 1))
   pep_cov_gen_mu    <- clip((scenario_interventions$pep %||% 0) * 0.5 / max(strata$n_general_male_uncirc, 1))
-  
+
   residual_gen_male_unc    <- (1 - condom_cov_gen_mu * eff_condom) *
-    (1 - pep_cov_gen_mu    * eff_pep)
+                              (1 - pep_cov_gen_mu    * eff_pep)
   protection_gen_male_unc  <- 1 - residual_gen_male_unc
-  
+
+  # ---- General circumcised male: condoms + PEP ----
+  # Circumcised men also use condoms; this stacks ON TOP of their lower β_circ
+  # (which encodes biological circumcision protection only).
+  # Without this, men transferred from the uncirc pool by VMMC lose their
+  # condom coverage and can appear to gain MORE infections — fixed here.
+  condom_cov_gen_mc <- clip((scenario_interventions$condoms %||% 0) * strata_params$prop_general *
+                               strata_params$prop_male_general * strata_params$circ_prevalence /
+                               max(strata$n_general_male_circ, 1))
+  pep_cov_gen_mc    <- clip((scenario_interventions$pep %||% 0) * 0.5 / max(strata$n_general_male_circ, 1))
+
+  residual_gen_male_circ   <- (1 - condom_cov_gen_mc * eff_condom) *
+                               (1 - pep_cov_gen_mc    * eff_pep)
+  protection_gen_male_circ <- 1 - residual_gen_male_circ
+
   # ---- VMMC: converts uncirc men → circ pool (not a coverage multiplier) ----
   newly_circumcised  <- min(scenario_interventions$vmmc %||% 0, strata$n_general_male_uncirc)
   vmmc_coverage_frac <- clip(newly_circumcised / max(strata$n_general_male_uncirc, 1))
-  
+
   list(
-    protection_high         = protection_high,
-    protection_gen_female   = protection_gen_female,
-    protection_gen_male_unc = protection_gen_male_unc,
-    vmmc_coverage_frac      = vmmc_coverage_frac
+    protection_high          = protection_high,
+    protection_gen_female    = protection_gen_female,
+    protection_gen_male_unc  = protection_gen_male_unc,
+    protection_gen_male_circ = protection_gen_male_circ,
+    vmmc_coverage_frac       = vmmc_coverage_frac
   )
 }
 
@@ -827,52 +857,54 @@ estimate_new_infections_foi <- function(context,
                                         strata_params = NULL,
                                         baseline_interventions = NULL) {
   if (is.null(strata_params)) strata_params <- define_strata_params(context)
-  
+
   strata <- partition_into_strata(populations, strata_params)
-  
+
   # Compute baseline prevention adjustments so calibrate_beta can derive a
   # biological β that, when combined with baseline prevention, reproduces
   # new_infections_per_year exactly.
   baseline_prev_adj <- if (!is.null(baseline_interventions)) {
     compute_prevention_adjustments(baseline_interventions, strata, populations, strata_params)
   } else NULL
-  
+
   betas  <- calibrate_beta(context, populations, strata, strata_params, baseline_prev_adj)
-  
+
   # Adjust unsuppressed pool for treatment-side changes in this scenario
   n_unsuppressed_scenario      <- max(0, strata$n_unsuppressed - suppression_delta)
   infectious_pressure_scenario <- n_unsuppressed_scenario / populations$total
-  
+
   prev_adj <- compute_prevention_adjustments(scenario_interventions, strata, populations, strata_params)
-  
+
   # VMMC shifts men from uncirc → circ pool
   n_newly_circ <- prev_adj$vmmc_coverage_frac * strata$n_general_male_uncirc
   n_uncirc_eff <- strata$n_general_male_uncirc - n_newly_circ
   n_circ_eff   <- strata$n_general_male_circ   + n_newly_circ
-  
+
   infections_high <- betas$beta_high *
     infectious_pressure_scenario *
     strata$n_high_risk *
     (1 - prev_adj$protection_high)
-  
+
   infections_gen_female <- betas$beta_gen_female *
     infectious_pressure_scenario *
     strata$n_general_female *
     (1 - prev_adj$protection_gen_female)
-  
+
   infections_gen_male_unc <- betas$beta_gen_male_unc *
     infectious_pressure_scenario *
     n_uncirc_eff *
     (1 - prev_adj$protection_gen_male_unc)
-  
-  # Circumcised men: lower β already encodes circumcision protection; no extra multiplier
+
+  # Circumcised men: lower β encodes biological circumcision protection;
+  # condom/PEP coverage applied on top via protection_gen_male_circ
   infections_gen_male_circ <- betas$beta_gen_male_circ *
     infectious_pressure_scenario *
-    n_circ_eff
-  
+    n_circ_eff *
+    (1 - prev_adj$protection_gen_male_circ)
+
   total_new_infections <- max(0,
-                              infections_high + infections_gen_female + infections_gen_male_unc + infections_gen_male_circ)
-  
+    infections_high + infections_gen_female + infections_gen_male_unc + infections_gen_male_circ)
+
   list(
     new_infections     = round(total_new_infections),
     infections_averted = round(max(0, context$new_infections_per_year - total_new_infections)),
@@ -902,21 +934,21 @@ estimate_new_infections_foi <- function(context,
 # ----------------------------------------------------------------------------
 validate_calibration <- function(context, populations, betas, strata, strata_params) {
   flags <- character(0)
-  
+
   bounds <- list(
     beta_high = list(lower = 0.05, upper = 3.00, label = "High-risk (KP)"),
     beta_gen_female    = list(lower = 0.005, upper = 0.50, label = "General (female)"),
     beta_gen_male_unc  = list(lower = 0.003, upper = 0.40, label = "General (uncircumcised male)"),
     beta_gen_male_circ = list(lower = 0.001, upper = 0.20, label = "General (circumcised male)")
   )
-  
+
   beta_values <- list(
     beta_high          = betas$beta_high,
     beta_gen_female    = betas$beta_gen_female,
     beta_gen_male_unc  = betas$beta_gen_male_unc,
     beta_gen_male_circ = betas$beta_gen_male_circ
   )
-  
+
   beta_table <- do.call(rbind, lapply(names(beta_values), function(key) {
     b     <- beta_values[[key]]
     bound <- bounds[[key]]
@@ -930,22 +962,27 @@ validate_calibration <- function(context, populations, betas, strata, strata_par
                lower = bound$lower, upper = bound$upper, pass = pass,
                stringsAsFactors = FALSE)
   }))
-  
-  obs_incidence <- context$new_infections_per_year / max(populations$hiv_negative, 1)
+
+  # Incidence computed against sexually_active_negative — the population the
+  # FOI model actually operates on (60% of hiv_negative). Using hiv_negative
+  # inflates the denominator ~1.67x and causes false low-incidence flags in
+  # lower-burden countries. Threshold lowered to 0.01% to catch only genuine
+  # data mismatches rather than legitimate low-incidence epidemics.
+  obs_incidence <- context$new_infections_per_year / max(populations$sexually_active_negative, 1)
   incidence_pct <- round(obs_incidence * 100, 3)
-  
+
   if (obs_incidence > 0.05)
-    flags <- c(flags, sprintf("Implied annual incidence = %.2f%% — unusually high (>5%%). Check new_infections_per_year and prevalence inputs.", incidence_pct))
-  else if (obs_incidence < 0.001)
-    flags <- c(flags, sprintf("Implied annual incidence = %.3f%% — very low (<0.1%%). Model may underestimate prevention impact.", incidence_pct))
-  
+    flags <- c(flags, sprintf("Implied annual incidence = %.2f%% among sexually active HIV-negative adults — unusually high (>5%%). Check new_infections_per_year and prevalence inputs.", incidence_pct))
+  else if (obs_incidence < 0.0001)
+    flags <- c(flags, sprintf("Implied annual incidence = %.4f%% among sexually active HIV-negative adults — very low (<0.01%%). Check new_infections_per_year input.", incidence_pct))
+
   ratio_inf_to_unsup <- context$new_infections_per_year / max(strata$n_unsuppressed, 1)
   if (ratio_inf_to_unsup > 0.5)
     flags <- c(flags, sprintf("new_infections / unsuppressed_PLHIV = %.2f — implies implausibly high per-person transmission. Check suppression rate or infection counts.", ratio_inf_to_unsup))
-  
+
   if (betas$frac_high > 0.80 && strata_params$prop_high_risk < 0.10)
     flags <- c(flags, sprintf("%.0f%% of infections attributed to high-risk stratum (%.0f%% of population). Consider adjusting prop_high_risk or rr_high.", betas$frac_high * 100, strata_params$prop_high_risk * 100))
-  
+
   n_flags   <- length(flags)
   narrative <- if (n_flags == 0) {
     sprintf("Calibration passed. Implied annual incidence: %.3f%% among HIV-negative adults. High-risk stratum accounts for %.0f%% of baseline infections. All β values within plausible bounds.",
@@ -954,14 +991,14 @@ validate_calibration <- function(context, populations, betas, strata, strata_par
     sprintf("%d calibration warning(s). Implied incidence: %.3f%%. Review flagged parameters before interpreting results.",
             n_flags, incidence_pct)
   }
-  
+
   list(valid = (n_flags == 0), flags = flags, beta_table = beta_table,
        incidence_check = list(
-         observed_rate_pct = incidence_pct,
-         new_infections    = context$new_infections_per_year,
-         hiv_negative_pop  = round(populations$hiv_negative),
-         n_unsuppressed    = round(strata$n_unsuppressed),
-         ratio_inf_unsup   = round(ratio_inf_to_unsup, 3)
+         observed_rate_pct      = incidence_pct,
+         new_infections         = context$new_infections_per_year,
+         sexually_active_neg    = round(populations$sexually_active_negative),
+         n_unsuppressed         = round(strata$n_unsuppressed),
+         ratio_inf_unsup        = round(ratio_inf_to_unsup, 3)
        ),
        narrative = narrative)
 }
@@ -985,7 +1022,7 @@ render_calibration_panel <- function(foi_result) {
   v           <- foi_result$validation
   panel_class <- if (v$valid) "alert alert-success" else "alert alert-warning"
   icon_html   <- if (v$valid) "\u2713 " else "\u26A0\uFE0F "
-  
+
   beta_rows <- lapply(1:nrow(v$beta_table), function(i) {
     row   <- v$beta_table[i, ]
     color <- if (row$pass) "green" else "red"
@@ -998,7 +1035,7 @@ render_calibration_panel <- function(foi_result) {
               if (row$pass) "\u2713 OK" else "\u2717 FLAG")
     )
   })
-  
+
   tagList(
     div(class = panel_class,
         strong(paste0(icon_html, "Calibration Check")), p(v$narrative)),
@@ -1437,7 +1474,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # effective susceptible pool; suppression_delta reduces infectious pressure.
   # Prevention loop below is COSTS ONLY — FOI handles all infection impact.
   # ========================================================================
-  
+
   # suppression_delta = MARGINAL additional suppression above the baseline
   # treatment programme. At baseline this is zero (the baseline cascade is
   # already the reference). For scale-up/down scenarios it reflects the net
@@ -1449,7 +1486,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   } else {
     max(0, additional_suppressed - baseline_additional_suppressed)
   }
-  
+
   # Pass efficacies from intervention_params into FOI so they stay in sync
   foi_interventions <- c(
     interventions,
@@ -1460,7 +1497,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       eff_pep       = all_interventions$pep$efficacy              %||% 0.80
     )
   )
-  
+
   foi_result         <- estimate_new_infections_foi(
     context                = context,
     populations            = populations,
@@ -1470,7 +1507,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   )
   end_new_infections <- foi_result$new_infections
   infections_averted <- foi_result$infections_averted
-  
+
   # Validate calibration — logs warnings but does not stop execution
   strata_params_val <- define_strata_params(context)
   strata_val        <- partition_into_strata(populations, strata_params_val)
@@ -1479,21 +1516,21 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   if (!cal_check$valid) {
     warning(paste("FOI calibration flags:", paste(cal_check$flags, collapse = "; ")))
   }
-  
+
   # Prevention cost loop (COSTS ONLY — infection impact already captured by FOI)
   for (int_key in names(all_interventions)) {
     intervention       <- all_interventions[[int_key]]
     intervention_value <- interventions[[int_key]]
-    
+
     if (is.null(intervention_value) || intervention_value == 0) next
-    
+
     eligible       <- populations[[intervention$eligible_pop]] %||% 0
     number_reached <- if (intervention$type == "coverage")
-      eligible * (intervention_value / 100)
-    else
-      min(intervention_value, eligible)
+                        eligible * (intervention_value / 100)
+                      else
+                        min(intervention_value, eligible)
     number_reached <- min(number_reached, eligible)
-    
+
     if ("adult_infections" %in% intervention$outcomes) {
       # Cost only — FOI accounts for protective effect
       total_intervention_cost <- total_intervention_cost +
