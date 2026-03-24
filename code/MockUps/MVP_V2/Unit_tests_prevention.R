@@ -417,7 +417,7 @@ test_that("Scaling up condoms above baseline reduces end_new_infections", {
   out_base <- run_baseline()
   
   ints_condom         <- make_baseline_interventions()
-  ints_condom$condoms <- round(pops$sexually_active_negative * 0.85)  # up from 30%
+  ints_condom$condoms <- round(pops$sexually_active_negative * 0.85*100)  # up from 30%
   
   out_condom <- run_scenario(ints_condom, base_out = out_base)
   

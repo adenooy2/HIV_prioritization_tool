@@ -675,7 +675,7 @@ define_strata_params <- function(context = NULL) {
   prop_high_risk      <- if (!is.null(context$prop_high_risk))      context$prop_high_risk      else 0.05
   rr_high             <- if (!is.null(context$rr_high))             context$rr_high             else 8.0
   prop_male_general   <- if (!is.null(context$prop_pop_male))       context$prop_pop_male / 100 else 0.50
-  circ_prevalence     <- if (!is.null(context$circ_prevalence))     context$circ_prevalence/100     else 20
+  circ_prevalence     <- if (!is.null(context$circ_prevalence))     context$circ_prevalence     else 0.20
   vmmc_risk_reduction <- if (!is.null(context$vmmc_risk_reduction)) context$vmmc_risk_reduction else 0.60
   
   list(
@@ -811,55 +811,59 @@ compute_prevention_adjustments <- function(scenario_interventions, strata, popul
   condom_use_rate_high      <- scenario_interventions$condom_use_rate_high %||% 0.75
   condom_use_rate_gen       <- scenario_interventions$condom_use_rate_gen  %||% 0.55
   
-  # ---- High-risk stratum: PrEP (oral + LEN) + condoms ----
-  prep_oral_cov_high <- clip((scenario_interventions$prep_oral       %||% 0) / max(strata$n_high_risk, 1))
-  prep_len_cov_high  <- clip((scenario_interventions$prep_lenacapavir %||% 0) / max(strata$n_high_risk, 1))
-  condom_cov_high    <- clip(
-    (scenario_interventions$condoms %||% 0) / acts_per_year_high *
-      condom_use_rate_high * strata_params$prop_high_risk / max(strata$n_high_risk, 1)
-  )
+  # ---- Demand-weighted condom allocation ----------------------------------------
+  # Condoms are allocated proportionally to total sex acts per group, not
+  # population share. This ensures the full distributed stock is consumed and
+  # the high-risk group — which has more acts per person — receives a
+  # correspondingly larger share before the general population is served.
+  #
+  # Per-person coverage within each group:
+  #   condom_cov = (condoms_allocated_to_group / acts_per_year) * condom_use_rate
+  #             = (total_condoms * group_acts_share / acts_per_year) * condom_use_rate
+  #             = total_condoms * condom_use_rate / total_acts
+  #
+  # All three general sub-strata (female, uncirc male, circ male) share the
+  # same acts_per_year_gen, so they all receive the same per-person coverage.
+  # -------------------------------------------------------------------------------
+  total_condoms   <- scenario_interventions$condoms %||% 0
+  acts_high_total <- strata$n_high_risk * acts_per_year_high
+  acts_gen_total  <- strata$n_general   * acts_per_year_gen
+  total_acts      <- max(acts_high_total + acts_gen_total, 1)
   
-  residual_high    <- (1 - prep_oral_cov_high * eff_prep_oral) *
+  condom_cov_high <- clip(total_condoms * condom_use_rate_high / total_acts)
+  condom_cov_gen  <- clip(total_condoms * condom_use_rate_gen  / total_acts)
+  
+  # ---- High-risk stratum: PrEP (oral + LEN) + condoms ----
+  prep_oral_cov_high <- clip((scenario_interventions$prep_oral        %||% 0) / max(strata$n_high_risk, 1))
+  prep_len_cov_high  <- clip((scenario_interventions$prep_lenacapavir %||% 0) / max(strata$n_high_risk, 1))
+  
+  residual_high   <- (1 - prep_oral_cov_high * eff_prep_oral) *
     (1 - prep_len_cov_high  * eff_prep_len)  *
-    (1 - condom_cov_high     * eff_condom)
-  protection_high  <- 1 - residual_high
+    (1 - condom_cov_high    * eff_condom)
+  protection_high <- 1 - residual_high
   
   # ---- General female: condoms + PEP ----
-  condom_cov_gen_f <- clip(
-    (scenario_interventions$condoms %||% 0) / acts_per_year_gen *
-      condom_use_rate_gen * strata_params$prop_general *
-      (1 - strata_params$prop_male_general) / max(strata$n_general_female, 1)
-  )
+  condom_cov_gen_f <- condom_cov_gen
   pep_cov_gen_f    <- clip((scenario_interventions$pep %||% 0) * 0.5 / max(strata$n_general_female, 1))
   
-  residual_gen_female    <- (1 - condom_cov_gen_f * eff_condom) *
-    (1 - pep_cov_gen_f    * eff_pep)
-  protection_gen_female  <- 1 - residual_gen_female
+  residual_gen_female   <- (1 - condom_cov_gen_f * eff_condom) *
+    (1 - pep_cov_gen_f   * eff_pep)
+  protection_gen_female <- 1 - residual_gen_female
   
   # ---- General uncircumcised male: condoms + PEP ----
-  condom_cov_gen_mu <- clip(
-    (scenario_interventions$condoms %||% 0) / acts_per_year_gen *
-      condom_use_rate_gen * strata_params$prop_general *
-      strata_params$prop_male_general * (1 - strata_params$circ_prevalence) /
-      max(strata$n_general_male_uncirc, 1)
-  )
+  condom_cov_gen_mu <- condom_cov_gen
   pep_cov_gen_mu    <- clip((scenario_interventions$pep %||% 0) * 0.5 / max(strata$n_general_male_uncirc, 1))
   
-  residual_gen_male_unc    <- (1 - condom_cov_gen_mu * eff_condom) *
-    (1 - pep_cov_gen_mu    * eff_pep)
-  protection_gen_male_unc  <- 1 - residual_gen_male_unc
+  residual_gen_male_unc   <- (1 - condom_cov_gen_mu * eff_condom) *
+    (1 - pep_cov_gen_mu   * eff_pep)
+  protection_gen_male_unc <- 1 - residual_gen_male_unc
   
   # ---- General circumcised male: condoms + PEP ----
   # Circumcised men also use condoms; this stacks ON TOP of their lower β_circ
   # (which encodes biological circumcision protection only).
   # Without this, men transferred from the uncirc pool by VMMC lose their
   # condom coverage and can appear to gain MORE infections — fixed here.
-  condom_cov_gen_mc <- clip(
-    (scenario_interventions$condoms %||% 0) / acts_per_year_gen *
-      condom_use_rate_gen * strata_params$prop_general *
-      strata_params$prop_male_general * strata_params$circ_prevalence /
-      max(strata$n_general_male_circ, 1)
-  )
+  condom_cov_gen_mc <- condom_cov_gen
   pep_cov_gen_mc    <- clip((scenario_interventions$pep %||% 0) * 0.5 / max(strata$n_general_male_circ, 1))
   
   residual_gen_male_circ   <- (1 - condom_cov_gen_mc * eff_condom) *
@@ -1569,8 +1573,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     
     if ("adult_infections" %in% intervention$outcomes) {
       # Cost only — FOI accounts for protective effect
+      units_costed <- if (int_key == "condoms")
+        (intervention_value %||% 0)
+      else
+        number_reached
       total_intervention_cost <- total_intervention_cost +
-        number_reached * intervention$unit_cost
+        units_costed * intervention$unit_cost
     }
   }
   baseline_infant_infections <- populations$hiv_exposed_infants * 0.15 ###UPDATE
