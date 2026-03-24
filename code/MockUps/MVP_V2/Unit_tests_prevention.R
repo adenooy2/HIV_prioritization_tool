@@ -23,6 +23,10 @@
 #   - Calibration validation flags implausible infections-to-unsuppressed ratio
 #   - Calibration validation flags very high implied incidence
 #   - VMMC cannot exceed the uncircumcised pool
+#   - Circumcised males receive condom + PEP protection (V2 pathway)
+#   - Behavioural condom parameters drive condom-to-coverage conversion
+#   - circ_prevalence unit consistency between calculate_populations and
+#     define_strata_params (regression test for percentage vs proportion bug)
 # ============================================================================
 
 library(testthat)
@@ -34,6 +38,9 @@ source("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritiza
 # ============================================================================
 
 # Standard test context — includes FOI parameters.
+# circ_prevalence is supplied as a PERCENTAGE INTEGER (matching CSV convention).
+# calculate_populations and define_strata_params both divide by 100 internally.
+#
 # Hand-computed reference values (used in test commentary):
 #   plhiv              = 1,000,000 × 0.05          = 50,000
 #   diagnosed          = 50,000 × 0.80              = 40,000
@@ -45,6 +52,10 @@ source("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritiza
 #   n_unsuppressed(FOI)= 4,500 + 10,000 + 10,000   = 24,500
 #   hiv_negative       = 950,000
 #   sexually_active_neg= 950,000 × 0.60             = 570,000
+#   uncircumcised_males= 950,000 × 0.49 × 0.40      = 186,200
+#   n_general_male_uncirc (of sexually-active neg):
+#                      = 570,000 × 0.95 × 0.49 × 0.40 = 106,134
+#   n_general_male_circ= 570,000 × 0.95 × 0.49 × 0.60 = 159,201
 make_context <- function() {
   list(
     total_population        = 1000000,
@@ -57,7 +68,8 @@ make_context <- function() {
     birth_rate              = 25,
     prop_pop_male           = 49,
     prop_pop_under_14       = 40,
-    circ_prevalence         = 0.6,
+    circ_prevalence         = 60,    # percentage integer — divided by 100 in both
+    # calculate_populations AND define_strata_params
     prop_high_risk          = 0.05,
     rr_high                 = 8.0
   )
@@ -116,15 +128,22 @@ zero_mortality <- function() {
   )
 }
 
+# set_prevention_params also exposes the behavioural condom globals so that
+# Tests 22+ can manipulate acts_per_year and condom_use_rate without touching
+# the logic file directly.
 set_prevention_params <- function(
-    prep_oral_eff  = 0.99,
-    prep_len_eff   = 1.00,
-    condom_eff     = 0.80,
-    pep_eff        = 0.80,
-    prep_oral_cost = 200,
-    condom_cost    = 5,
-    vmmc_cost      = 100,
-    pep_cost       = 50
+    prep_oral_eff        = 0.99,
+    prep_len_eff         = 1.00,
+    condom_eff           = 0.80,
+    pep_eff              = 0.80,
+    prep_oral_cost       = 200,
+    condom_cost          = 5,
+    vmmc_cost            = 100,
+    pep_cost             = 50,
+    acts_per_year_high   = 100,
+    acts_per_year_gen    = 50,
+    condom_use_rate_high = 0.75,
+    condom_use_rate_gen  = 0.55
 ) {
   intervention_groups$prevention$interventions$prep_oral$efficacy        <<- prep_oral_eff
   intervention_groups$prevention$interventions$prep_oral$unit_cost       <<- prep_oral_cost
@@ -134,6 +153,10 @@ set_prevention_params <- function(
   intervention_groups$prevention$interventions$pep$efficacy              <<- pep_eff
   intervention_groups$prevention$interventions$pep$unit_cost             <<- pep_cost
   intervention_groups$prevention$interventions$vmmc$unit_cost            <<- vmmc_cost
+  ACTS_PER_YEAR_HIGH   <<- acts_per_year_high
+  ACTS_PER_YEAR_GEN    <<- acts_per_year_gen
+  CONDOM_USE_RATE_HIGH <<- condom_use_rate_high
+  CONDOM_USE_RATE_GEN  <<- condom_use_rate_gen
 }
 
 # ── Initialise shared objects ─────────────────────────────────────────────────
@@ -157,6 +180,7 @@ betas <- calibrate_beta(ctx, pops, st, sp, baseline_prev_adj)
 
 cat("=== FOI reference values ===\n")
 cat(sprintf("  sexually_active_negative:  %g\n", pops$sexually_active_negative))
+cat(sprintf("  uncircumcised_males (pops):%g\n", pops$uncircumcised_males))
 cat(sprintf("  n_high_risk:               %g\n", st$n_high_risk))
 cat(sprintf("  n_general_female:          %g\n", st$n_general_female))
 cat(sprintf("  n_general_male_uncirc:     %g\n", st$n_general_male_uncirc))
@@ -326,7 +350,7 @@ test_that("Scaling up PrEP above baseline reduces end_new_infections", {
   set_prevention_params(prep_oral_eff = 0.99)
   out_base <- run_baseline()
   
-  ints_prep         <- make_baseline_interventions()
+  ints_prep           <- make_baseline_interventions()
   ints_prep$prep_oral <- round(pops$high_risk_negative * 0.40)  # scale up to 40%
   
   out_prep <- run_scenario(ints_prep, base_out = out_base)
@@ -393,7 +417,7 @@ test_that("Scaling up condoms above baseline reduces end_new_infections", {
   out_base <- run_baseline()
   
   ints_condom         <- make_baseline_interventions()
-  ints_condom$condoms <- round(pops$sexually_active_negative * 0.85)  # up from 60%
+  ints_condom$condoms <- round(pops$sexually_active_negative * 0.85)  # up from 30%
   
   out_condom <- run_scenario(ints_condom, base_out = out_base)
   
@@ -459,8 +483,9 @@ test_that("VMMC averts fewer infections when baseline circumcision prevalence is
   cat("TEST 10: VMMC Benefit Smaller When Baseline Circumcision Prevalence Is High\n")
   cat("========================================\n")
   
-  ctx_low_circ  <- modifyList(make_context(), list(circ_prevalence = 0.10))
-  ctx_high_circ <- modifyList(make_context(), list(circ_prevalence = 0.80))
+  # circ_prevalence supplied as percentage integers (10% and 80%)
+  ctx_low_circ  <- modifyList(make_context(), list(circ_prevalence = 10))
+  ctx_high_circ <- modifyList(make_context(), list(circ_prevalence = 80))
   pops_low      <- calculate_populations(ctx_low_circ)
   pops_high     <- calculate_populations(ctx_high_circ)
   
@@ -490,8 +515,8 @@ test_that("VMMC averts fewer infections when baseline circumcision prevalence is
   averted_high <- out_base_high$end_new_infections - out_vmmc_high$end_new_infections
   
   cat(sprintf("  vmmc_n (both countries):             %g\n", vmmc_n))
-  cat(sprintf("  infections averted (circ_prev=0.10): %g\n", averted_low))
-  cat(sprintf("  infections averted (circ_prev=0.80): %g\n", averted_high))
+  cat(sprintf("  infections averted (circ_prev=10%%):  %g\n", averted_low))
+  cat(sprintf("  infections averted (circ_prev=80%%):  %g\n", averted_high))
   
   expect_gt(averted_low, averted_high,
             label = "VMMC averts more when baseline circumcision prevalence is low")
@@ -572,7 +597,7 @@ test_that("Positive suppression_delta reduces new infections via lower infectiou
   cat(sprintf("  infections_averted (delta = 0):      %g\n", foi_none$infections_averted))
   cat(sprintf("  infections_averted (delta = 5000):   %g\n", foi_some$infections_averted))
   
-  expect_lt(foi_some$new_infections,    foi_none$new_infections,
+  expect_lt(foi_some$new_infections,     foi_none$new_infections,
             label = "Positive suppression_delta must reduce new infections")
   expect_gt(foi_some$infections_averted, foi_none$infections_averted,
             label = "Suppression delta must register infections averted")
@@ -622,10 +647,10 @@ test_that("Suppressing nearly all unsuppressed PLHIV reduces infections to near 
   near_full_delta <- st$n_unsuppressed * 0.98
   
   foi_none <- estimate_new_infections_foi(ctx, pops, list(),
-                                          suppression_delta = 0,
+                                          suppression_delta      = 0,
                                           baseline_interventions = baseline_ints)
   foi_full <- estimate_new_infections_foi(ctx, pops, list(),
-                                          suppression_delta = near_full_delta,
+                                          suppression_delta      = near_full_delta,
                                           baseline_interventions = baseline_ints)
   
   cat(sprintf("  n_unsuppressed (FOI baseline):       %g\n", st$n_unsuppressed))
@@ -779,31 +804,37 @@ test_that("validate_calibration flags when new_infections >> unsuppressed PLHIV"
 # ============================================================================
 # TEST 19: CALIBRATION FLAGS VERY HIGH IMPLIED INCIDENCE
 # ============================================================================
+# validate_calibration uses sexually_active_negative (hiv_negative × 0.6) as
+# the denominator, not hiv_negative. Threshold is >5% incidence among that
+# population. new_infections_per_year = 15,000 with hiv_prevalence = 0.70 gives:
+#   sexually_active_negative = (1,000,000 × 0.30) × 0.60 = 180,000
+#   implied incidence = 15,000 / 180,000 = 8.3%  >5%  → flags correctly.
 
-test_that("validate_calibration flags when implied incidence exceeds 5%", {
+test_that("validate_calibration flags when implied incidence (vs sexually_active_neg) exceeds 5%", {
   cat("\n========================================\n")
-  cat("TEST 19: Calibration Flags Very High Implied Incidence (>5%)\n")
+  cat("TEST 19: Calibration Flags Very High Implied Incidence (>5% of sexually active HIV-negative)\n")
   cat("========================================\n")
   
   ctx_hi   <- modifyList(make_context(), list(hiv_prevalence          = 0.70,
-                                              new_infections_per_year = 5000))
+                                              new_infections_per_year = 15000))
   pops_hi  <- calculate_populations(ctx_hi)
   sp_hi    <- define_strata_params(ctx_hi)
   st_hi    <- partition_into_strata(pops_hi, sp_hi)
   betas_hi <- calibrate_beta(ctx_hi, pops_hi, st_hi, sp_hi)
   val_hi   <- validate_calibration(ctx_hi, pops_hi, betas_hi, st_hi, sp_hi)
   
-  inc <- ctx_hi$new_infections_per_year / pops_hi$hiv_negative
+  # Denominator matches what validate_calibration uses internally
+  inc <- ctx_hi$new_infections_per_year / pops_hi$sexually_active_negative
   
-  cat(sprintf("  hiv_negative pop:                    %g\n",  pops_hi$hiv_negative))
-  cat(sprintf("  new_infections_per_year:             %g\n",  ctx_hi$new_infections_per_year))
-  cat(sprintf("  implied incidence:                   %.2f%%\n", inc * 100))
-  cat(sprintf("  valid:                               %s\n",  val_hi$valid))
+  cat(sprintf("  sexually_active_negative:                   %g\n",  pops_hi$sexually_active_negative))
+  cat(sprintf("  new_infections_per_year:                    %g\n",  ctx_hi$new_infections_per_year))
+  cat(sprintf("  implied incidence (vs sexually_active_neg): %.2f%%\n", inc * 100))
+  cat(sprintf("  valid:                                      %s\n",  val_hi$valid))
   cat("  flags:\n")
   for (f in val_hi$flags) cat(sprintf("    - %s\n", f))
   
   expect_false(val_hi$valid,
-               info = "Implied incidence >5% must fail calibration")
+               info = "Implied incidence >5% among sexually active HIV-negative must fail calibration")
   expect_true(any(grepl("incidence|5%|high", val_hi$flags, ignore.case = TRUE)),
               info = "A flag must mention the high incidence")
   
@@ -842,6 +873,203 @@ test_that("Over-supplying VMMC produces same result as capping at pool size", {
 
 
 # ============================================================================
+# TEST 21: CIRCUMCISED MALES RECEIVE CONDOM + PEP PROTECTION (V2 PATHWAY)
+# ============================================================================
+# In V2, compute_prevention_adjustments now calculates protection_gen_male_circ
+# (condoms + PEP stacked on top of the lower biological β for circumcised men).
+# This test confirms the field is non-zero at baseline, increases with scale-up,
+# and that the gain translates to fewer total infections.
+
+test_that("Condom scale-up increases protection_gen_male_circ and reduces total infections", {
+  cat("\n========================================\n")
+  cat("TEST 21: Circumcised Males Receive Condom Coverage (V2 protection_gen_male_circ pathway)\n")
+  cat("========================================\n")
+  
+  set_prevention_params()  # reset to defaults
+  
+  base_list <- c(baseline_ints,
+                 list(eff_prep_oral = 0.99, eff_prep_len = 1.00,
+                      eff_condom    = 0.80, eff_pep      = 0.80))
+  
+  high_condom_list <- modifyList(base_list,
+                                 list(condoms = round(pops$sexually_active_negative * 0.85)))
+  
+  prev_adj_base <- compute_prevention_adjustments(base_list,        st, pops, sp)
+  prev_adj_high <- compute_prevention_adjustments(high_condom_list, st, pops, sp)
+  
+  cat(sprintf("  protection_gen_male_circ (baseline condoms):  %.4f\n",
+              prev_adj_base$protection_gen_male_circ))
+  cat(sprintf("  protection_gen_male_circ (85%% condom scale):  %.4f\n",
+              prev_adj_high$protection_gen_male_circ))
+  
+  # Circumcised men must receive non-zero protection from condoms at baseline
+  expect_gt(prev_adj_base$protection_gen_male_circ, 0,
+            label = "Circumcised males must have positive condom protection at baseline")
+  
+  # Scale-up must increase their protection
+  expect_gt(prev_adj_high$protection_gen_male_circ, prev_adj_base$protection_gen_male_circ,
+            label = "Condom scale-up must increase protection_gen_male_circ")
+  
+  # And translate to fewer end infections overall
+  out_base   <- run_baseline()
+  ints_scale <- make_baseline_interventions()
+  ints_scale$condoms <- round(pops$sexually_active_negative * 0.85)
+  out_scale  <- run_scenario(ints_scale, base_out = out_base)
+  
+  cat(sprintf("  end_new_infections (baseline):            %g\n", out_base$end_new_infections))
+  cat(sprintf("  end_new_infections (condom scale-up):     %g\n", out_scale$end_new_infections))
+  
+  expect_lt(out_scale$end_new_infections, out_base$end_new_infections,
+            label = "Condom scale-up via circumcised male pathway must reduce total infections")
+  
+  cat("✓ All assertions passed\n")
+})
+
+
+# ============================================================================
+# TEST 22: BEHAVIOURAL CONDOM PARAMETERS DRIVE CONDOM-TO-COVERAGE CONVERSION
+# ============================================================================
+# acts_per_year converts condoms distributed into people with consistent annual
+# coverage. Fewer acts → same stock covers more people → higher protection.
+# condom_use_rate scales how many acts are protected. Both parameters are now
+# explicit globals (ACTS_PER_YEAR_HIGH/GEN, CONDOM_USE_RATE_HIGH/GEN) that
+# feed into compute_prevention_adjustments via foi_interventions.
+
+test_that("acts_per_year and condom_use_rate drive per-stratum protection correctly", {
+  cat("\n========================================\n")
+  cat("TEST 22: Behavioural Condom Parameters Drive Condom-to-Coverage Conversion\n")
+  cat("========================================\n")
+  
+  condoms_distributed <- round(pops$sexually_active_negative * 0.50)
+  
+  base_list <- list(
+    condoms       = condoms_distributed,
+    eff_prep_oral = 0.99, eff_prep_len = 1.00,
+    eff_condom    = 0.80, eff_pep      = 0.80
+  )
+  
+  # ── acts_per_year: fewer acts → same condoms cover more people → higher protection ──
+  prev_adj_low_acts <- compute_prevention_adjustments(
+    modifyList(base_list, list(acts_per_year_gen = 20,  condom_use_rate_gen = 0.55)),
+    st, pops, sp
+  )
+  prev_adj_high_acts <- compute_prevention_adjustments(
+    modifyList(base_list, list(acts_per_year_gen = 200, condom_use_rate_gen = 0.55)),
+    st, pops, sp
+  )
+  
+  cat(sprintf("  condoms distributed:                         %g\n", condoms_distributed))
+  cat(sprintf("  protection_gen_female (acts/yr = 20):        %.4f\n",
+              prev_adj_low_acts$protection_gen_female))
+  cat(sprintf("  protection_gen_female (acts/yr = 200):       %.4f\n",
+              prev_adj_high_acts$protection_gen_female))
+  
+  expect_gt(prev_adj_low_acts$protection_gen_female,
+            prev_adj_high_acts$protection_gen_female,
+            label = "Fewer acts/year → same condoms cover more people → higher protection")
+  
+  # ── condom_use_rate: higher rate → more acts covered → higher protection ──
+  prev_adj_low_rate <- compute_prevention_adjustments(
+    modifyList(base_list, list(acts_per_year_gen = 50, condom_use_rate_gen = 0.20)),
+    st, pops, sp
+  )
+  prev_adj_high_rate <- compute_prevention_adjustments(
+    modifyList(base_list, list(acts_per_year_gen = 50, condom_use_rate_gen = 0.80)),
+    st, pops, sp
+  )
+  
+  cat(sprintf("  protection_gen_female (use_rate = 0.20):     %.4f\n",
+              prev_adj_low_rate$protection_gen_female))
+  cat(sprintf("  protection_gen_female (use_rate = 0.80):     %.4f\n",
+              prev_adj_high_rate$protection_gen_female))
+  
+  expect_gt(prev_adj_high_rate$protection_gen_female,
+            prev_adj_low_rate$protection_gen_female,
+            label = "Higher condom_use_rate → more acts protected → higher stratum protection")
+  
+  # ── high-risk condom parameters are independent of general population ──
+  prev_adj_hr_low  <- compute_prevention_adjustments(
+    modifyList(base_list, list(acts_per_year_high = 50,  condom_use_rate_high = 0.40)),
+    st, pops, sp
+  )
+  prev_adj_hr_high <- compute_prevention_adjustments(
+    modifyList(base_list, list(acts_per_year_high = 200, condom_use_rate_high = 0.40)),
+    st, pops, sp
+  )
+  
+  cat(sprintf("  protection_high (hr_acts/yr = 50):           %.4f\n",
+              prev_adj_hr_low$protection_high))
+  cat(sprintf("  protection_high (hr_acts/yr = 200):          %.4f\n",
+              prev_adj_hr_high$protection_high))
+  
+  expect_gt(prev_adj_hr_low$protection_high, prev_adj_hr_high$protection_high,
+            label = "Fewer high-risk acts/year → higher per-condom coverage in high-risk stratum")
+  
+  cat("✓ All assertions passed\n")
+})
+
+
+# ============================================================================
+# TEST 23: circ_prevalence UNIT CONSISTENCY — REGRESSION TEST FOR PERCENTAGE BUG
+# ============================================================================
+# circ_prevalence is stored as a percentage integer in the CSV (e.g. 60 = 60%).
+# Both calculate_populations AND define_strata_params must divide by 100.
+# Previously define_strata_params used the value raw, causing a 100× discrepancy
+# in the circumcised fraction between pops$uncircumcised_males and
+# st$n_general_male_uncirc. This test locks in the fix.
+
+test_that("circ_prevalence percentage is applied consistently in pops and strata", {
+  cat("\n========================================\n")
+  cat("TEST 23: circ_prevalence Unit Consistency (Regression Test)\n")
+  cat("========================================\n")
+  
+  ctx_c  <- modifyList(make_context(), list(circ_prevalence = 60))  # 60%
+  pops_c <- calculate_populations(ctx_c)
+  sp_c   <- define_strata_params(ctx_c)
+  st_c   <- partition_into_strata(pops_c, sp_c)
+  
+  # Uncircumcised fraction implied by calculate_populations
+  hiv_neg_males_pops <- pops_c$hiv_negative * (ctx_c$prop_pop_male / 100)
+  uncirc_frac_pops   <- pops_c$uncircumcised_males / hiv_neg_males_pops
+  
+  # Uncircumcised fraction implied by define_strata_params
+  uncirc_frac_strata <- 1 - sp_c$circ_prevalence
+  
+  cat(sprintf("  circ_prevalence input (%%):                 %g\n",  ctx_c$circ_prevalence))
+  cat(sprintf("  sp$circ_prevalence (after /100):           %.4f\n", sp_c$circ_prevalence))
+  cat(sprintf("  uncirc fraction via calculate_populations: %.4f\n", uncirc_frac_pops))
+  cat(sprintf("  uncirc fraction via define_strata_params:  %.4f\n", uncirc_frac_strata))
+  cat(sprintf("  expected uncirc fraction:                  0.4000\n"))
+  cat(sprintf("  difference between pops and strata:        %.6f\n",
+              abs(uncirc_frac_pops - uncirc_frac_strata)))
+  
+  # Both must resolve to (1 - 0.60) = 0.40
+  expect_equal(uncirc_frac_pops, 0.40, tolerance = 0.001,
+               info = "calculate_populations: uncircumcised fraction must equal 1 - circ_prev/100")
+  expect_equal(uncirc_frac_strata, 0.40, tolerance = 0.001,
+               info = "define_strata_params: sp$circ_prevalence must equal circ_prev/100")
+  expect_equal(uncirc_frac_pops, uncirc_frac_strata, tolerance = 0.001,
+               info = "pops$uncircumcised_males and strata must agree on the uncircumcised fraction")
+  
+  # Also confirm pops and strata agree on the absolute uncircumcised male count
+  # (using sexually_active_negative as the strata base)
+  cat(sprintf("  pops$uncircumcised_males:                  %g\n", pops_c$uncircumcised_males))
+  cat(sprintf("  st_c$n_general_male_uncirc (before hr adj):%g\n", st_c$n_general_male_uncirc))
+  
+  # st uses sexually_active_negative (60% of hiv_negative) so the absolute counts
+  # differ — what must match is the *proportion* within each male population subset
+  uncirc_frac_st <- st_c$n_general_male_uncirc /
+    (st_c$n_general_male_uncirc + st_c$n_general_male_circ)
+  cat(sprintf("  uncirc frac within strata males:           %.4f\n", uncirc_frac_st))
+  
+  expect_equal(uncirc_frac_st, 0.40, tolerance = 0.001,
+               info = "Uncirc fraction within general strata males must equal 1 - circ_prev/100")
+  
+  cat("✓ All assertions passed\n")
+})
+
+
+# ============================================================================
 # SUMMARY
 # ============================================================================
 
@@ -866,5 +1094,8 @@ cat("✓ TEST 15: Targeted PrEP averts more than untargeted at same volume and e
 cat("✓ TEST 16: end_new_infections always non-negative\n")
 cat("✓ TEST 17: Calibration validation passes with coherent inputs\n")
 cat("✓ TEST 18: Calibration flags implausible infections-to-unsuppressed ratio\n")
-cat("✓ TEST 19: Calibration flags very high implied incidence\n")
+cat("✓ TEST 19: Calibration flags very high implied incidence (vs sexually_active_negative denominator)\n")
 cat("✓ TEST 20: VMMC cannot exceed the uncircumcised pool\n")
+cat("✓ TEST 21: Circumcised males receive condom coverage (V2 protection_gen_male_circ pathway)\n")
+cat("✓ TEST 22: acts_per_year and condom_use_rate drive condom-to-coverage conversion\n")
+cat("✓ TEST 23: circ_prevalence percentage applied consistently in calculate_populations and define_strata_params\n")
