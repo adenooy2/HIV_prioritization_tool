@@ -445,7 +445,7 @@ calculate_populations <- function(context) {
   prop_under14  <- if (!is.null(context$prop_pop_under_14) && !is.na(context$prop_pop_under_14))
                      context$prop_pop_under_14 else 40
   circ_prev     <- if (!is.null(context$circ_prevalence) && !is.na(context$circ_prevalence))
-                     context$circ_prevalence else 0.20
+                     context$circ_prevalence/100 else 0.20
   prop_hr       <- if (!is.null(context$prop_high_risk) && !is.na(context$prop_high_risk))
                      context$prop_high_risk else 0.05
   
