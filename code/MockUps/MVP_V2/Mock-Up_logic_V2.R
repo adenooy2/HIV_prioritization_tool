@@ -675,7 +675,7 @@ define_strata_params <- function(context = NULL) {
   prop_high_risk      <- if (!is.null(context$prop_high_risk))      context$prop_high_risk      else 0.05
   rr_high             <- if (!is.null(context$rr_high))             context$rr_high             else 8.0
   prop_male_general   <- if (!is.null(context$prop_pop_male))       context$prop_pop_male / 100 else 0.50
-  circ_prevalence     <- if (!is.null(context$circ_prevalence))     context$circ_prevalence     else 0.20
+  circ_prevalence     <- if (!is.null(context$circ_prevalence))     context$circ_prevalence/100     else 0.20
   vmmc_risk_reduction <- if (!is.null(context$vmmc_risk_reduction)) context$vmmc_risk_reduction else 0.60
   
   list(
