@@ -548,7 +548,9 @@ build_country_presets <- function(csv_data) {
         # FOI parameters (optional CSV columns; defaults used if absent)
         circ_prevalence = if (!is.null(row$circ_prevalence) && !is.na(row$circ_prevalence)) row$circ_prevalence else 0.20,
         prop_high_risk  = if (!is.null(row$prop_high_risk)  && !is.na(row$prop_high_risk))  row$prop_high_risk  else 0.05,
-        rr_high         = if (!is.null(row$rr_high)         && !is.na(row$rr_high))         row$rr_high         else 8.0
+        rr_high         = if (!is.null(row$rr_high)         && !is.na(row$rr_high))         row$rr_high         else 8.0,
+        test_yield      = if (!is.null(row$test_yield)  && !is.na(row$test_yield))
+          as.numeric(row$test_yield) / 100 else NULL 
       )
       
       pops <- calculate_populations(context)
@@ -1125,7 +1127,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Calculate dynamic testing yield
   # Yield = probability that a test is positive
   # This is based on undiagnosed (true new positives) + LTFU (re-engagement)
-  base_test_yield <- ((populations$undiagnosed + populations$ltfu) / populations$sexually_active)
+  if (!is.null(context$test_yield) && !is.na(context$test_yield)) {
+    base_test_yield <- context$test_yield
+  } else {
+    base_test_yield <- (populations$undiagnosed + populations$ltfu) / populations$sexually_active
+  }
+  
   base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
   
   prop_new_dx <- 0.7 ###UPDATE
