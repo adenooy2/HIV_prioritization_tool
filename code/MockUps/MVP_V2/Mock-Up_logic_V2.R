@@ -548,9 +548,12 @@ build_country_presets <- function(csv_data) {
         # FOI parameters (optional CSV columns; defaults used if absent)
         circ_prevalence = if (!is.null(row$circ_prevalence) && !is.na(row$circ_prevalence)) row$circ_prevalence else 0.20,
         prop_high_risk  = if (!is.null(row$prop_high_risk)  && !is.na(row$prop_high_risk))  row$prop_high_risk  else 0.05,
-        rr_high         = if (!is.null(row$rr_high)         && !is.na(row$rr_high))         row$rr_high         else 8.0,
-        test_yield      = if (!is.null(row$test_yield)  && !is.na(row$test_yield))
-          as.numeric(row$test_yield) / 100 else NULL 
+        rr_high          = if (!is.null(row$rr_high)              && !is.na(row$rr_high))              row$rr_high              else 8.0,
+        # Prior-year testing data for yield calibration and volume dilution
+        test_yield       = if (!is.null(row$avg_test_yield)       && !is.na(row$avg_test_yield))
+          as.numeric(row$avg_test_yield) / 100 else NULL,  # % in CSV -> proportion
+        prior_year_tests = if (!is.null(row$total_tests_prev_year) && !is.na(row$total_tests_prev_year))
+          as.numeric(row$total_tests_prev_year) else NULL
       )
       
       pops <- calculate_populations(context)
@@ -1124,16 +1127,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   total_intervention_cost <- 0
   tests_performed <- 0
   
-  # Calculate dynamic testing yield
-  # Yield = probability that a test is positive
-  # This is based on undiagnosed (true new positives) + LTFU (re-engagement)
+  # Base test yield: use country prior-year average from CSV if available;
+  # fall back to dynamic estimate from undiagnosed + LTFU pools otherwise.
   if (!is.null(context$test_yield) && !is.na(context$test_yield)) {
     base_test_yield <- context$test_yield
   } else {
     base_test_yield <- (populations$undiagnosed + populations$ltfu) / populations$sexually_active
+    base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
   }
-  
-  base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
   
   prop_new_dx <- 0.7 ###UPDATE
   prop_reeng  <- (1 - prop_new_dx) ###UPDATE
@@ -1147,6 +1148,48 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     for (int_name in names(group$interventions)) {
       all_interventions[[int_name]] <- group$interventions[[int_name]]
     }
+  }
+  
+  # ── VOLUME DILUTION: order-independent two-pass approach ─────────────────
+  # When total planned tests exceed 150% of prior-year volume, positivity
+  # drops because the easy-to-find positives are exhausted. Rather than
+  # penalising whichever modalities happen to be processed last in the loop,
+  # we compute a single global dilution factor from total planned volume and
+  # apply it uniformly to every modality — preserving the relative advantage
+  # of high-yield targeted testing regardless of loop order.
+  #
+  # Dilution factor derivation:
+  #   Tests <= threshold : full yield
+  #   Tests >  threshold : half yield
+  #   Factor = (threshold + (total - threshold) * 0.5) / total
+  #          = 1.0 when total <= threshold (no dilution)
+  #
+  # If prior_year_tests is not supplied, threshold = Inf and factor = 1.0.
+  # ─────────────────────────────────────────────────────────────────────────
+  volume_threshold <- if (!is.null(context$prior_year_tests) && !is.na(context$prior_year_tests))
+    context$prior_year_tests * 1.5 else Inf
+  
+  # Pre-loop pass: sum total planned tests across all testing modalities
+  total_planned_tests <- 0
+  for (int_key_pre in names(all_interventions)) {
+    int_pre     <- all_interventions[[int_key_pre]]
+    int_val_pre <- interventions[[int_key_pre]]
+    if (is.null(int_val_pre) || int_val_pre == 0) next
+    if (!("testing" %in% int_pre$outcomes)) next
+    elig_pre <- populations[[int_pre$eligible_pop]] %||% 0
+    n_pre <- if (int_pre$type == "coverage")
+      min(elig_pre * (int_val_pre / 100), elig_pre)
+    else
+      min(int_val_pre, elig_pre)
+    total_planned_tests <- total_planned_tests + n_pre
+  }
+  
+  yield_dilution_factor <- if (is.infinite(volume_threshold) ||
+                               total_planned_tests <= volume_threshold) {
+    1.0
+  } else {
+    (volume_threshold + (total_planned_tests - volume_threshold) * 0.5) /
+      total_planned_tests
   }
   
   # Process each intervention
@@ -1181,13 +1224,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     
     # Calculate outcomes based on intervention type
     if ("testing" %in% intervention$outcomes) {
-      # Testing interventions
-      test_yield <- base_test_yield
-      if (!is.null(intervention$test_yield_multiplier)) {
-        test_yield <- test_yield * as.numeric(intervention$test_yield_multiplier)
-      }
+      # Effective yield: base yield scaled by modality-specific multiplier,
+      # then by the global volume dilution factor (order-independent).
+      effective_yield <- base_test_yield *
+        (if (!is.null(intervention$test_yield_multiplier))
+          as.numeric(intervention$test_yield_multiplier) else 1)
       
-      pos_tests <- number_reached * test_yield * intervention$efficacy
+      pos_tests <- number_reached * effective_yield * yield_dilution_factor * intervention$efficacy
       positive_tests <- positive_tests + pos_tests
       tests_performed <- tests_performed + number_reached
       

@@ -128,7 +128,7 @@ basic_data=left_join(basic_data, kp_wide_final)
 test_data=gam_data %>% filter(Indicator_GId %in% c("HIV_TESTS_VOL","HIV_POS_RATE")) %>% filter(Subgroup=="Total") %>% select(Area,Indicator_GId,Time.Period,Data.value) %>% 
   arrange(Area,Indicator_GId,desc(Time.Period)) %>% group_by(Area,Indicator_GId) %>% slice(1) %>% spread(Indicator_GId,Data.value)
 
-test_data=test_data %>% select(country=Area,test_yield = HIV_POS_RATE) %>% filter(country %in% sub_countries)
+test_data=test_data %>% select(country=Area,avg_test_yield = HIV_POS_RATE,total_tests_prev_year=HIV_TESTS_VOL) %>% filter(country %in% sub_countries)
 
 basic_data=left_join(basic_data, test_data)
 #####Fix diagnoses
