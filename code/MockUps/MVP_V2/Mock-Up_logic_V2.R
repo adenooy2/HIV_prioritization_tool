@@ -498,7 +498,7 @@ calculate_populations <- function(context) {
     recent_exposure = hiv_negative * 0.002,
     hiv_exposed_infants = hiv_positive_births,
     pregnant_women = births,
-    pregnant_on_art = births * context$hiv_prevalence * (context$percent_on_art / 100),
+    pregnant_on_art = births * context$hiv_prevalence * (context$percent_diagnosed / 100) *(context$percent_on_art / 100),
     newly_diagnosed_advanced = (plhiv - diagnosed) * 0.20
   )
 }
