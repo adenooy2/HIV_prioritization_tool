@@ -63,8 +63,7 @@ MTCT_RATES <- list(
   on_art_unsuppressed  = 0.15,   # ~15% — on ART but not suppressed
   not_on_art           = 0.35    # ~35% — no maternal PMTCT
 )
-# Residual efficacy of infant NVP prophylaxis on top of residual maternal transmission risk
-INFANT_PROPHY_RESIDUAL_EFFICACY <- 0.50  ###UPDATE
+
 
 # ============================================================================
 # CONDOM BEHAVIOURAL PARAMETERS (UPDATE THESE BASED ON LITERATURE)
@@ -1740,9 +1739,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     mtct_unsupp * MTCT_RATES$on_art_unsuppressed +
     mtct_no_art * MTCT_RATES$not_on_art
   
-  # Step 4: Infant prophylaxis (NVP) further reduces residual transmission
+  # Step 4: Infant prophylaxis (NVP) further reduces residual transmission.
+  # Efficacy drawn from intervention CSV, consistent with all other interventions.
   infant_prophy_reduction   <- baseline_infant_infections * infant_prophy_cov_frac *
-    INFANT_PROPHY_RESIDUAL_EFFICACY
+    (all_interventions$infant_prophylaxis$efficacy %||% 0)
   end_infant_infections     <- max(0, baseline_infant_infections - infant_prophy_reduction)
   infant_infections_averted <- infant_prophy_reduction
   
