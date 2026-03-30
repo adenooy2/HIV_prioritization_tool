@@ -28,6 +28,7 @@ est_data_filt=est_data %>%
 gam_data=read.csv(paste(data_dir,"GAM_2025_en.csv",sep=""))
 gam_data$label=paste(gam_data$Indicator_GId,gam_data$Subgroup)
 
+
 gam_indicators=read_excel(paste(data_dir,"data_list.xlsx",sep=""),sheet="GAM")
 
 gam_data_sub=gam_data %>% select(Area,Area.ID,Indicator,Indicator_GId,Subgroup,label,year=Time.Period,Data.value) %>% 
@@ -124,7 +125,7 @@ kp_wide_final=kp_wide %>% ungroup() %>% select(country,prop_high_risk)
 kp_wide_final$rr_high=8
 basic_data=left_join(basic_data, kp_wide_final)
 
-########testing data
+########testing data (avg volume and positiivity)
 test_data=gam_data %>% filter(Indicator_GId %in% c("HIV_TESTS_VOL","HIV_POS_RATE")) %>% filter(Subgroup=="Total") %>% select(Area,Indicator_GId,Time.Period,Data.value) %>% 
   arrange(Area,Indicator_GId,desc(Time.Period)) %>% group_by(Area,Indicator_GId) %>% slice(1) %>% spread(Indicator_GId,Data.value)
 

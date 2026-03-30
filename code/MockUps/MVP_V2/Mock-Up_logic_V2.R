@@ -55,6 +55,18 @@ ANNUAL_LTFU_RATE_UNSUPPRESSED <- 0.15   # 15% of unsuppressed on ART become LTFU
 RETENTION_SUPPRESSION_RATE <- 0.30
 
 # ============================================================================
+# MTCT RATES BY MATERNAL ART/SUPPRESSION STATUS (###UPDATE based on literature)
+# Covers transmission risk across pregnancy, delivery, and breastfeeding period.
+# ============================================================================
+MTCT_RATES <- list(
+  on_art_suppressed    = 0.02,   # ~2%  — virally suppressed throughout
+  on_art_unsuppressed  = 0.15,   # ~15% — on ART but not suppressed
+  not_on_art           = 0.35    # ~35% — no maternal PMTCT
+)
+# Residual efficacy of infant NVP prophylaxis on top of residual maternal transmission risk
+INFANT_PROPHY_RESIDUAL_EFFICACY <- 0.50  ###UPDATE
+
+# ============================================================================
 # CONDOM BEHAVIOURAL PARAMETERS (UPDATE THESE BASED ON LITERATURE)
 # acts_per_year: average sex acts per year by risk group — converts condoms
 #   distributed into people with consistent coverage
@@ -263,14 +275,14 @@ build_intervention_groups <- function(intervention_params){
           linkage_rate = subset(intervention_params, intervention_key == "eid")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "eid")$linkage_cost,
           test_yield_multiplier = subset(intervention_params, intervention_key == "eid")$yield_multiplier,
-          outcomes = c("testing")
+          outcomes = c("infant_diagnosis")
         ),
         anc_hiv_testing = list(
           name = "ANC: HIV testing",
           type = "coverage",
           unit_label = "% of pregnant women",
           efficacy = subset(intervention_params, intervention_key == "anc_hiv_testing")$efficacy,
-          eligible_pop = "pregnant_women",
+          eligible_pop = "pregnant_hiv_testable",
           unit_cost = subset(intervention_params, intervention_key == "anc_hiv_testing")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "anc_hiv_testing")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "anc_hiv_testing")$linkage_cost,
@@ -282,7 +294,7 @@ build_intervention_groups <- function(intervention_params){
           type = "coverage",
           unit_label = "% of postpartum women",
           efficacy = subset(intervention_params, intervention_key == "pnc_hiv_testing")$efficacy,
-          eligible_pop = "pregnant_women",
+          eligible_pop = "pregnant_hiv_testable",
           unit_cost = subset(intervention_params, intervention_key == "pnc_hiv_testing")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "pnc_hiv_testing")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "pnc_hiv_testing")$linkage_cost,
@@ -497,9 +509,24 @@ calculate_populations <- function(context) {
     sexually_active_negative = hiv_negative * 0.60,
     recent_exposure = hiv_negative * 0.002,
     hiv_exposed_infants = hiv_positive_births,
-    pregnant_women = births,
-    pregnant_on_art = births * context$hiv_prevalence * (context$percent_diagnosed / 100) *(context$percent_on_art / 100),
-    newly_diagnosed_advanced = (plhiv - diagnosed) * 0.20
+    pregnant_women      = births,
+    # PMTCT cascade sub-populations (denominator = births x hiv_prevalence, consistent with pregnant_on_art)
+    pregnant_hiv_pos_cascade     = births * context$hiv_prevalence,
+    pregnant_on_art              = births * context$hiv_prevalence *
+      (context$percent_diagnosed / 100) * (context$percent_on_art / 100),
+    pregnant_on_art_suppressed   = births * context$hiv_prevalence *
+      (context$percent_diagnosed / 100) * (context$percent_on_art / 100) *
+      (context$percent_suppressed / 100),
+    pregnant_on_art_unsuppressed = births * context$hiv_prevalence *
+      (context$percent_diagnosed / 100) * (context$percent_on_art / 100) *
+      (1 - context$percent_suppressed / 100),
+    pregnant_not_on_art          = births * context$hiv_prevalence *
+      (1 - (context$percent_diagnosed / 100) * (context$percent_on_art / 100)),
+    pregnant_undiagnosed         = births * context$hiv_prevalence * (1 - context$percent_diagnosed / 100),
+    # HIV testing eligible pool: HIV-negative + HIV+ undiagnosed pregnant women
+    # (already-diagnosed HIV+ women are not re-offered an HIV test)
+    pregnant_hiv_testable        = births * (1 - context$hiv_prevalence * (context$percent_diagnosed / 100)),
+    newly_diagnosed_advanced     = (plhiv - diagnosed) * 0.20
   )
 }
 
@@ -1117,6 +1144,11 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   additional_suppressed_testing <- 0
   art_initiations <- 0
   art_inititations_testing <- 0
+  # PMTCT / infant cascade trackers
+  pmtct_new_diagnoses    <- 0   # HIV+ pregnant women newly diagnosed via ANC/PNC -> PMTCT ART
+  infant_prophy_cov_frac <- 0   # efficacy-weighted infant prophylaxis coverage (0-1)
+  anc_vl_reached_preg    <- 0   # pregnant women on ART reached by VL monitoring
+  eid_infants_reached    <- 0   # HIV-exposed infants reached by EID
   # Retention: two distinct counters replacing the old single retention_improvement
   # ltfu_retained_frac: cumulative fraction of at-risk people retained, built
   #   multiplicatively across prevention interventions so the same person cannot
@@ -1253,13 +1285,56 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       total_intervention_cost <- total_intervention_cost +
         (number_reached * intervention$unit_cost + linked * intervention$linkage_cost)
       
+      # ── ANC HIV testing: route newly diagnosed HIV+ pregnant women into PMTCT cascade ──
+      # number_reached = pregnant_hiv_testable x (ANC_coverage/100), so coverage is already embedded.
+      # Yield = proportion of testable women (HIV-neg + HIV+ undiagnosed) who are HIV+ undiagnosed.
+      if (int_key == "anc_hiv_testing") {
+        anc_hiv_yield       <- populations$pregnant_undiagnosed /
+          max(populations$pregnant_hiv_testable, 1)
+        pmtct_candidates    <- number_reached * anc_hiv_yield * intervention$efficacy
+        pmtct_new_diagnoses <- pmtct_new_diagnoses +
+          min(pmtct_candidates, populations$pregnant_undiagnosed)
+        
+        # ── PNC HIV testing: same pool but deduct HIV+ undiagnosed women already caught at ANC ──
+        # HIV-negative women remain fully eligible; only the HIV+ undiagnosed pool is reduced.
+      } else if (int_key == "pnc_hiv_testing") {
+        remaining_undiagnosed_preg <- max(0, populations$pregnant_undiagnosed - pmtct_new_diagnoses)
+        # PNC eligible = HIV-negative pregnant women (unchanged) + remaining HIV+ undiagnosed
+        hiv_neg_pregnant   <- populations$pregnant_hiv_testable - populations$pregnant_undiagnosed
+        pnc_eligible_pool  <- hiv_neg_pregnant + remaining_undiagnosed_preg
+        # Override number_reached using the corrected PNC eligible pool
+        number_reached     <- pnc_eligible_pool * (intervention_value / 100)
+        pnc_hiv_yield      <- remaining_undiagnosed_preg / max(pnc_eligible_pool, 1)
+        pmtct_candidates   <- number_reached * pnc_hiv_yield * intervention$efficacy
+        pmtct_new_diagnoses <- pmtct_new_diagnoses +
+          min(pmtct_candidates, remaining_undiagnosed_preg)
+      }
+      
     } else if ("infant_infections" %in% intervention$outcomes) {
-      infant_incidence_rate <- 0.15 ####UPDATE
-      infant_infections_averted <- infant_infections_averted +
-        number_reached * infant_incidence_rate * intervention$efficacy
+      # Infant prophylaxis (NVP): accumulate efficacy-weighted coverage fraction.
+      # Actual infection-averted calculation happens in the MTCT cascade block below.
+      infant_prophy_cov_frac <- min(1, infant_prophy_cov_frac +
+                                      (number_reached / max(populations$hiv_exposed_infants, 1)) * intervention$efficacy)
       
       total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
+      
+    } else if ("infant_diagnosis" %in% intervention$outcomes) {
+      # EID: tests HIV-exposed infants to identify HIV+ infants for early ART initiation.
+      # Yield estimated from MTCT cascade populations (pre-intervention approximation).
+      # Final diagnosis count is recalculated after the MTCT cascade below.
+      eid_infants_reached <- number_reached  # stored for post-cascade finalisation
+      estimated_eid_yield <- if (populations$hiv_exposed_infants > 0) {
+        (populations$pregnant_on_art_suppressed   * MTCT_RATES$on_art_suppressed   +
+           populations$pregnant_on_art_unsuppressed * MTCT_RATES$on_art_unsuppressed +
+           populations$pregnant_not_on_art          * MTCT_RATES$not_on_art) /
+          max(populations$hiv_exposed_infants, 1)
+      } else 0.10
+      eid_infants_diagnosed_est <- number_reached * estimated_eid_yield * intervention$efficacy
+      
+      total_intervention_cost <- total_intervention_cost +
+        number_reached * intervention$unit_cost +
+        eid_infants_diagnosed_est * (intervention$linkage_cost %||% 0)
       
     } else if ("viral_suppression" %in% intervention$outcomes) {
       additional_suppressed <- additional_suppressed +
@@ -1267,6 +1342,11 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       
       total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
+      
+      # ── ANC VL testing: track pregnant women on ART reached for MTCT cascade ──
+      if (int_key == "anc_vl_testing") {
+        anc_vl_reached_preg <- anc_vl_reached_preg + number_reached
+      }
       
     } else if ("retention" %in% intervention$outcomes) {
       # ── Two distinct retention pathways ──────────────────────────────────
@@ -1295,14 +1375,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         number_reached * intervention$unit_cost
       
     } else if ("ahd_screening" %in% intervention$outcomes) {
-      total_intervention_cost <- total_intervention_cost +
-        number_reached * intervention$unit_cost
-      
-    } else if ("pmtct" %in% intervention$outcomes) {
-      mtct_rate <- 0.15
-      infant_infections_averted <- infant_infections_averted +
-        number_reached * mtct_rate * 0.30
-      
       total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
     }
@@ -1631,8 +1703,58 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         units_costed * intervention$unit_cost
     }
   }
-  baseline_infant_infections <- populations$hiv_exposed_infants * 0.15 ###UPDATE
-  end_infant_infections  <- max(0, baseline_infant_infections - infant_infections_averted)
+  # ========================================================================
+  # MTCT CASCADE: infant infections from cascade-based maternal risk groups
+  # ========================================================================
+  
+  # Step 1: ANC VL testing shifts unsuppressed pregnant women on ART -> suppressed.
+  # anc_vl_reached_preg is the subset of anc_vl_testing number_reached (pregnant_on_art).
+  anc_vl_eff   <- all_interventions$anc_vl_testing$efficacy %||% 0
+  anc_vl_shift <- min(
+    anc_vl_reached_preg * (1 - context$percent_suppressed / 100) * anc_vl_eff,
+    populations$pregnant_on_art_unsuppressed
+  )
+  mtct_supp   <- populations$pregnant_on_art_suppressed   + anc_vl_shift
+  mtct_unsupp <- max(0, populations$pregnant_on_art_unsuppressed - anc_vl_shift)
+  
+  # Step 2: Of newly diagnosed HIV+ pregnant women, a proportion link to PMTCT ART,
+  # and of those, a proportion achieve viral suppression during pregnancy/breastfeeding.
+  # Suppression rate is discounted from the country average — newly initiating women
+  # are less likely to fully suppress quickly. ###UPDATE discount factor from literature.
+  pmtct_linkage_rate  <- all_interventions$anc_hiv_testing$linkage_rate %||% 0.85
+  pmtct_supp_rate     <- (context$percent_suppressed / 100) * 0.70  ###UPDATE discount
+  
+  pmtct_linked_total  <- min(pmtct_new_diagnoses, populations$pregnant_not_on_art)
+  pmtct_linked_art    <- pmtct_linked_total * pmtct_linkage_rate
+  pmtct_linked_supp   <- pmtct_linked_art   * pmtct_supp_rate
+  pmtct_linked_unsupp <- pmtct_linked_art   - pmtct_linked_supp
+  pmtct_not_linked    <- pmtct_linked_total - pmtct_linked_art  # diagnosed but did not start ART
+  
+  mtct_supp   <- mtct_supp   + pmtct_linked_supp    # newly suppressed PMTCT mothers
+  mtct_unsupp <- mtct_unsupp + pmtct_linked_unsupp  # on ART but not suppressed
+  mtct_no_art <- max(0, populations$pregnant_not_on_art - pmtct_linked_total) +
+    pmtct_not_linked                 # undiagnosed remainder + diagnosed but unlinked  
+  # Step 3: Infant infections from risk-stratified MTCT rates
+  baseline_infant_infections <-
+    mtct_supp   * MTCT_RATES$on_art_suppressed   +
+    mtct_unsupp * MTCT_RATES$on_art_unsuppressed +
+    mtct_no_art * MTCT_RATES$not_on_art
+  
+  # Step 4: Infant prophylaxis (NVP) further reduces residual transmission
+  infant_prophy_reduction   <- baseline_infant_infections * infant_prophy_cov_frac *
+    INFANT_PROPHY_RESIDUAL_EFFICACY
+  end_infant_infections     <- max(0, baseline_infant_infections - infant_prophy_reduction)
+  infant_infections_averted <- infant_prophy_reduction
+  
+  # Step 5: Finalise EID yield using actual end-of-cascade infection rate.
+  # EID identifies HIV+ infants for early ART; yield = infected / all HIV-exposed.
+  if (eid_infants_reached > 0 && populations$hiv_exposed_infants > 0) {
+    actual_eid_yield      <- end_infant_infections / populations$hiv_exposed_infants
+    eid_infants_diagnosed <- eid_infants_reached * actual_eid_yield *
+      (all_interventions$eid$efficacy %||% 0.90)
+  } else {
+    eid_infants_diagnosed <- 0
+  }
   
   # ========================================================================
   # CALCULATE COSTS
@@ -1701,6 +1823,15 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     infant_infections_averted = round(infant_infections_averted),
     total_infections_averted = round(infections_averted + infant_infections_averted),
     deaths_averted = round(total_deaths_averted),
+    
+    # MTCT cascade outputs
+    mtct_pregnant_suppressed   = round(mtct_supp),
+    mtct_pregnant_unsuppressed = round(mtct_unsupp),
+    mtct_pregnant_no_art       = round(mtct_no_art),
+    pmtct_newly_diagnosed      = round(pmtct_linked_total),
+    pmtct_newly_linked         = round(pmtct_linked_art),
+    pmtct_newly_suppressed     = round(pmtct_linked_supp),
+    eid_infants_diagnosed      = round(eid_infants_diagnosed),
     
     # End-of-year cascade (absolute values after mortality)
     end_plhiv = round(end_plhiv),
