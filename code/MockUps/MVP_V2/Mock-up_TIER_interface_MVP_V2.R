@@ -509,6 +509,31 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$baseline_community_pickup)
   
+  # Baseline Index Testing Validation
+  # Cap at 2x prior-year new infections (finite contact-tracing pool).
+  observe({
+    ctx <- context()
+    if (is.null(ctx$new_infections_per_year) || is.na(ctx$new_infections_per_year)) return()
+    
+    index_cap <- 2 * ctx$new_infections_per_year
+    
+    isolate({
+      val <- input$baseline_test_network_index
+      if (!is.null(val) && !is.na(val) && val > index_cap) {
+        updateNumericInput(session, "baseline_test_network_index",
+                           value = round(index_cap),
+                           max   = round(index_cap))
+        showNotification(
+          paste0("Baseline: Index testing capped at ", format(round(index_cap), big.mark = ","),
+                 " (2\u00D7 prior-year new infections: ",
+                 format(round(ctx$new_infections_per_year), big.mark = ","), ")"),
+          type     = "warning",
+          duration = 5
+        )
+      }
+    })
+  }) %>% bindEvent(input$baseline_test_network_index)
+  
   # ========================================================================
   # SCENARIO 1 INTERVENTION VALIDATION
   # ========================================================================
@@ -724,6 +749,30 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$scenario1_community_pickup)
   
+  # Scenario 1 Index Testing Validation
+  observe({
+    ctx <- context()
+    if (is.null(ctx$new_infections_per_year) || is.na(ctx$new_infections_per_year)) return()
+    
+    index_cap <- 2 * ctx$new_infections_per_year
+    
+    isolate({
+      val <- input$scenario1_test_network_index
+      if (!is.null(val) && !is.na(val) && val > index_cap) {
+        updateNumericInput(session, "scenario1_test_network_index",
+                           value = round(index_cap),
+                           max   = round(index_cap))
+        showNotification(
+          paste0("Scenario 1: Index testing capped at ", format(round(index_cap), big.mark = ","),
+                 " (2\u00D7 prior-year new infections: ",
+                 format(round(ctx$new_infections_per_year), big.mark = ","), ")"),
+          type     = "warning",
+          duration = 5
+        )
+      }
+    })
+  }) %>% bindEvent(input$scenario1_test_network_index)
+  
   # ========================================================================
   # SCENARIO 2 INTERVENTION VALIDATION
   # ========================================================================
@@ -938,6 +987,30 @@ server <- function(input, output, session) {
       }
     })
   }) %>% bindEvent(input$scenario2_community_pickup)
+  
+  # Scenario 2 Index Testing Validation
+  observe({
+    ctx <- context()
+    if (is.null(ctx$new_infections_per_year) || is.na(ctx$new_infections_per_year)) return()
+    
+    index_cap <- 2 * ctx$new_infections_per_year
+    
+    isolate({
+      val <- input$scenario2_test_network_index
+      if (!is.null(val) && !is.na(val) && val > index_cap) {
+        updateNumericInput(session, "scenario2_test_network_index",
+                           value = round(index_cap),
+                           max   = round(index_cap))
+        showNotification(
+          paste0("Scenario 2: Index testing capped at ", format(round(index_cap), big.mark = ","),
+                 " (2\u00D7 prior-year new infections: ",
+                 format(round(ctx$new_infections_per_year), big.mark = ","), ")"),
+          type     = "warning",
+          duration = 5
+        )
+      }
+    })
+  }) %>% bindEvent(input$scenario2_test_network_index)
   
   # ========================================================================
   # BASELINE VALUES AND UI GENERATION
