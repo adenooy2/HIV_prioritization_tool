@@ -169,18 +169,6 @@ build_intervention_groups <- function(intervention_params){
       name = "Testing & Diagnosis",
       color = "#3b82f6",
       interventions = list(
-        test_facility_targeted = list(
-          name = "Testing: facility-based (targeted)",
-          type = "absolute",
-          unit_label = "tests performed",
-          efficacy = subset(intervention_params, intervention_key == "test_facility_targeted")$efficacy,
-          eligible_pop = "total",
-          unit_cost = subset(intervention_params, intervention_key == "test_facility_targeted")$unit_cost,
-          linkage_rate = subset(intervention_params, intervention_key == "test_facility_targeted")$linkage_rate,
-          linkage_cost = subset(intervention_params, intervention_key == "test_facility_targeted")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_facility_targeted")$yield_multiplier,
-          outcomes = c("testing")
-        ),
         test_facility_general = list(
           name = "Testing: facility-based (general)",
           type = "absolute",
@@ -193,16 +181,28 @@ build_intervention_groups <- function(intervention_params){
           test_yield_multiplier = subset(intervention_params, intervention_key == "test_facility_general")$yield_multiplier,
           outcomes = c("testing")
         ),
-        test_network_index = list(
-          name = "Testing: network/index testing",
+        test_network = list(
+          name = "Testing: network testing",
           type = "absolute",
           unit_label = "tests performed",
-          efficacy = subset(intervention_params, intervention_key == "test_network_index")$efficacy,
+          efficacy = subset(intervention_params, intervention_key == "test_network")$efficacy,
           eligible_pop = "total",
-          unit_cost = subset(intervention_params, intervention_key == "test_network_index")$unit_cost,
-          linkage_rate = subset(intervention_params, intervention_key == "test_network_index")$linkage_rate,
-          linkage_cost = subset(intervention_params, intervention_key == "test_network_index")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_network_index")$yield_multiplier,
+          unit_cost = subset(intervention_params, intervention_key == "test_network")$unit_cost,
+          linkage_rate = subset(intervention_params, intervention_key == "test_network")$linkage_rate,
+          linkage_cost = subset(intervention_params, intervention_key == "test_network")$linkage_cost,
+          test_yield_multiplier = subset(intervention_params, intervention_key == "test_network")$yield_multiplier,
+          outcomes = c("testing")
+        ),
+        test_index = list(
+          name = "Testing: index testing",
+          type = "absolute",
+          unit_label = "tests performed",
+          efficacy = subset(intervention_params, intervention_key == "test_index")$efficacy,
+          eligible_pop = "total",
+          unit_cost = subset(intervention_params, intervention_key == "test_index")$unit_cost,
+          linkage_rate = subset(intervention_params, intervention_key == "test_index")$linkage_rate,
+          linkage_cost = subset(intervention_params, intervention_key == "test_index")$linkage_cost,
+          test_yield_multiplier = subset(intervention_params, intervention_key == "test_index")$yield_multiplier,
           outcomes = c("testing")
         ),
         test_community = list(
@@ -510,8 +510,8 @@ default_baseline_interventions <- list(
   prep_oral = 5000, prep_lenacapavir = 0, vmmc = 30000,
   condoms = 200000, pep = 2000, infant_prophylaxis = 70,
   cotrimoxazole = 60,
-  test_facility_targeted = 25000, test_facility_general = 25000,
-  test_network_index = 5000, test_community = 20000,
+  test_facility_general = 25000,
+  test_network = 3000, test_index = 2000, test_community = 20000,
   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
   eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
   vl_monitoring_routine = 60, 
@@ -562,9 +562,9 @@ build_country_presets <- function(csv_data) {
         prep_oral = 0.01*pops$total, prep_lenacapavir = 0, vmmc = 0.01*pops$uncircumcised_males,
         condoms = 0.6*pops$total, pep = 0.2*pops$recent_exposure, infant_prophylaxis = 70,
         cotrimoxazole = 60, 
-        test_facility_targeted = round(0.067*pops$adult_pop, -4), 
         test_facility_general = round(0.134*pops$adult_pop, -4), 
-        test_network_index = round(0.0047*pops$adult_pop, -4), 
+        test_network = round(0.0024*pops$adult_pop, -4), 
+        test_index = round(0.0024*pops$adult_pop, -4), 
         test_community = round(0.019*pops$adult_pop, -4),
         test_kpsti = round(0.005*pops$adult_pop, -4), 
         hivst_facility = round(0.0035*pops$adult_pop, -4), 
@@ -620,9 +620,9 @@ build_country_presets <- function(csv_data) {
     pep = 0.2*custom_pops$recent_exposure, 
     infant_prophylaxis = 70,
     cotrimoxazole = 60, 
-    test_facility_targeted = 0.05*custom_pops$adult_pop, 
     test_facility_general = 0.05*custom_pops$adult_pop, 
-    test_network_index = 0.01*custom_pops$adult_pop, 
+    test_network = 0.005*custom_pops$adult_pop, 
+    test_index = 0.005*custom_pops$adult_pop, 
     test_community = 0.04*custom_pops$adult_pop,
     test_kpsti = 0.02*custom_pops$adult_pop, 
     hivst_facility = 0.02*custom_pops$adult_pop, 
@@ -1184,7 +1184,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     int_val_pre <- interventions[[int_key_pre]]
     if (is.null(int_val_pre) || int_val_pre == 0) next
     if (!("testing" %in% int_pre$outcomes)) next
-    if (int_key_pre == "test_network_index") next   # exempt: does not saturate general pool
+    if (int_key_pre == "test_index") next   # exempt: does not saturate general pool
     elig_pre <- populations[[int_pre$eligible_pop]] %||% 0
     n_pre <- if (int_pre$type == "coverage")
       min(elig_pre * (int_val_pre / 100), elig_pre)
@@ -1235,7 +1235,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     if ("testing" %in% intervention$outcomes) {
       # Index testing: cap at 2x prior-year infections; never diluted (contact
       # pool quality does not degrade with general programme volume expansion).
-      if (int_key == "test_network_index") {
+      if (int_key == "test_index") {
         number_reached   <- min(number_reached, index_pop_cap)
         modality_dilution <- 1.0
       } else {

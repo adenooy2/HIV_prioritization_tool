@@ -518,9 +518,9 @@ server <- function(input, output, session) {
     index_cap <- 2 * ctx$new_infections_per_year
     
     isolate({
-      val <- input$baseline_test_network_index
+      val <- input$baseline_test_index
       if (!is.null(val) && !is.na(val) && val > index_cap) {
-        updateNumericInput(session, "baseline_test_network_index",
+        updateNumericInput(session, "baseline_test_index",
                            value = round(index_cap),
                            max   = round(index_cap))
         showNotification(
@@ -532,7 +532,7 @@ server <- function(input, output, session) {
         )
       }
     })
-  }) %>% bindEvent(input$baseline_test_network_index)
+  }) %>% bindEvent(input$baseline_test_index)
   
   # ========================================================================
   # SCENARIO 1 INTERVENTION VALIDATION
@@ -757,9 +757,9 @@ server <- function(input, output, session) {
     index_cap <- 2 * ctx$new_infections_per_year
     
     isolate({
-      val <- input$scenario1_test_network_index
+      val <- input$scenario1_test_index
       if (!is.null(val) && !is.na(val) && val > index_cap) {
-        updateNumericInput(session, "scenario1_test_network_index",
+        updateNumericInput(session, "scenario1_test_index",
                            value = round(index_cap),
                            max   = round(index_cap))
         showNotification(
@@ -771,7 +771,7 @@ server <- function(input, output, session) {
         )
       }
     })
-  }) %>% bindEvent(input$scenario1_test_network_index)
+  }) %>% bindEvent(input$scenario1_test_index)
   
   # ========================================================================
   # SCENARIO 2 INTERVENTION VALIDATION
@@ -996,9 +996,9 @@ server <- function(input, output, session) {
     index_cap <- 2 * ctx$new_infections_per_year
     
     isolate({
-      val <- input$scenario2_test_network_index
+      val <- input$scenario2_test_index
       if (!is.null(val) && !is.na(val) && val > index_cap) {
-        updateNumericInput(session, "scenario2_test_network_index",
+        updateNumericInput(session, "scenario2_test_index",
                            value = round(index_cap),
                            max   = round(index_cap))
         showNotification(
@@ -1010,7 +1010,7 @@ server <- function(input, output, session) {
         )
       }
     })
-  }) %>% bindEvent(input$scenario2_test_network_index)
+  }) %>% bindEvent(input$scenario2_test_index)
   
   # ========================================================================
   # BASELINE VALUES AND UI GENERATION
