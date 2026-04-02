@@ -111,7 +111,7 @@ test_data=gam_data %>% filter(Indicator_GId %in% c("HIV_TESTS_VOL","HIV_POS_RATE
 test_data=test_data %>% select(Country=Area,avg_test_yield = HIV_POS_RATE,total_tests_prev_year=HIV_TESTS_VOL) %>% filter(Country %in% sub_countries)
 
 test_data_props=test_data %>% left_join(props_summary) %>% gather("modality","prop",4:10) %>% 
-  mutate(baseline_tests=round(total_tests_prev_year*prop,0)) %>% select(-prop) %>% spread(modality,baseline_tests)
+  mutate(baseline_tests=round(total_tests_prev_year*prop,-3)) %>% select(-prop) %>% spread(modality,baseline_tests)
 
 test_data_props=test_data_props %>% rename(country=Country)
 
