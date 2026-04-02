@@ -639,6 +639,22 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
       b_row <- if (!is.null(baseline_csv) && nrow(baseline_csv) > 0)
         baseline_csv[baseline_csv$country == country_name, ] else NULL
       
+      # Read country-specific yield multipliers from baseline CSV.
+      # Column naming convention: yield_mult_{intervention_key}
+      # Falls back to an empty list if baseline CSV is absent or country not found.
+      yield_multiplier_keys <- c("test_facility_general", "test_network", "test_index",
+                                 "test_community", "test_kpsti", "hivst_facility", "hivst_community")
+      context$yield_multipliers <- if (!is.null(b_row) && nrow(b_row) == 1) {
+        mults <- lapply(yield_multiplier_keys, function(k) {
+          val <- b_row[[paste0("yield_mult_", k)]]
+          if (!is.null(val) && !is.na(val)) as.numeric(val) else NULL
+        })
+        names(mults) <- yield_multiplier_keys
+        mults
+      } else {
+        list()
+      }
+      
       for (int_name in names(default_baseline_interventions)) {
         # Pull from baseline CSV first; fall back to country CSV for non-testing fields
         csv_val <- if (!is.null(b_row) && nrow(b_row) == 1 && int_name %in% names(b_row))
@@ -1310,11 +1326,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         modality_dilution <- yield_dilution_factor
       }
       
-      # Effective yield: base yield scaled by modality-specific multiplier,
-      # then by the dilution factor (1.0 for index testing, global factor for all others).
+      # Effective yield: country-specific multiplier (from baseline CSV) takes
+      # precedence; falls back to intervention params default, then 1.
+      country_mult <- context$yield_multipliers[[int_key]]
       effective_yield <- base_test_yield *
-        (if (!is.null(intervention$test_yield_multiplier))
-          as.numeric(intervention$test_yield_multiplier) else 1)
+        (if (!is.null(country_mult)) country_mult
+         else if (!is.null(intervention$test_yield_multiplier))
+           as.numeric(intervention$test_yield_multiplier)
+         else 1)
       
       pos_tests <- number_reached * effective_yield * modality_dilution * intervention$efficacy
       positive_tests <- positive_tests + pos_tests
