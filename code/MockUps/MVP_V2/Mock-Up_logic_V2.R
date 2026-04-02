@@ -73,6 +73,12 @@ CONDOM_USE_RATE_GEN       <- 0.55
 response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQBCFFlfF2AaRLcGuaCvNAcJAbE-8Ak2_gDyNJnL0GQu8Ag?e=k5dAU1&download=1")
 country_data_csv <- content(response, as = "parsed", type = "text/csv")
 
+# Load country-level baseline intervention volumes
+# Replace the URL below with the actual share link for the baseline CSV
+baseline_response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=LPB0JCL&download=1")
+baseline_data_csv <- content(baseline_response, as = "parsed", type = "text/csv") 
+
+
 # Load intervention parameters from Excel
 load_intervention_params <- function(){
   sharepoint_url_interventions <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
@@ -523,7 +529,7 @@ default_baseline_interventions <- list(
 # ============================================================================
 # BUILD COUNTRY PRESETS FROM CSV
 # ============================================================================
-build_country_presets <- function(csv_data) {
+build_country_presets <- function(csv_data, baseline_csv = NULL) {
   presets <- list()
   
   if (!is.null(csv_data) && nrow(csv_data) > 0) {
@@ -577,13 +583,19 @@ build_country_presets <- function(csv_data) {
       )
       
       baseline <- default_baseline_interventions
+      
+      # Look up this country's row in the baseline CSV (if provided)
+      b_row <- if (!is.null(baseline_csv) && nrow(baseline_csv) > 0)
+        baseline_csv[baseline_csv$country == country_name, ] else NULL
+      
       for (int_name in names(default_baseline_interventions)) {
-        csv_val <- row[[int_name]]
-        # Only override the proportional default when the CSV has an explicit
-        # non-NA value. A missing or NA column means "use the computed default"
-        # — previously, a 0 or NA in the CSV silently overwrote the default
-        # (e.g. VMMC = 0 in the CSV wiped out 0.01 * uncircumcised_males).
-        if (int_name %in% names(row) && !is.null(csv_val) && !is.na(csv_val)) {
+        # Pull from baseline CSV first; fall back to country CSV for non-testing fields
+        csv_val <- if (!is.null(b_row) && nrow(b_row) == 1 && int_name %in% names(b_row))
+          b_row[[int_name]] else row[[int_name]]
+        src_names <- if (!is.null(b_row) && nrow(b_row) == 1) names(b_row) else names(row)
+        
+        # Only override when the source has an explicit non-NA value
+        if (int_name %in% src_names && !is.null(csv_val) && !is.na(csv_val)) {
           baseline[[int_name]] <- csv_val
         }
       }
@@ -1794,4 +1806,4 @@ calculate_scenario_difference <- function(scenario, baseline) {
 # ============================================================================
 intervention_params <- load_intervention_params()
 intervention_groups <- build_intervention_groups(intervention_params)
-regional_presets    <- build_country_presets(country_data_csv)
+regional_presets    <- build_country_presets(country_data_csv, baseline_csv = baseline_data_csv)
