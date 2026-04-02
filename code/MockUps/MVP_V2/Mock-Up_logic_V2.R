@@ -41,7 +41,14 @@ MORTALITY_RATES <- list(
 )
 
 # ============================================================================
-# LTFU RATES BY SUPPRESSION STATUS (UPDATE THESE BASED ON LITERATURE)
+# INFANT HIV MORTALITY RATES BY TREATMENT STATUS (###UPDATE based on literature)
+# Annual mortality risk for HIV-infected infants by treatment/suppression status.
+# ============================================================================
+INFANT_MORTALITY_RATES <- list(
+  untreated     = 0.35,  # ~35% — untreated HIV+ infant, first year
+  on_art        = 0.10,  # ~10% — on ART but not suppressed
+  suppressed    = 0.03   # ~3%  — on ART and virally suppressed
+)
 # Suppressed patients: stable, feel well, lower side-effect burden -> lower dropout
 # Unsuppressed patients: treatment struggling, side effects, stigma -> higher dropout
 # ============================================================================
@@ -1320,20 +1327,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       
     } else if ("infant_diagnosis" %in% intervention$outcomes) {
       # EID: tests HIV-exposed infants to identify HIV+ infants for early ART initiation.
-      # Yield estimated from MTCT cascade populations (pre-intervention approximation).
-      # Final diagnosis count is recalculated after the MTCT cascade below.
-      eid_infants_reached <- number_reached  # stored for post-cascade finalisation
-      estimated_eid_yield <- if (populations$hiv_exposed_infants > 0) {
-        (populations$pregnant_on_art_suppressed   * MTCT_RATES$on_art_suppressed   +
-           populations$pregnant_on_art_unsuppressed * MTCT_RATES$on_art_unsuppressed +
-           populations$pregnant_not_on_art          * MTCT_RATES$not_on_art) /
-          max(populations$hiv_exposed_infants, 1)
-      } else 0.10
-      eid_infants_diagnosed_est <- number_reached * estimated_eid_yield * intervention$efficacy
-      
-      total_intervention_cost <- total_intervention_cost +
-        number_reached * intervention$unit_cost +
-        eid_infants_diagnosed_est * (intervention$linkage_cost %||% 0)
+      # Cost is calculated post-cascade using actual yield — see MTCT cascade block below.
+      eid_infants_reached <- number_reached
       
     } else if ("viral_suppression" %in% intervention$outcomes) {
       additional_suppressed <- additional_suppressed +
@@ -1746,8 +1741,11 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   end_infant_infections     <- max(0, baseline_infant_infections - infant_prophy_reduction)
   infant_infections_averted <- infant_prophy_reduction
   
-  # Step 5: Finalise EID yield using actual end-of-cascade infection rate.
-  # EID identifies HIV+ infants for early ART; yield = infected / all HIV-exposed.
+  # Step 5: Finalise EID diagnosis count and costs.
+  # Cost applies to ALL HIV-exposed infants tested (hiv_exposed_infants x coverage),
+  # regardless of infection status — every exposed infant receives a test.
+  # Effect (diagnosis and subsequent ART linkage) applies only to infected infants,
+  # captured via actual_eid_yield = end_infant_infections / hiv_exposed_infants.
   if (eid_infants_reached > 0 && populations$hiv_exposed_infants > 0) {
     actual_eid_yield      <- end_infant_infections / populations$hiv_exposed_infants
     eid_infants_diagnosed <- eid_infants_reached * actual_eid_yield *
@@ -1755,6 +1753,42 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   } else {
     eid_infants_diagnosed <- 0
   }
+  # Testing cost: all HIV-exposed infants reached (infected or not)
+  # Linkage cost: only HIV+ infants identified and linked to ART
+  total_intervention_cost <- total_intervention_cost +
+    eid_infants_reached   * (all_interventions$eid$unit_cost    %||% 0) +
+    eid_infants_diagnosed * (all_interventions$eid$linkage_cost %||% 0)
+  
+  # ========================================================================
+  # INFANT MORTALITY CASCADE
+  # EID-diagnosed infants split by linkage to ART and suppression, mirroring
+  # the adult cascade mortality structure.
+  # Suppression rate discounted from country average — newly initiating infants
+  # are less likely to suppress quickly. ###UPDATE discount from literature.
+  # ========================================================================
+  eid_linkage_rate   <- all_interventions$eid$linkage_rate %||% 0.80
+  infant_supp_rate   <- (context$percent_suppressed / 100) * 0.70  ###UPDATE discount
+  
+  infant_on_art      <- eid_infants_diagnosed * eid_linkage_rate
+  infant_suppressed  <- infant_on_art * infant_supp_rate
+  infant_on_art_unsupp <- infant_on_art - infant_suppressed
+  infant_untreated   <- max(0, end_infant_infections - infant_on_art)
+  
+  # Deaths by infant treatment group
+  infant_deaths_suppressed  <- infant_suppressed    * INFANT_MORTALITY_RATES$suppressed
+  infant_deaths_on_art      <- infant_on_art_unsupp * INFANT_MORTALITY_RATES$on_art
+  infant_deaths_untreated   <- infant_untreated     * INFANT_MORTALITY_RATES$untreated
+  total_infant_deaths       <- infant_deaths_suppressed + infant_deaths_on_art +
+    infant_deaths_untreated
+  
+  # Infant deaths averted vs no-EID counterfactual (all infected infants untreated)
+  infant_deaths_averted     <- max(0,
+                                   end_infant_infections * INFANT_MORTALITY_RATES$untreated - total_infant_deaths
+  )
+  
+  # Wire into adult totals
+  total_deaths_averted <- total_deaths_averted + infant_deaths_averted
+  end_deaths           <- end_deaths           + total_infant_deaths
   
   # ========================================================================
   # CALCULATE COSTS
@@ -1832,6 +1866,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     pmtct_newly_linked         = round(pmtct_linked_art),
     pmtct_newly_suppressed     = round(pmtct_linked_supp),
     eid_infants_diagnosed      = round(eid_infants_diagnosed),
+    
+    # Infant mortality cascade outputs
+    infant_on_art              = round(infant_on_art),
+    infant_suppressed          = round(infant_suppressed),
+    infant_deaths_averted      = round(infant_deaths_averted),
+    total_infant_deaths        = round(total_infant_deaths),
     
     # End-of-year cascade (absolute values after mortality)
     end_plhiv = round(end_plhiv),
