@@ -1220,7 +1220,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
   }
   
-  prop_new_dx <- 0.7 ###UPDATE
+  prop_new_dx <- 0.5 ###UPDATE
   prop_reeng  <- (1 - prop_new_dx) ###UPDATE
   
   average_linkage <- 0.9

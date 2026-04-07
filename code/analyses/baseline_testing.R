@@ -97,9 +97,27 @@ props_summary=df_combined %>%filter(year>2022) %>%  group_by(Country,tier_testin
 
 
 
-multiplier_summary=df_combined%>%filter(year>2022)  %>% group_by(Country,tier_testing) %>% filter(is.nan(multiplier)==FALSE) %>% 
-  summarise(mean_mult=mean(multiplier)) %>% spread(tier_testing,mean_mult)
+multiplier_summary=df_combined%>%filter(year>2022)  %>% group_by(Country,tier_testing) %>% filter(is.nan(multiplier)==FALSE)%>% 
+  summarise(country_mult=mean(multiplier)) 
 
+multiplier_summary$tier_testing=paste("yield_mult_",multiplier_summary$tier_testing,sep="")
+
+
+multiplier_summary_avg=multiplier_summary %>% group_by(tier_testing) %>% summarise(avg_mult=mean(country_mult,na.rm=TRUE))
+
+
+multiplier_summary=multiplier_summary%>% spread(tier_testing,country_mult)
+
+
+avg_lookup <- setNames(multiplier_summary_avg$avg_mult, multiplier_summary_avg$tier_testing)
+
+multiplier_summary_final <- multiplier_summary %>%
+  mutate(across(
+    all_of(names(avg_lookup)),
+    ~ ifelse(is.na(.), avg_lookup[cur_column()], .)
+  ))
+
+multiplier_summary_final=multiplier_summary_final %>% rename(country=Country)
 #######baseline testing numbers
 data_dir="/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/"
 gam_data=read.csv(paste(data_dir,"GAM_2025_en.csv",sep=""))
@@ -115,6 +133,7 @@ test_data_props=test_data %>% left_join(props_summary) %>% gather("modality","pr
 
 test_data_props=test_data_props %>% rename(country=Country)
 
+baseline_tetsing=left_join(test_data_props,multiplier_summary_final)
 
-write.csv(test_data_props,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/baseline_testing.csv")
+write.csv(baseline_tetsing,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/baseline_testing.csv")
 
