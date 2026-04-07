@@ -8,8 +8,11 @@
 #   - PNC testing deducts only HIV+ undiagnosed women caught at ANC
 #   - HIV-negative women remain fully eligible for PNC after ANC
 #   - ANC VL testing shifts unsuppressed -> suppressed pregnant women
+#   - PNC VL testing shifts remaining unsuppressed postpartum women -> suppressed
 #   - PMTCT linkage and suppression rates applied to newly diagnosed women
 #   - MTCT cascade stratified rates drive end_infant_infections
+#   - MTCT cascade group sum preserved under active interventions
+#   - ANC VL does not affect testing outputs or new diagnoses (isolation)
 #   - Infant prophylaxis reduces residual transmission using CSV efficacy
 #   - EID cost applies to all HIV-exposed infants; effect only to infected
 #   - EID diagnosis count uses actual post-cascade yield
@@ -17,6 +20,7 @@
 #   - Infant deaths averted wired into total deaths_averted and end_deaths
 #   - Full combination of PMTCT interventions reduces infant infections
 #   - Cascade consistency checks
+#   - PMTCT intervention costs scale with coverage (costing validation)
 # ============================================================================
 
 library(testthat)
@@ -84,22 +88,24 @@ restore_infant_mortality <- function() {
 }
 
 # Set PMTCT intervention parameters directly on intervention_groups
-set_pmtct_params <- function(anc_eff       = 0.99,
-                             anc_link      = 0.85,
-                             anc_link_cost = 100,
-                             anc_cost      = 5,
-                             pnc_eff       = 0.99,
-                             pnc_link      = 0.85,
-                             pnc_link_cost = 100,
-                             pnc_cost      = 5,
-                             anc_vl_eff    = 0.40,
-                             anc_vl_cost   = 10,
-                             inf_prophy_eff = 0.54,
+set_pmtct_params <- function(anc_eff        = 0.99,
+                             anc_link       = 0.85,
+                             anc_link_cost  = 100,
+                             anc_cost       = 5,
+                             pnc_eff        = 0.99,
+                             pnc_link       = 0.85,
+                             pnc_link_cost  = 100,
+                             pnc_cost       = 5,
+                             anc_vl_eff     = 0.40,
+                             anc_vl_cost    = 10,
+                             pnc_vl_eff     = 0.40,
+                             pnc_vl_cost    = 10,
+                             inf_prophy_eff  = 0.54,
                              inf_prophy_cost = 15,
-                             eid_eff        = 0.95,
-                             eid_link       = 0.80,
-                             eid_link_cost  = 200,
-                             eid_cost       = 20) {
+                             eid_eff         = 0.95,
+                             eid_link        = 0.80,
+                             eid_link_cost   = 200,
+                             eid_cost        = 20) {
   intervention_groups$testing$interventions$anc_hiv_testing$efficacy      <<- anc_eff
   intervention_groups$testing$interventions$anc_hiv_testing$linkage_rate  <<- anc_link
   intervention_groups$testing$interventions$anc_hiv_testing$linkage_cost  <<- anc_link_cost
@@ -108,8 +114,10 @@ set_pmtct_params <- function(anc_eff       = 0.99,
   intervention_groups$testing$interventions$pnc_hiv_testing$linkage_rate  <<- pnc_link
   intervention_groups$testing$interventions$pnc_hiv_testing$linkage_cost  <<- pnc_link_cost
   intervention_groups$testing$interventions$pnc_hiv_testing$unit_cost     <<- pnc_cost
-  intervention_groups$treatment_monitoring$interventions$anc_vl_testing$efficacy  <<- anc_vl_eff
-  intervention_groups$treatment_monitoring$interventions$anc_vl_testing$unit_cost <<- anc_vl_cost
+  intervention_groups$retention_support$interventions$anc_vl_testing$efficacy  <<- anc_vl_eff
+  intervention_groups$retention_support$interventions$anc_vl_testing$unit_cost <<- anc_vl_cost
+  intervention_groups$retention_support$interventions$pnc_vl_testing$efficacy  <<- pnc_vl_eff
+  intervention_groups$retention_support$interventions$pnc_vl_testing$unit_cost <<- pnc_vl_cost
   intervention_groups$prevention$interventions$infant_prophylaxis$efficacy  <<- inf_prophy_eff
   intervention_groups$prevention$interventions$infant_prophylaxis$unit_cost <<- inf_prophy_cost
   intervention_groups$testing$interventions$eid$efficacy      <<- eid_eff
@@ -166,7 +174,7 @@ test_that("PMTCT sub-populations are internally consistent", {
   )
   
   # pregnant_hiv_testable = HIV-neg pregnant + HIV+ undiagnosed pregnant
-  expected_testable <- pops$pregnant_women - 
+  expected_testable <- pops$pregnant_women -
     (pops$pregnant_hiv_pos_cascade - pops$pregnant_undiagnosed)
   expect_equal(
     pops$pregnant_hiv_testable, expected_testable, tolerance = 1,
@@ -310,9 +318,9 @@ test_that("ANC VL testing reduces mtct_pregnant_unsuppressed and increases mtct_
   cat("TEST 5: ANC VL Testing — Suppression Shift in MTCT Cascade\n")
   cat("========================================\n")
   
-  ints_none   <- zero_interventions()
-  ints_vl_low <- zero_interventions(); ints_vl_low$anc_vl_testing  <- 40
-  ints_vl_high<- zero_interventions(); ints_vl_high$anc_vl_testing <- 90
+  ints_none    <- zero_interventions()
+  ints_vl_low  <- zero_interventions(); ints_vl_low$anc_vl_testing  <- 40
+  ints_vl_high <- zero_interventions(); ints_vl_high$anc_vl_testing <- 90
   
   out_none    <- calculate_scenario_outcomes(ctx, ints_none,    pops)
   out_vl_low  <- calculate_scenario_outcomes(ctx, ints_vl_low,  pops)
@@ -675,18 +683,18 @@ test_that("All PMTCT interventions combined produce fewer infant infections and 
   restore_infant_mortality()
   set_pmtct_params()
   
-  ints_none  <- zero_interventions()
-  ints_anc   <- zero_interventions(); ints_anc$anc_hiv_testing   <- 90
-  ints_vl    <- zero_interventions(); ints_vl$anc_vl_testing     <- 80
-  ints_prophy<- zero_interventions(); ints_prophy$infant_prophylaxis <- 80
-  ints_eid   <- zero_interventions(); ints_eid$eid               <- 80
+  ints_none   <- zero_interventions()
+  ints_anc    <- zero_interventions(); ints_anc$anc_hiv_testing   <- 90
+  ints_vl     <- zero_interventions(); ints_vl$anc_vl_testing     <- 80
+  ints_prophy <- zero_interventions(); ints_prophy$infant_prophylaxis <- 80
+  ints_eid    <- zero_interventions(); ints_eid$eid               <- 80
   
-  ints_all   <- zero_interventions()
-  ints_all$anc_hiv_testing   <- 90
-  ints_all$pnc_hiv_testing   <- 70
-  ints_all$anc_vl_testing    <- 80
+  ints_all <- zero_interventions()
+  ints_all$anc_hiv_testing    <- 90
+  ints_all$pnc_hiv_testing    <- 70
+  ints_all$anc_vl_testing     <- 80
   ints_all$infant_prophylaxis <- 80
-  ints_all$eid               <- 80
+  ints_all$eid                <- 80
   
   out_none   <- calculate_scenario_outcomes(ctx, ints_none,   pops)
   out_anc    <- calculate_scenario_outcomes(ctx, ints_anc,    pops)
@@ -750,6 +758,246 @@ test_that("Zero interventions: MTCT cascade groups equal baseline populations ex
 })
 
 # ============================================================================
+# TEST 16: MTCT CASCADE GROUP SUM PRESERVED UNDER ACTIVE INTERVENTIONS
+# ============================================================================
+
+test_that("MTCT cascade group sum equals pregnant_hiv_pos_cascade under active ANC and ANC VL interventions", {
+  cat("\n========================================\n")
+  cat("TEST 16: MTCT Cascade Group Sum — Preserved Under Active Interventions\n")
+  cat("========================================\n")
+  
+  set_pmtct_params()
+  
+  # Test with ANC HIV testing active (women shift within groups via PMTCT linkage)
+  ints_anc <- zero_interventions(); ints_anc$anc_hiv_testing <- 90
+  out_anc  <- calculate_scenario_outcomes(ctx, ints_anc, pops)
+  
+  cascade_sum_anc <- out_anc$mtct_pregnant_suppressed +
+    out_anc$mtct_pregnant_unsuppressed +
+    out_anc$mtct_pregnant_no_art
+  
+  cat(sprintf("  cascade sum (ANC=90%%): %g == pregnant_hiv_pos_cascade: %g\n",
+              cascade_sum_anc, pops$pregnant_hiv_pos_cascade))
+  
+  expect_equal(cascade_sum_anc, round(pops$pregnant_hiv_pos_cascade), tolerance = 1,
+               info = "MTCT cascade sum must equal pregnant_hiv_pos_cascade with ANC active")
+  
+  # Test with ANC VL active (women shift suppressed/unsuppressed within on-ART group)
+  ints_vl <- zero_interventions(); ints_vl$anc_vl_testing <- 80
+  out_vl  <- calculate_scenario_outcomes(ctx, ints_vl, pops)
+  
+  cascade_sum_vl <- out_vl$mtct_pregnant_suppressed +
+    out_vl$mtct_pregnant_unsuppressed +
+    out_vl$mtct_pregnant_no_art
+  
+  cat(sprintf("  cascade sum (VL=80%%):  %g == pregnant_hiv_pos_cascade: %g\n",
+              cascade_sum_vl, pops$pregnant_hiv_pos_cascade))
+  
+  expect_equal(cascade_sum_vl, round(pops$pregnant_hiv_pos_cascade), tolerance = 1,
+               info = "MTCT cascade sum must equal pregnant_hiv_pos_cascade with ANC VL active")
+  
+  # Test with both active simultaneously
+  ints_both <- zero_interventions()
+  ints_both$anc_hiv_testing <- 90; ints_both$anc_vl_testing <- 80
+  out_both  <- calculate_scenario_outcomes(ctx, ints_both, pops)
+  
+  cascade_sum_both <- out_both$mtct_pregnant_suppressed +
+    out_both$mtct_pregnant_unsuppressed +
+    out_both$mtct_pregnant_no_art
+  
+  cat(sprintf("  cascade sum (ANC+VL):  %g == pregnant_hiv_pos_cascade: %g\n",
+              cascade_sum_both, pops$pregnant_hiv_pos_cascade))
+  
+  expect_equal(cascade_sum_both, round(pops$pregnant_hiv_pos_cascade), tolerance = 1,
+               info = "MTCT cascade sum must equal pregnant_hiv_pos_cascade with ANC and ANC VL both active")
+  
+  cat("✓ All assertions passed\n")
+})
+
+# ============================================================================
+# TEST 17: ANC VL ISOLATION — DOES NOT AFFECT TESTING OR DIAGNOSIS OUTPUTS
+# ============================================================================
+
+test_that("ANC VL testing does not affect new_diagnoses, tests_performed or art_initiations", {
+  cat("\n========================================\n")
+  cat("TEST 17: ANC VL Isolation — No Bleed Into Testing Outputs\n")
+  cat("========================================\n")
+  
+  # ANC VL is a viral suppression intervention, not a testing intervention.
+  # It must not produce new diagnoses, add tests performed, or drive ART initiations.
+  # It SHOULD improve suppression — this is intentional and verified here too.
+  ints_none   <- zero_interventions()
+  ints_anc_vl <- zero_interventions(); ints_anc_vl$anc_vl_testing <- 80
+  
+  out_none   <- calculate_scenario_outcomes(ctx, ints_none,   pops)
+  out_anc_vl <- calculate_scenario_outcomes(ctx, ints_anc_vl, pops)
+  
+  cat(sprintf("  new_diagnoses   (none / anc_vl): %g / %g\n",
+              out_none$new_diagnoses,   out_anc_vl$new_diagnoses))
+  cat(sprintf("  tests_performed (none / anc_vl): %g / %g\n",
+              out_none$tests_performed, out_anc_vl$tests_performed))
+  cat(sprintf("  art_initiations (none / anc_vl): %g / %g\n",
+              out_none$art_initiations, out_anc_vl$art_initiations))
+  cat(sprintf("  end_suppressed  (none / anc_vl): %g / %g\n",
+              out_none$end_suppressed,  out_anc_vl$end_suppressed))
+  
+  # ANC VL is not a testing intervention — must not generate diagnoses or tests
+  expect_equal(out_anc_vl$new_diagnoses,   out_none$new_diagnoses,   tolerance = 0,
+               info = "ANC VL must not produce new_diagnoses")
+  expect_equal(out_anc_vl$tests_performed, out_none$tests_performed, tolerance = 0,
+               info = "ANC VL must not add to tests_performed")
+  expect_equal(out_anc_vl$art_initiations, out_none$art_initiations, tolerance = 1,
+               info = "ANC VL must not drive art_initiations")
+  
+  # ANC VL DOES improve suppression (correct behaviour — this is its purpose)
+  expect_gt(out_anc_vl$end_suppressed, out_none$end_suppressed)
+  
+  cat("✓ All assertions passed\n")
+})
+
+# ============================================================================
+# TEST 18: PNC VL TESTING — SHIFTS POSTPARTUM UNSUPPRESSED WOMEN TO SUPPRESSED
+# ============================================================================
+
+test_that("PNC VL testing reduces infant infections by shifting postpartum unsuppressed mothers to suppressed", {
+  cat("\n========================================\n")
+  cat("TEST 18: PNC VL Testing — Suppression Shift and Infant Infection Reduction\n")
+  cat("========================================\n")
+  
+  set_pmtct_params(pnc_vl_eff = 0.40)
+  
+  ints_none         <- zero_interventions()
+  ints_pnc_vl_low   <- zero_interventions(); ints_pnc_vl_low$pnc_vl_testing  <- 40
+  ints_pnc_vl_high  <- zero_interventions(); ints_pnc_vl_high$pnc_vl_testing <- 90
+  
+  out_none        <- calculate_scenario_outcomes(ctx, ints_none,        pops)
+  out_pnc_vl_low  <- calculate_scenario_outcomes(ctx, ints_pnc_vl_low,  pops)
+  out_pnc_vl_high <- calculate_scenario_outcomes(ctx, ints_pnc_vl_high, pops)
+  
+  cat(sprintf("  mtct_pregnant_suppressed   (none / pnc_vl40 / pnc_vl90): %g / %g / %g\n",
+              out_none$mtct_pregnant_suppressed,
+              out_pnc_vl_low$mtct_pregnant_suppressed,
+              out_pnc_vl_high$mtct_pregnant_suppressed))
+  cat(sprintf("  mtct_pregnant_unsuppressed (none / pnc_vl40 / pnc_vl90): %g / %g / %g\n",
+              out_none$mtct_pregnant_unsuppressed,
+              out_pnc_vl_low$mtct_pregnant_unsuppressed,
+              out_pnc_vl_high$mtct_pregnant_unsuppressed))
+  cat(sprintf("  end_infant_infections      (none / pnc_vl40 / pnc_vl90): %g / %g / %g\n",
+              out_none$end_infant_infections,
+              out_pnc_vl_low$end_infant_infections,
+              out_pnc_vl_high$end_infant_infections))
+  
+  # PNC VL shifts unsuppressed postpartum mothers to suppressed
+  expect_gt(out_pnc_vl_low$mtct_pregnant_suppressed,   out_none$mtct_pregnant_suppressed)
+  expect_lt(out_pnc_vl_low$mtct_pregnant_unsuppressed, out_none$mtct_pregnant_unsuppressed)
+  
+  # Higher PNC VL coverage → larger shift
+  expect_gt(out_pnc_vl_high$mtct_pregnant_suppressed,   out_pnc_vl_low$mtct_pregnant_suppressed)
+  expect_lt(out_pnc_vl_high$mtct_pregnant_unsuppressed, out_pnc_vl_low$mtct_pregnant_unsuppressed)
+  
+  # PNC VL reduces infant infections (more suppressed = lower MTCT rate)
+  expect_lt(out_pnc_vl_low$end_infant_infections,  out_none$end_infant_infections)
+  expect_lt(out_pnc_vl_high$end_infant_infections, out_pnc_vl_low$end_infant_infections)
+  
+  # PNC VL + ANC VL combined reduces infant infections more than either alone
+  ints_anc_vl <- zero_interventions(); ints_anc_vl$anc_vl_testing <- 80
+  ints_both_vl <- zero_interventions()
+  ints_both_vl$anc_vl_testing <- 80; ints_both_vl$pnc_vl_testing <- 80
+  
+  out_anc_vl  <- calculate_scenario_outcomes(ctx, ints_anc_vl,  pops)
+  out_both_vl <- calculate_scenario_outcomes(ctx, ints_both_vl, pops)
+  
+  cat(sprintf("  end_infant_infections (anc_vl only / anc+pnc_vl): %g / %g\n",
+              out_anc_vl$end_infant_infections, out_both_vl$end_infant_infections))
+  
+  expect_lt(out_both_vl$end_infant_infections, out_anc_vl$end_infant_infections)
+  expect_lt(out_both_vl$end_infant_infections, out_pnc_vl_low$end_infant_infections)
+  
+  # MTCT cascade group sum still preserved with PNC VL active
+  cascade_sum <- out_pnc_vl_high$mtct_pregnant_suppressed +
+    out_pnc_vl_high$mtct_pregnant_unsuppressed +
+    out_pnc_vl_high$mtct_pregnant_no_art
+  expect_equal(cascade_sum, round(pops$pregnant_hiv_pos_cascade), tolerance = 1,
+               info = "MTCT cascade sum preserved with PNC VL active")
+  
+  cat("✓ All assertions passed\n")
+})
+
+# ============================================================================
+# TEST 19: PMTCT INTERVENTION COSTS SCALE WITH COVERAGE
+# ============================================================================
+
+test_that("PMTCT intervention costs increase with coverage for ANC, PNC, ANC VL, and PNC VL", {
+  cat("\n========================================\n")
+  cat("TEST 19: PMTCT Cost Validation — Costs Scale With Coverage\n")
+  cat("========================================\n")
+  
+  set_pmtct_params(
+    anc_cost = 5, anc_link_cost = 100,
+    pnc_cost = 5, pnc_link_cost = 100,
+    anc_vl_cost = 10,
+    pnc_vl_cost = 10
+  )
+  
+  ints_none    <- zero_interventions()
+  ints_anc     <- zero_interventions(); ints_anc$anc_hiv_testing  <- 80
+  ints_pnc     <- zero_interventions(); ints_pnc$pnc_hiv_testing  <- 80
+  ints_anc_vl  <- zero_interventions(); ints_anc_vl$anc_vl_testing <- 80
+  ints_pnc_vl  <- zero_interventions(); ints_pnc_vl$pnc_vl_testing <- 80
+  
+  out_none   <- calculate_scenario_outcomes(ctx, ints_none,   pops)
+  out_anc    <- calculate_scenario_outcomes(ctx, ints_anc,    pops)
+  out_pnc    <- calculate_scenario_outcomes(ctx, ints_pnc,    pops)
+  out_anc_vl <- calculate_scenario_outcomes(ctx, ints_anc_vl, pops)
+  out_pnc_vl <- calculate_scenario_outcomes(ctx, ints_pnc_vl, pops)
+  
+  cat(sprintf("  total_intervention_cost (none):    %g\n", out_none$total_intervention_cost))
+  cat(sprintf("  total_intervention_cost (ANC 80%%): %g\n", out_anc$total_intervention_cost))
+  cat(sprintf("  total_intervention_cost (PNC 80%%): %g\n", out_pnc$total_intervention_cost))
+  cat(sprintf("  total_intervention_cost (ANC VL 80%%): %g\n", out_anc_vl$total_intervention_cost))
+  cat(sprintf("  total_intervention_cost (PNC VL 80%%): %g\n", out_pnc_vl$total_intervention_cost))
+  
+  # Each intervention adds cost above zero baseline
+  expect_gt(out_anc$total_intervention_cost,    out_none$total_intervention_cost,
+            label = "ANC testing must add cost")
+  expect_gt(out_pnc$total_intervention_cost,    out_none$total_intervention_cost,
+            label = "PNC testing must add cost")
+  expect_gt(out_anc_vl$total_intervention_cost, out_none$total_intervention_cost,
+            label = "ANC VL testing must add cost")
+  expect_gt(out_pnc_vl$total_intervention_cost, out_none$total_intervention_cost,
+            label = "PNC VL testing must add cost")
+  
+  # Higher ANC coverage costs more
+  ints_anc_high <- zero_interventions(); ints_anc_high$anc_hiv_testing <- 95
+  out_anc_high  <- calculate_scenario_outcomes(ctx, ints_anc_high, pops)
+  expect_gt(out_anc_high$total_intervention_cost, out_anc$total_intervention_cost,
+            label = "Higher ANC coverage must cost more")
+  
+  cat(sprintf("  total_intervention_cost (ANC 80%% / ANC 95%%): %g / %g\n",
+              out_anc$total_intervention_cost, out_anc_high$total_intervention_cost))
+  
+  # Higher ANC VL coverage costs more
+  ints_anc_vl_high <- zero_interventions(); ints_anc_vl_high$anc_vl_testing <- 95
+  out_anc_vl_high  <- calculate_scenario_outcomes(ctx, ints_anc_vl_high, pops)
+  expect_gt(out_anc_vl_high$total_intervention_cost, out_anc_vl$total_intervention_cost,
+            label = "Higher ANC VL coverage must cost more")
+  
+  cat(sprintf("  total_intervention_cost (ANC VL 80%% / ANC VL 95%%): %g / %g\n",
+              out_anc_vl$total_intervention_cost, out_anc_vl_high$total_intervention_cost))
+  
+  # Higher PNC VL coverage costs more
+  ints_pnc_vl_high <- zero_interventions(); ints_pnc_vl_high$pnc_vl_testing <- 95
+  out_pnc_vl_high  <- calculate_scenario_outcomes(ctx, ints_pnc_vl_high, pops)
+  expect_gt(out_pnc_vl_high$total_intervention_cost, out_pnc_vl$total_intervention_cost,
+            label = "Higher PNC VL coverage must cost more")
+  
+  cat(sprintf("  total_intervention_cost (PNC VL 80%% / PNC VL 95%%): %g / %g\n",
+              out_pnc_vl$total_intervention_cost, out_pnc_vl_high$total_intervention_cost))
+  
+  cat("✓ All assertions passed\n")
+})
+
+# ============================================================================
 # SUMMARY
 # ============================================================================
 
@@ -771,3 +1019,7 @@ cat("✓ TEST 12: Infant mortality wired into aggregate deaths_averted and end_d
 cat("✓ TEST 13: infant_suppressed is a subset of infant_on_art\n")
 cat("✓ TEST 14: Full PMTCT combination reduces infant infections and deaths\n")
 cat("✓ TEST 15: Zero coverage — MTCT cascade reproduces raw population rates\n")
+cat("✓ TEST 16: MTCT cascade group sum preserved under active interventions\n")
+cat("✓ TEST 17: ANC VL isolation — no bleed into testing or diagnosis outputs\n")
+cat("✓ TEST 18: PNC VL testing reduces infant infections via suppression shift\n")
+cat("✓ TEST 19: PMTCT intervention costs scale with coverage\n")

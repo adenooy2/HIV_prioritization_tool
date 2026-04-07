@@ -443,6 +443,15 @@ build_intervention_groups <- function(intervention_params){
           eligible_pop = "pregnant_on_art",
           unit_cost = subset(intervention_params, intervention_key == "anc_vl_testing")$unit_cost,
           outcomes = c("viral_suppression", "pmtct")
+        ),
+        pnc_vl_testing = list(
+          name = "PNC: Viral Load Testing",
+          type = "coverage",
+          unit_label = "% of postpartum women on ART",
+          efficacy  = {v <- subset(intervention_params, intervention_key == "pnc_vl_testing")$efficacy;  if (length(v) > 0) v else 0.40},
+          eligible_pop = "pregnant_on_art",
+          unit_cost = {v <- subset(intervention_params, intervention_key == "pnc_vl_testing")$unit_cost; if (length(v) > 0) v else 10},
+          outcomes = c("viral_suppression", "pmtct")
         )
       )
     ),
@@ -573,7 +582,7 @@ default_baseline_interventions <- list(
   eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
   vl_monitoring_routine = 60, 
   oi_management = 50, mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track =5, community_pickup=5,
-  adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
+  adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68, pnc_vl_testing = 0,
   cd4_testing = 92, ahd_package = 88
 )
 
@@ -629,7 +638,7 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
         eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
         vl_monitoring_routine = 60, 
         oi_management = 50, mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track=5, community_pickup =5, 
-        adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
+        adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68, pnc_vl_testing = 0,
         cd4_testing = 92, ahd_package = 88
       )
       
@@ -717,6 +726,7 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
     adherence_counseling = 55, 
     tracking_tracing = 40, 
     anc_vl_testing = 68,
+    pnc_vl_testing = 0,
     cd4_testing = 92, 
     ahd_package = 88
   )
@@ -1199,7 +1209,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # PMTCT / infant cascade trackers
   pmtct_new_diagnoses    <- 0   # HIV+ pregnant women newly diagnosed via ANC/PNC -> PMTCT ART
   infant_prophy_cov_frac <- 0   # efficacy-weighted infant prophylaxis coverage (0-1)
-  anc_vl_reached_preg    <- 0   # pregnant women on ART reached by VL monitoring
+  anc_vl_reached_preg    <- 0   # pregnant women on ART reached by ANC VL monitoring
+  pnc_vl_reached_preg    <- 0   # postpartum women on ART reached by PNC VL monitoring
   eid_infants_reached    <- 0   # HIV-exposed infants reached by EID
   # Retention: two distinct counters replacing the old single retention_improvement
   # ltfu_retained_frac: cumulative fraction of at-risk people retained, built
@@ -1405,9 +1416,11 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
       
-      # ── ANC VL testing: track pregnant women on ART reached for MTCT cascade ──
+      # ── ANC / PNC VL testing: track pregnant/postpartum women on ART reached for MTCT cascade ──
       if (int_key == "anc_vl_testing") {
         anc_vl_reached_preg <- anc_vl_reached_preg + number_reached
+      } else if (int_key == "pnc_vl_testing") {
+        pnc_vl_reached_preg <- pnc_vl_reached_preg + number_reached
       }
       
     } else if ("retention" %in% intervention$outcomes) {
@@ -1778,6 +1791,17 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   )
   mtct_supp   <- populations$pregnant_on_art_suppressed   + anc_vl_shift
   mtct_unsupp <- max(0, populations$pregnant_on_art_unsuppressed - anc_vl_shift)
+  
+  # Step 1b: PNC VL testing shifts remaining unsuppressed postpartum mothers -> suppressed.
+  # Applied after ANC VL so it cannot double-count women already shifted at ANC.
+  # Capped at mtct_unsupp (the remaining unsuppressed pool after ANC VL).
+  pnc_vl_eff   <- all_interventions$pnc_vl_testing$efficacy %||% 0
+  pnc_vl_shift <- min(
+    pnc_vl_reached_preg * (1 - context$percent_suppressed / 100) * pnc_vl_eff,
+    mtct_unsupp
+  )
+  mtct_supp   <- mtct_supp   + pnc_vl_shift
+  mtct_unsupp <- max(0, mtct_unsupp - pnc_vl_shift)
   
   # Step 2: Of newly diagnosed HIV+ pregnant women, a proportion link to PMTCT ART,
   # and of those, a proportion achieve viral suppression during pregnancy/breastfeeding.
