@@ -40,6 +40,22 @@ MORTALITY_RATES <- list(
   )
 )
 
+# MORTALITY_RATES <- list(
+#   untreated_undiagnosed = 0,  # undiagnosed PLHIV + diagnosed not on ART
+#   new_art_initiations   = 0,  # first year on ART (pre-stabilisation)
+#   treated               = 0, # established on ART, not virally suppressed
+#   suppressed            = 0, # established on ART, virally suppressed
+#   ahd                   = 0,  # advanced HIV disease (CD4 < 200), any stage
+#   prop_ahd = list(
+#     undiagnosed        = 0.20,   # undiagnosed PLHIV
+#     diagnosed_not_art  = 0.20,   # diagnosed but not on ART
+#     new_initiations    = 0.20,   # first year on ART
+#     established_treated= 0.00,   # established on ART, not suppressed
+#     established_supp   = 0.00    # established on ART, suppressed
+#   )
+# )
+
+
 # ============================================================================
 # LTFU RATES BY SUPPRESSION STATUS (UPDATE THESE BASED ON LITERATURE)
 # Suppressed patients: stable, feel well, lower side-effect burden -> lower dropout
@@ -53,6 +69,26 @@ ANNUAL_LTFU_RATE_UNSUPPRESSED <- 0.15   # 15% of unsuppressed on ART become LTFU
 # i.e. the intervention both keeps them in care AND improves their adherence enough
 # to suppress. ###UPDATE based on literature
 RETENTION_SUPPRESSION_RATE <- 0.30
+
+# ============================================================================
+# MTCT RATES BY MATERNAL ART/SUPPRESSION STATUS (###UPDATE based on literature)
+# Covers transmission risk across pregnancy, delivery, and breastfeeding period.
+# ============================================================================
+MTCT_RATES <- list(
+  on_art_suppressed    = 0.02,   # ~2%  — virally suppressed throughout
+  on_art_unsuppressed  = 0.15,   # ~15% — on ART but not suppressed
+  not_on_art           = 0.35    # ~35% — no maternal PMTCT
+)
+
+# ============================================================================
+# INFANT HIV MORTALITY RATES BY TREATMENT STATUS (###UPDATE based on literature)
+# Annual mortality risk for HIV-infected infants by treatment/suppression status.
+# ============================================================================
+INFANT_MORTALITY_RATES <- list(
+  untreated     = 0.35,  # ~35% — untreated HIV+ infant, first year
+  on_art        = 0.10,  # ~10% — on ART but not suppressed
+  suppressed    = 0.03   # ~3%  — on ART and virally suppressed
+)
 
 # ============================================================================
 # CONDOM BEHAVIOURAL PARAMETERS (UPDATE THESE BASED ON LITERATURE)
@@ -72,6 +108,12 @@ CONDOM_USE_RATE_GEN       <- 0.55
 # Load country data
 response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQBCFFlfF2AaRLcGuaCvNAcJAbE-8Ak2_gDyNJnL0GQu8Ag?e=k5dAU1&download=1")
 country_data_csv <- content(response, as = "parsed", type = "text/csv")
+
+# Load country-level baseline intervention volumes
+# Replace the URL below with the actual share link for the baseline CSV
+baseline_response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=LPB0JCL&download=1")
+baseline_data_csv <- content(baseline_response, as = "parsed", type = "text/csv") 
+
 
 # Load intervention parameters from Excel
 load_intervention_params <- function(){
@@ -169,18 +211,6 @@ build_intervention_groups <- function(intervention_params){
       name = "Testing & Diagnosis",
       color = "#3b82f6",
       interventions = list(
-        test_facility_targeted = list(
-          name = "Testing: facility-based (targeted)",
-          type = "absolute",
-          unit_label = "tests performed",
-          efficacy = subset(intervention_params, intervention_key == "test_facility_targeted")$efficacy,
-          eligible_pop = "total",
-          unit_cost = subset(intervention_params, intervention_key == "test_facility_targeted")$unit_cost,
-          linkage_rate = subset(intervention_params, intervention_key == "test_facility_targeted")$linkage_rate,
-          linkage_cost = subset(intervention_params, intervention_key == "test_facility_targeted")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_facility_targeted")$yield_multiplier,
-          outcomes = c("testing")
-        ),
         test_facility_general = list(
           name = "Testing: facility-based (general)",
           type = "absolute",
@@ -193,16 +223,28 @@ build_intervention_groups <- function(intervention_params){
           test_yield_multiplier = subset(intervention_params, intervention_key == "test_facility_general")$yield_multiplier,
           outcomes = c("testing")
         ),
-        test_network_index = list(
-          name = "Testing: network/index testing",
+        test_network = list(
+          name = "Testing: network testing",
           type = "absolute",
           unit_label = "tests performed",
-          efficacy = subset(intervention_params, intervention_key == "test_network_index")$efficacy,
+          efficacy = subset(intervention_params, intervention_key == "test_network")$efficacy,
           eligible_pop = "total",
-          unit_cost = subset(intervention_params, intervention_key == "test_network_index")$unit_cost,
-          linkage_rate = subset(intervention_params, intervention_key == "test_network_index")$linkage_rate,
-          linkage_cost = subset(intervention_params, intervention_key == "test_network_index")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_network_index")$yield_multiplier,
+          unit_cost = subset(intervention_params, intervention_key == "test_network")$unit_cost,
+          linkage_rate = subset(intervention_params, intervention_key == "test_network")$linkage_rate,
+          linkage_cost = subset(intervention_params, intervention_key == "test_network")$linkage_cost,
+          test_yield_multiplier = subset(intervention_params, intervention_key == "test_network")$yield_multiplier,
+          outcomes = c("testing")
+        ),
+        test_index = list(
+          name = "Testing: index testing",
+          type = "absolute",
+          unit_label = "tests performed",
+          efficacy = subset(intervention_params, intervention_key == "test_index")$efficacy,
+          eligible_pop = "total",
+          unit_cost = subset(intervention_params, intervention_key == "test_index")$unit_cost,
+          linkage_rate = subset(intervention_params, intervention_key == "test_index")$linkage_rate,
+          linkage_cost = subset(intervention_params, intervention_key == "test_index")$linkage_cost,
+          test_yield_multiplier = subset(intervention_params, intervention_key == "test_index")$yield_multiplier,
           outcomes = c("testing")
         ),
         test_community = list(
@@ -263,14 +305,14 @@ build_intervention_groups <- function(intervention_params){
           linkage_rate = subset(intervention_params, intervention_key == "eid")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "eid")$linkage_cost,
           test_yield_multiplier = subset(intervention_params, intervention_key == "eid")$yield_multiplier,
-          outcomes = c("testing")
+          outcomes = c("infant_diagnosis")
         ),
         anc_hiv_testing = list(
           name = "ANC: HIV testing",
           type = "coverage",
           unit_label = "% of pregnant women",
           efficacy = subset(intervention_params, intervention_key == "anc_hiv_testing")$efficacy,
-          eligible_pop = "pregnant_women",
+          eligible_pop = "pregnant_hiv_testable",
           unit_cost = subset(intervention_params, intervention_key == "anc_hiv_testing")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "anc_hiv_testing")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "anc_hiv_testing")$linkage_cost,
@@ -282,7 +324,7 @@ build_intervention_groups <- function(intervention_params){
           type = "coverage",
           unit_label = "% of postpartum women",
           efficacy = subset(intervention_params, intervention_key == "pnc_hiv_testing")$efficacy,
-          eligible_pop = "pregnant_women",
+          eligible_pop = "pregnant_hiv_testable",
           unit_cost = subset(intervention_params, intervention_key == "pnc_hiv_testing")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "pnc_hiv_testing")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "pnc_hiv_testing")$linkage_cost,
@@ -401,6 +443,15 @@ build_intervention_groups <- function(intervention_params){
           eligible_pop = "pregnant_on_art",
           unit_cost = subset(intervention_params, intervention_key == "anc_vl_testing")$unit_cost,
           outcomes = c("viral_suppression", "pmtct")
+        ),
+        pnc_vl_testing = list(
+          name = "PNC: Viral Load Testing",
+          type = "coverage",
+          unit_label = "% of postpartum women on ART",
+          efficacy  = {v <- subset(intervention_params, intervention_key == "pnc_vl_testing")$efficacy;  if (length(v) > 0) v else 0.40},
+          eligible_pop = "pregnant_on_art",
+          unit_cost = {v <- subset(intervention_params, intervention_key == "pnc_vl_testing")$unit_cost; if (length(v) > 0) v else 10},
+          outcomes = c("viral_suppression", "pmtct")
         )
       )
     ),
@@ -497,9 +548,24 @@ calculate_populations <- function(context) {
     sexually_active_negative = hiv_negative * 0.60,
     recent_exposure = hiv_negative * 0.002,
     hiv_exposed_infants = hiv_positive_births,
-    pregnant_women = births,
-    pregnant_on_art = births * context$hiv_prevalence * (context$percent_on_art / 100),
-    newly_diagnosed_advanced = (plhiv - diagnosed) * 0.20
+    pregnant_women      = births,
+    # PMTCT cascade sub-populations (denominator = births x hiv_prevalence)
+    pregnant_hiv_pos_cascade     = births * context$hiv_prevalence,
+    pregnant_on_art              = births * context$hiv_prevalence *
+      (context$percent_diagnosed / 100) * (context$percent_on_art / 100),
+    pregnant_on_art_suppressed   = births * context$hiv_prevalence *
+      (context$percent_diagnosed / 100) * (context$percent_on_art / 100) *
+      (context$percent_suppressed / 100),
+    pregnant_on_art_unsuppressed = births * context$hiv_prevalence *
+      (context$percent_diagnosed / 100) * (context$percent_on_art / 100) *
+      (1 - context$percent_suppressed / 100),
+    pregnant_not_on_art          = births * context$hiv_prevalence *
+      (1 - (context$percent_diagnosed / 100) * (context$percent_on_art / 100)),
+    pregnant_undiagnosed         = births * context$hiv_prevalence * (1 - context$percent_diagnosed / 100),
+    # HIV testing eligible pool: HIV-negative + HIV+ undiagnosed pregnant women
+    # (already-diagnosed HIV+ women are not re-offered an HIV test)
+    pregnant_hiv_testable        = births * (1 - context$hiv_prevalence * (context$percent_diagnosed / 100)),
+    newly_diagnosed_advanced     = (plhiv - diagnosed) * 0.20
   )
 }
 
@@ -510,20 +576,20 @@ default_baseline_interventions <- list(
   prep_oral = 5000, prep_lenacapavir = 0, vmmc = 30000,
   condoms = 200000, pep = 2000, infant_prophylaxis = 70,
   cotrimoxazole = 60,
-  test_facility_targeted = 25000, test_facility_general = 25000,
-  test_network_index = 5000, test_community = 20000,
+  test_facility_general = 25000,
+  test_network = 3000, test_index = 2000, test_community = 20000,
   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
   eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
   vl_monitoring_routine = 60, 
   oi_management = 50, mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track =5, community_pickup=5,
-  adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
+  adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68, pnc_vl_testing = 0,
   cd4_testing = 92, ahd_package = 88
 )
 
 # ============================================================================
 # BUILD COUNTRY PRESETS FROM CSV
 # ============================================================================
-build_country_presets <- function(csv_data) {
+build_country_presets <- function(csv_data, baseline_csv = NULL) {
   presets <- list()
   
   if (!is.null(csv_data) && nrow(csv_data) > 0) {
@@ -548,7 +614,12 @@ build_country_presets <- function(csv_data) {
         # FOI parameters (optional CSV columns; defaults used if absent)
         circ_prevalence = if (!is.null(row$circ_prevalence) && !is.na(row$circ_prevalence)) row$circ_prevalence else 0.20,
         prop_high_risk  = if (!is.null(row$prop_high_risk)  && !is.na(row$prop_high_risk))  row$prop_high_risk  else 0.05,
-        rr_high         = if (!is.null(row$rr_high)         && !is.na(row$rr_high))         row$rr_high         else 8.0
+        rr_high          = if (!is.null(row$rr_high)              && !is.na(row$rr_high))              row$rr_high              else 8.0,
+        # Prior-year testing data for yield calibration and volume dilution
+        test_yield       = if (!is.null(row$avg_test_yield)       && !is.na(row$avg_test_yield))
+          as.numeric(row$avg_test_yield) / 100 else NULL,  # % in CSV -> proportion
+        prior_year_tests = if (!is.null(row$total_tests_prev_year) && !is.na(row$total_tests_prev_year))
+          as.numeric(row$total_tests_prev_year) else NULL
       )
       
       pops <- calculate_populations(context)
@@ -557,9 +628,9 @@ build_country_presets <- function(csv_data) {
         prep_oral = 0.01*pops$total, prep_lenacapavir = 0, vmmc = 0.01*pops$uncircumcised_males,
         condoms = 0.6*pops$total, pep = 0.2*pops$recent_exposure, infant_prophylaxis = 70,
         cotrimoxazole = 60, 
-        test_facility_targeted = round(0.067*pops$adult_pop, -4), 
         test_facility_general = round(0.134*pops$adult_pop, -4), 
-        test_network_index = round(0.0047*pops$adult_pop, -4), 
+        test_network = round(0.0024*pops$adult_pop, -4), 
+        test_index = round(0.0024*pops$adult_pop, -4), 
         test_community = round(0.019*pops$adult_pop, -4),
         test_kpsti = round(0.005*pops$adult_pop, -4), 
         hivst_facility = round(0.0035*pops$adult_pop, -4), 
@@ -567,18 +638,40 @@ build_country_presets <- function(csv_data) {
         eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
         vl_monitoring_routine = 60, 
         oi_management = 50, mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track=5, community_pickup =5, 
-        adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68,
+        adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68, pnc_vl_testing = 0,
         cd4_testing = 92, ahd_package = 88
       )
       
       baseline <- default_baseline_interventions
+      
+      # Look up this country's row in the baseline CSV (if provided)
+      b_row <- if (!is.null(baseline_csv) && nrow(baseline_csv) > 0)
+        baseline_csv[baseline_csv$country == country_name, ] else NULL
+      
+      # Read country-specific yield multipliers from baseline CSV.
+      # Column naming convention: yield_mult_{intervention_key}
+      # Falls back to an empty list if baseline CSV is absent or country not found.
+      yield_multiplier_keys <- c("test_facility_general", "test_network", "test_index",
+                                 "test_community", "test_kpsti", "hivst_facility", "hivst_community")
+      context$yield_multipliers <- if (!is.null(b_row) && nrow(b_row) == 1) {
+        mults <- lapply(yield_multiplier_keys, function(k) {
+          val <- b_row[[paste0("yield_mult_", k)]]
+          if (!is.null(val) && !is.na(val)) as.numeric(val) else NULL
+        })
+        names(mults) <- yield_multiplier_keys
+        mults
+      } else {
+        list()
+      }
+      
       for (int_name in names(default_baseline_interventions)) {
-        csv_val <- row[[int_name]]
-        # Only override the proportional default when the CSV has an explicit
-        # non-NA value. A missing or NA column means "use the computed default"
-        # — previously, a 0 or NA in the CSV silently overwrote the default
-        # (e.g. VMMC = 0 in the CSV wiped out 0.01 * uncircumcised_males).
-        if (int_name %in% names(row) && !is.null(csv_val) && !is.na(csv_val)) {
+        # Pull from baseline CSV first; fall back to country CSV for non-testing fields
+        csv_val <- if (!is.null(b_row) && nrow(b_row) == 1 && int_name %in% names(b_row))
+          b_row[[int_name]] else row[[int_name]]
+        src_names <- if (!is.null(b_row) && nrow(b_row) == 1) names(b_row) else names(row)
+        
+        # Only override when the source has an explicit non-NA value
+        if (int_name %in% src_names && !is.null(csv_val) && !is.na(csv_val)) {
           baseline[[int_name]] <- csv_val
         }
       }
@@ -615,9 +708,9 @@ build_country_presets <- function(csv_data) {
     pep = 0.2*custom_pops$recent_exposure, 
     infant_prophylaxis = 70,
     cotrimoxazole = 60, 
-    test_facility_targeted = 0.05*custom_pops$adult_pop, 
     test_facility_general = 0.05*custom_pops$adult_pop, 
-    test_network_index = 0.01*custom_pops$adult_pop, 
+    test_network = 0.005*custom_pops$adult_pop, 
+    test_index = 0.005*custom_pops$adult_pop, 
     test_community = 0.04*custom_pops$adult_pop,
     test_kpsti = 0.02*custom_pops$adult_pop, 
     hivst_facility = 0.02*custom_pops$adult_pop, 
@@ -633,6 +726,7 @@ build_country_presets <- function(csv_data) {
     adherence_counseling = 55, 
     tracking_tracing = 40, 
     anc_vl_testing = 68,
+    pnc_vl_testing = 0,
     cd4_testing = 92, 
     ahd_package = 88
   )
@@ -1112,6 +1206,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   additional_suppressed_testing <- 0
   art_initiations <- 0
   art_inititations_testing <- 0
+  # PMTCT / infant cascade trackers
+  pmtct_new_diagnoses    <- 0   # HIV+ pregnant women newly diagnosed via ANC/PNC -> PMTCT ART
+  infant_prophy_cov_frac <- 0   # efficacy-weighted infant prophylaxis coverage (0-1)
+  anc_vl_reached_preg    <- 0   # pregnant women on ART reached by ANC VL monitoring
+  pnc_vl_reached_preg    <- 0   # postpartum women on ART reached by PNC VL monitoring
+  eid_infants_reached    <- 0   # HIV-exposed infants reached by EID
   # Retention: two distinct counters replacing the old single retention_improvement
   # ltfu_retained_frac: cumulative fraction of at-risk people retained, built
   #   multiplicatively across prevention interventions so the same person cannot
@@ -1122,13 +1222,16 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   total_intervention_cost <- 0
   tests_performed <- 0
   
-  # Calculate dynamic testing yield
-  # Yield = probability that a test is positive
-  # This is based on undiagnosed (true new positives) + LTFU (re-engagement)
-  base_test_yield <- ((populations$undiagnosed + populations$ltfu) / populations$sexually_active)
-  base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
+  # Base test yield: use country prior-year average from CSV if available;
+  # fall back to dynamic estimate from undiagnosed + LTFU pools otherwise.
+  if (!is.null(context$test_yield) && !is.na(context$test_yield)) {
+    base_test_yield <- context$test_yield
+  } else {
+    base_test_yield <- (populations$undiagnosed + populations$ltfu) / populations$sexually_active
+    base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
+  }
   
-  prop_new_dx <- 0.7 ###UPDATE
+  prop_new_dx <- 0.5 ###UPDATE
   prop_reeng  <- (1 - prop_new_dx) ###UPDATE
   
   average_linkage <- 0.9
@@ -1140,6 +1243,57 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     for (int_name in names(group$interventions)) {
       all_interventions[[int_name]] <- group$interventions[[int_name]]
     }
+  }
+  
+  # ── VOLUME DILUTION: order-independent two-pass approach ─────────────────
+  # When total planned tests exceed 150% of prior-year volume, positivity
+  # drops because the easy-to-find positives are exhausted. Rather than
+  # penalising whichever modalities happen to be processed last in the loop,
+  # we compute a single global dilution factor from total planned volume and
+  # apply it uniformly to every modality — preserving the relative advantage
+  # of high-yield targeted testing regardless of loop order.
+  #
+  # Dilution factor derivation:
+  #   Tests <= threshold : full yield
+  #   Tests >  threshold : half yield
+  #   Factor = (threshold + (total - threshold) * 0.5) / total
+  #          = 1.0 when total <= threshold (no dilution)
+  #
+  # If prior_year_tests is not supplied, threshold = Inf and factor = 1.0.
+  # ─────────────────────────────────────────────────────────────────────────
+  volume_threshold <- if (!is.null(context$prior_year_tests) && !is.na(context$prior_year_tests))
+    context$prior_year_tests * 1.5 else Inf
+  
+  # Index testing: exempt from yield dilution (targeted contacts remain high-yield
+  # regardless of total programme volume) but capped at 2x prior-year new infections
+  # (finite contact pool — cannot meaningfully exceed the contacts of incident cases).
+  index_pop_cap <- if (!is.null(context$new_infections_per_year) &&
+                       !is.na(context$new_infections_per_year))
+    2 * context$new_infections_per_year else Inf
+  
+  # Pre-loop pass: sum total planned tests across all testing modalities,
+  # EXCLUDING index testing so it does not inflate the dilution denominator.
+  total_planned_tests <- 0
+  for (int_key_pre in names(all_interventions)) {
+    int_pre     <- all_interventions[[int_key_pre]]
+    int_val_pre <- interventions[[int_key_pre]]
+    if (is.null(int_val_pre) || int_val_pre == 0) next
+    if (!("testing" %in% int_pre$outcomes)) next
+    if (int_key_pre == "test_index") next   # exempt: does not saturate general pool
+    elig_pre <- populations[[int_pre$eligible_pop]] %||% 0
+    n_pre <- if (int_pre$type == "coverage")
+      min(elig_pre * (int_val_pre / 100), elig_pre)
+    else
+      min(int_val_pre, elig_pre)
+    total_planned_tests <- total_planned_tests + n_pre
+  }
+  
+  yield_dilution_factor <- if (is.infinite(volume_threshold) ||
+                               total_planned_tests <= volume_threshold) {
+    1.0
+  } else {
+    (volume_threshold + (total_planned_tests - volume_threshold) * 0.5) /
+      total_planned_tests
   }
   
   # Process each intervention
@@ -1174,13 +1328,25 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     
     # Calculate outcomes based on intervention type
     if ("testing" %in% intervention$outcomes) {
-      # Testing interventions
-      test_yield <- base_test_yield
-      if (!is.null(intervention$test_yield_multiplier)) {
-        test_yield <- test_yield * as.numeric(intervention$test_yield_multiplier)
+      # Index testing: cap at 2x prior-year infections; never diluted (contact
+      # pool quality does not degrade with general programme volume expansion).
+      if (int_key == "test_index") {
+        number_reached   <- min(number_reached, index_pop_cap)
+        modality_dilution <- 1.0
+      } else {
+        modality_dilution <- yield_dilution_factor
       }
       
-      pos_tests <- number_reached * test_yield * intervention$efficacy
+      # Effective yield: country-specific multiplier (from baseline CSV) takes
+      # precedence; falls back to intervention params default, then 1.
+      country_mult <- context$yield_multipliers[[int_key]]
+      effective_yield <- base_test_yield *
+        (if (!is.null(country_mult)) country_mult
+         else if (!is.null(intervention$test_yield_multiplier))
+           as.numeric(intervention$test_yield_multiplier)
+         else 1)
+      
+      pos_tests <- number_reached * effective_yield * modality_dilution * intervention$efficacy
       positive_tests <- positive_tests + pos_tests
       tests_performed <- tests_performed + number_reached
       
@@ -1203,13 +1369,45 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       total_intervention_cost <- total_intervention_cost +
         (number_reached * intervention$unit_cost + linked * intervention$linkage_cost)
       
+      # ── ANC HIV testing: route newly diagnosed HIV+ pregnant women into PMTCT cascade ──
+      # number_reached = pregnant_hiv_testable x (ANC_coverage/100), so coverage is already embedded.
+      # Yield = proportion of testable women (HIV-neg + HIV+ undiagnosed) who are HIV+ undiagnosed.
+      if (int_key == "anc_hiv_testing") {
+        anc_hiv_yield       <- populations$pregnant_undiagnosed /
+          max(populations$pregnant_hiv_testable, 1)
+        pmtct_candidates    <- number_reached * anc_hiv_yield * intervention$efficacy
+        pmtct_new_diagnoses <- pmtct_new_diagnoses +
+          min(pmtct_candidates, populations$pregnant_undiagnosed)
+        
+        # ── PNC HIV testing: same pool but deduct HIV+ undiagnosed women already caught at ANC ──
+        # HIV-negative women remain fully eligible; only the HIV+ undiagnosed pool is reduced.
+      } else if (int_key == "pnc_hiv_testing") {
+        remaining_undiagnosed_preg <- max(0, populations$pregnant_undiagnosed - pmtct_new_diagnoses)
+        # PNC eligible = HIV-negative pregnant women (unchanged) + remaining HIV+ undiagnosed
+        hiv_neg_pregnant   <- populations$pregnant_hiv_testable - populations$pregnant_undiagnosed
+        pnc_eligible_pool  <- hiv_neg_pregnant + remaining_undiagnosed_preg
+        # Override number_reached using the corrected PNC eligible pool
+        number_reached     <- pnc_eligible_pool * (intervention_value / 100)
+        pnc_hiv_yield      <- remaining_undiagnosed_preg / max(pnc_eligible_pool, 1)
+        pmtct_candidates   <- number_reached * pnc_hiv_yield * intervention$efficacy
+        pmtct_new_diagnoses <- pmtct_new_diagnoses +
+          min(pmtct_candidates, remaining_undiagnosed_preg)
+      }
+      
     } else if ("infant_infections" %in% intervention$outcomes) {
-      infant_incidence_rate <- 0.15 ####UPDATE
-      infant_infections_averted <- infant_infections_averted +
-        number_reached * infant_incidence_rate * intervention$efficacy
+      # Infant prophylaxis (NVP): accumulate efficacy-weighted coverage fraction.
+      # Efficacy drawn from intervention CSV. Actual infection reduction calculated
+      # in the MTCT cascade block below.
+      infant_prophy_cov_frac <- min(1, infant_prophy_cov_frac +
+                                      (number_reached / max(populations$hiv_exposed_infants, 1)) * intervention$efficacy)
       
       total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
+      
+    } else if ("infant_diagnosis" %in% intervention$outcomes) {
+      # EID: tests HIV-exposed infants to identify HIV+ infants for early ART initiation.
+      # Cost calculated post-cascade using actual yield — see MTCT cascade block below.
+      eid_infants_reached <- number_reached
       
     } else if ("viral_suppression" %in% intervention$outcomes) {
       additional_suppressed <- additional_suppressed +
@@ -1217,6 +1415,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       
       total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
+      
+      # ── ANC / PNC VL testing: track pregnant/postpartum women on ART reached for MTCT cascade ──
+      if (int_key == "anc_vl_testing") {
+        anc_vl_reached_preg <- anc_vl_reached_preg + number_reached
+      } else if (int_key == "pnc_vl_testing") {
+        pnc_vl_reached_preg <- pnc_vl_reached_preg + number_reached
+      }
       
     } else if ("retention" %in% intervention$outcomes) {
       # ── Two distinct retention pathways ──────────────────────────────────
@@ -1245,14 +1450,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         number_reached * intervention$unit_cost
       
     } else if ("ahd_screening" %in% intervention$outcomes) {
-      total_intervention_cost <- total_intervention_cost +
-        number_reached * intervention$unit_cost
-      
-    } else if ("pmtct" %in% intervention$outcomes) {
-      mtct_rate <- 0.15
-      infant_infections_averted <- infant_infections_averted +
-        number_reached * mtct_rate * 0.30
-      
       total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost
     }
@@ -1581,8 +1778,110 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         units_costed * intervention$unit_cost
     }
   }
-  baseline_infant_infections <- populations$hiv_exposed_infants * 0.15 ###UPDATE
-  end_infant_infections  <- max(0, baseline_infant_infections - infant_infections_averted)
+  # ========================================================================
+  # MTCT CASCADE: infant infections from cascade-based maternal risk groups
+  # ========================================================================
+  
+  # Step 1: ANC VL testing shifts unsuppressed pregnant women on ART -> suppressed.
+  # anc_vl_reached_preg is the subset of anc_vl_testing number_reached (pregnant_on_art).
+  anc_vl_eff   <- all_interventions$anc_vl_testing$efficacy %||% 0
+  anc_vl_shift <- min(
+    anc_vl_reached_preg * (1 - context$percent_suppressed / 100) * anc_vl_eff,
+    populations$pregnant_on_art_unsuppressed
+  )
+  mtct_supp   <- populations$pregnant_on_art_suppressed   + anc_vl_shift
+  mtct_unsupp <- max(0, populations$pregnant_on_art_unsuppressed - anc_vl_shift)
+  
+  # Step 1b: PNC VL testing shifts remaining unsuppressed postpartum mothers -> suppressed.
+  # Applied after ANC VL so it cannot double-count women already shifted at ANC.
+  # Capped at mtct_unsupp (the remaining unsuppressed pool after ANC VL).
+  pnc_vl_eff   <- all_interventions$pnc_vl_testing$efficacy %||% 0
+  pnc_vl_shift <- min(
+    pnc_vl_reached_preg * (1 - context$percent_suppressed / 100) * pnc_vl_eff,
+    mtct_unsupp
+  )
+  mtct_supp   <- mtct_supp   + pnc_vl_shift
+  mtct_unsupp <- max(0, mtct_unsupp - pnc_vl_shift)
+  
+  # Step 2: Of newly diagnosed HIV+ pregnant women, a proportion link to PMTCT ART,
+  # and of those, a proportion achieve viral suppression during pregnancy/breastfeeding.
+  # Suppression rate is discounted from the country average — newly initiating women
+  # are less likely to fully suppress quickly. ###UPDATE discount factor from literature.
+  pmtct_linkage_rate  <- all_interventions$anc_hiv_testing$linkage_rate %||% 0.85
+  pmtct_supp_rate     <- (context$percent_suppressed / 100) * 0.70  ###UPDATE discount
+  
+  pmtct_linked_total  <- min(pmtct_new_diagnoses, populations$pregnant_not_on_art)
+  pmtct_linked_art    <- pmtct_linked_total * pmtct_linkage_rate
+  pmtct_linked_supp   <- pmtct_linked_art   * pmtct_supp_rate
+  pmtct_linked_unsupp <- pmtct_linked_art   - pmtct_linked_supp
+  pmtct_not_linked    <- pmtct_linked_total - pmtct_linked_art  # diagnosed but did not start ART
+  
+  mtct_supp   <- mtct_supp   + pmtct_linked_supp    # newly suppressed PMTCT mothers
+  mtct_unsupp <- mtct_unsupp + pmtct_linked_unsupp  # on ART but not suppressed
+  mtct_no_art <- max(0, populations$pregnant_not_on_art - pmtct_linked_total) +
+    pmtct_not_linked                 # undiagnosed remainder + diagnosed but unlinked
+  
+  # Step 3: Infant infections from risk-stratified MTCT rates
+  baseline_infant_infections <-
+    mtct_supp   * MTCT_RATES$on_art_suppressed   +
+    mtct_unsupp * MTCT_RATES$on_art_unsuppressed +
+    mtct_no_art * MTCT_RATES$not_on_art
+  
+  # Step 4: Infant prophylaxis (NVP) further reduces residual transmission.
+  # Efficacy drawn from intervention CSV, consistent with all other interventions.
+  infant_prophy_reduction   <- baseline_infant_infections * infant_prophy_cov_frac *
+    (all_interventions$infant_prophylaxis$efficacy %||% 0)
+  end_infant_infections     <- max(0, baseline_infant_infections - infant_prophy_reduction)
+  infant_infections_averted <- infant_prophy_reduction
+  
+  # Step 5: Finalise EID diagnosis count and costs.
+  # Cost applies to ALL HIV-exposed infants tested (hiv_exposed_infants x coverage),
+  # regardless of infection status — every exposed infant receives a test.
+  # Effect (diagnosis and subsequent ART linkage) applies only to infected infants,
+  # captured via actual_eid_yield = end_infant_infections / hiv_exposed_infants.
+  if (eid_infants_reached > 0 && populations$hiv_exposed_infants > 0) {
+    actual_eid_yield      <- end_infant_infections / populations$hiv_exposed_infants
+    eid_infants_diagnosed <- eid_infants_reached * actual_eid_yield *
+      (all_interventions$eid$efficacy %||% 0.90)
+  } else {
+    eid_infants_diagnosed <- 0
+  }
+  # Testing cost: all HIV-exposed infants reached (infected or not)
+  # Linkage cost: only HIV+ infants identified and linked to ART
+  total_intervention_cost <- total_intervention_cost +
+    eid_infants_reached   * (all_interventions$eid$unit_cost    %||% 0) +
+    eid_infants_diagnosed * (all_interventions$eid$linkage_cost %||% 0)
+  
+  # ========================================================================
+  # INFANT MORTALITY CASCADE
+  # EID-diagnosed infants split by linkage to ART and suppression, mirroring
+  # the adult cascade mortality structure.
+  # Suppression rate discounted from country average — newly initiating infants
+  # are less likely to suppress quickly. ###UPDATE discount from literature.
+  # ========================================================================
+  eid_linkage_rate     <- all_interventions$eid$linkage_rate %||% 0.80
+  infant_supp_rate     <- (context$percent_suppressed / 100) * 0.70  ###UPDATE discount
+  
+  infant_on_art        <- eid_infants_diagnosed * eid_linkage_rate
+  infant_suppressed    <- infant_on_art * infant_supp_rate
+  infant_on_art_unsupp <- infant_on_art - infant_suppressed
+  infant_untreated     <- max(0, end_infant_infections - infant_on_art)
+  
+  # Deaths by infant treatment group
+  infant_deaths_suppressed  <- infant_suppressed    * INFANT_MORTALITY_RATES$suppressed
+  infant_deaths_on_art      <- infant_on_art_unsupp * INFANT_MORTALITY_RATES$on_art
+  infant_deaths_untreated   <- infant_untreated     * INFANT_MORTALITY_RATES$untreated
+  total_infant_deaths       <- infant_deaths_suppressed + infant_deaths_on_art +
+    infant_deaths_untreated
+  
+  # Infant deaths averted vs no-EID counterfactual (all infected infants untreated)
+  infant_deaths_averted <- max(0,
+                               end_infant_infections * INFANT_MORTALITY_RATES$untreated - total_infant_deaths
+  )
+  
+  # Wire into adult totals
+  total_deaths_averted <- total_deaths_averted + infant_deaths_averted
+  end_deaths           <- end_deaths           + total_infant_deaths
   
   # ========================================================================
   # CALCULATE COSTS
@@ -1651,6 +1950,21 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     infant_infections_averted = round(infant_infections_averted),
     total_infections_averted = round(infections_averted + infant_infections_averted),
     deaths_averted = round(total_deaths_averted),
+    
+    # MTCT cascade outputs
+    mtct_pregnant_suppressed   = round(mtct_supp),
+    mtct_pregnant_unsuppressed = round(mtct_unsupp),
+    mtct_pregnant_no_art       = round(mtct_no_art),
+    pmtct_newly_diagnosed      = round(pmtct_linked_total),
+    pmtct_newly_linked         = round(pmtct_linked_art),
+    pmtct_newly_suppressed     = round(pmtct_linked_supp),
+    eid_infants_diagnosed      = round(eid_infants_diagnosed),
+    
+    # Infant mortality cascade outputs
+    infant_on_art              = round(infant_on_art),
+    infant_suppressed          = round(infant_suppressed),
+    infant_deaths_averted      = round(infant_deaths_averted),
+    total_infant_deaths        = round(total_infant_deaths),
     
     # End-of-year cascade (absolute values after mortality)
     end_plhiv = round(end_plhiv),
@@ -1726,4 +2040,4 @@ calculate_scenario_difference <- function(scenario, baseline) {
 # ============================================================================
 intervention_params <- load_intervention_params()
 intervention_groups <- build_intervention_groups(intervention_params)
-regional_presets    <- build_country_presets(country_data_csv)
+regional_presets    <- build_country_presets(country_data_csv, baseline_csv = baseline_data_csv)
