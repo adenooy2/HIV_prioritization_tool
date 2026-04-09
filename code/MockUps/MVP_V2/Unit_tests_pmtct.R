@@ -326,6 +326,7 @@ test_that("ANC VL testing reduces mtct_pregnant_unsuppressed and increases mtct_
   out_vl_low  <- calculate_scenario_outcomes(ctx, ints_vl_low,  pops)
   out_vl_high <- calculate_scenario_outcomes(ctx, ints_vl_high, pops)
   
+  print(pops$pregnant_on_art)
   cat(sprintf("  mtct_pregnant_suppressed   (none / vl40 / vl90): %g / %g / %g\n",
               out_none$mtct_pregnant_suppressed,
               out_vl_low$mtct_pregnant_suppressed,
@@ -441,7 +442,7 @@ test_that("Infant prophylaxis reduces end_infant_infections using CSV efficacy; 
   cat("TEST 8: Infant Prophylaxis — CSV Efficacy and Coverage Effect\n")
   cat("========================================\n")
   
-  set_pmtct_params(inf_prophy_eff = 0.54)
+  set_pmtct_params(inf_prophy_eff = 0.8)
   
   ints_none  <- zero_interventions()
   ints_low   <- zero_interventions(); ints_low$infant_prophylaxis  <- 40
@@ -476,7 +477,7 @@ test_that("Infant prophylaxis reduces end_infant_infections using CSV efficacy; 
 # TEST 9: EID — COST APPLIES TO ALL HIV-EXPOSED; EFFECT ONLY TO INFECTED
 # ============================================================================
 
-test_that("EID cost applies to all HIV-exposed infants tested; diagnosis count reflects only infected infants", {
+test_that("EID applies to all HIV-exposed infants tested; diagnosis count reflects only infected infants", {
   cat("\n========================================\n")
   cat("TEST 9: EID — Cost on All Exposed, Effect on Infected Only\n")
   cat("========================================\n")
