@@ -998,6 +998,48 @@ test_that("PMTCT intervention costs increase with coverage for ANC, PNC, ANC VL,
   cat("✓ All assertions passed\n")
 })
 
+
+# ============================================================================
+# TEST 20: ANC contibute sto suppressed etc
+# ============================================================================
+
+test_that("ANC HIV testing contributes to new_diagnoses and art_initiations via PMTCT yield", {
+  
+  ints_none <- zero_interventions()
+  ints_anc  <- zero_interventions(); ints_anc$anc_hiv_testing <- 80
+  
+  out_none <- calculate_scenario_outcomes(ctx, ints_none, pops)
+  out_anc  <- calculate_scenario_outcomes(ctx, ints_anc,  pops)
+  
+  # ANC testing increases new_diagnoses in the adult cascade
+  expect_gt(out_anc$new_diagnoses, out_none$new_diagnoses,
+            label = "ANC must contribute to new_diagnoses via PMTCT yield")
+  
+  # ANC testing increases art_initiations
+  expect_gt(out_anc$art_initiations, out_none$art_initiations,
+            label = "ANC must contribute to art_initiations via pmtct_linked_art")
+  
+  # Magnitude: new_diagnoses increase <= pmtct_newly_diagnosed
+  # (PMTCT diagnoses are the ceiling — new_diagnoses gains exactly this amount)
+  expect_lte(out_anc$new_diagnoses - out_none$new_diagnoses,
+             out_anc$pmtct_newly_diagnosed + 1,  # +1 for rounding
+             label = "Adult cascade gain from ANC cannot exceed PMTCT newly diagnosed")
+  
+  # PNC also contributes
+  ints_pnc <- zero_interventions(); ints_pnc$pnc_hiv_testing <- 80
+  out_pnc  <- calculate_scenario_outcomes(ctx, ints_pnc, pops)
+  expect_gt(out_pnc$new_diagnoses,   out_none$new_diagnoses)
+  expect_gt(out_pnc$art_initiations, out_none$art_initiations)
+  
+  # ANC + PNC combined adds more than either alone
+  ints_both <- zero_interventions()
+  ints_both$anc_hiv_testing <- 80; ints_both$pnc_hiv_testing <- 80
+  out_both <- calculate_scenario_outcomes(ctx, ints_both, pops)
+  expect_gt(out_both$new_diagnoses,   out_anc$new_diagnoses)
+  expect_gt(out_both$art_initiations, out_anc$art_initiations)
+})
+
+
 # ============================================================================
 # SUMMARY
 # ============================================================================

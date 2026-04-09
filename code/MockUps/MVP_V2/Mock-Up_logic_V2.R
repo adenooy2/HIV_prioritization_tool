@@ -1354,20 +1354,33 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       new_dx <- pos_tests * prop_new_dx
       re_eng  <- pos_tests * prop_reeng
       
-      new_diagnoses       <- new_diagnoses + new_dx
-      re_engagement_testing <- re_engagement_testing + re_eng
-      
-      # ART initiations based on linkage rate
-      linkage_rate <- intervention$linkage_rate
-      linked <- pos_tests * linkage_rate
-      art_inititations_testing <- art_inititations_testing + linked
-      
-      additional_suppressed_testing <- additional_suppressed_testing +
-        linked * ((context$percent_suppressed * 0.9) / 100)
-      
-      # Costs
-      total_intervention_cost <- total_intervention_cost +
-        (number_reached * intervention$unit_cost + linked * intervention$linkage_cost)
+      # ANC/PNC HIV testing: general yield path suppressed for cascade metrics.
+      # These women are routed into the adult cascade after the loop via the
+      # PMTCT-specific yield (pmtct_new_diagnoses), which is more accurate than
+      # the background positivity rate for this targeted population.
+      # tests_performed still accrues here — the test is administered to all
+      # women reached. Unit cost accrues here; linkage cost accrues in the
+      # post-loop PMTCT routing block using the PMTCT-specific diagnosed count.
+      if (!(int_key %in% c("anc_hiv_testing", "pnc_hiv_testing"))) {
+        new_diagnoses         <- new_diagnoses         + new_dx
+        re_engagement_testing <- re_engagement_testing + re_eng
+        
+        # ART initiations based on linkage rate
+        linkage_rate <- intervention$linkage_rate
+        linked <- pos_tests * linkage_rate
+        art_inititations_testing <- art_inititations_testing + linked
+        
+        additional_suppressed_testing <- additional_suppressed_testing +
+          linked * ((context$percent_suppressed * 0.9) / 100)
+        
+        # Full costs: unit cost per test + linkage cost per linked patient
+        total_intervention_cost <- total_intervention_cost +
+          (number_reached * intervention$unit_cost + linked * intervention$linkage_cost)
+      } else {
+        # ANC/PNC: unit cost per test only; linkage cost charged in post-loop block
+        total_intervention_cost <- total_intervention_cost +
+          number_reached * intervention$unit_cost
+      }
       
       # ── ANC HIV testing: route newly diagnosed HIV+ pregnant women into PMTCT cascade ──
       # number_reached = pregnant_hiv_testable x (ANC_coverage/100), so coverage is already embedded.
@@ -1454,6 +1467,32 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         number_reached * intervention$unit_cost
     }
   }
+  
+  # ========================================================================
+  # PMTCT -> ADULT CASCADE ROUTING
+  # Route PMTCT-diagnosed women into the adult cascade using the PMTCT-specific
+  # yield and linkage rate, replacing the general yield path for ANC/PNC.
+  # This ensures end_diagnosed, end_on_art, and end_suppressed reflect the
+  # more accurate targeted yield rather than the background positivity rate.
+  #
+  # Linkage rate: uses anc_hiv_testing linkage rate for all PMTCT women,
+  # consistent with the MTCT cascade step 2. ###UPDATE if ANC/PNC linkage
+  # rates diverge substantially and warrant separate tracking.
+  # Suppression discount: 70% of country average — newly initiating pregnant
+  # women are less likely to suppress quickly. ###UPDATE from literature.
+  # ========================================================================
+  pmtct_cascade_linkage_rate <- all_interventions$anc_hiv_testing$linkage_rate %||% 0.85
+  pmtct_cascade_supp_rate    <- (context$percent_suppressed / 100) * 0.70
+  pmtct_cascade_linked_art   <- pmtct_new_diagnoses * pmtct_cascade_linkage_rate
+  pmtct_cascade_linked_supp  <- pmtct_cascade_linked_art * pmtct_cascade_supp_rate
+  
+  new_diagnoses                 <- new_diagnoses                 + pmtct_new_diagnoses
+  art_inititations_testing      <- art_inititations_testing      + pmtct_cascade_linked_art
+  additional_suppressed_testing <- additional_suppressed_testing + pmtct_cascade_linked_supp
+  
+  # Linkage cost for PMTCT-linked women (unit cost already charged in loop above)
+  total_intervention_cost <- total_intervention_cost +
+    pmtct_cascade_linked_art * (all_interventions$anc_hiv_testing$linkage_cost %||% 0)
   
   # ========================================================================
   # APPLY CONSTRAINTS - CAP AT REALISTIC MAXIMUMS
