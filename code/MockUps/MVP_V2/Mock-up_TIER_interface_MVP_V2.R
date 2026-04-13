@@ -168,6 +168,10 @@ ui <- page_sidebar(
           card_header("Combined Cascade Comparison"),
           card_body(plotOutput("cascade_combined", height = "500px"))
         ),
+        card(
+          card_header("Cascade Numbers"),
+          card_body(tableOutput("cascade_table"))
+        ),
         
         # Other Outcomes Row
         h3("Key Outcomes Summary", class = "mt-4 mb-3"),
@@ -2317,7 +2321,29 @@ server <- function(input, output, session) {
             plot.subtitle = element_text(size = 12),
             axis.text = element_text(size = 12),
             axis.title = element_text(size = 12))
+  
   })
+  
+  output$cascade_table <- renderTable({
+    outcomes_base <- outcomes_baseline()
+    outcomes_s1   <- outcomes_scenario1()
+    outcomes_s2   <- outcomes_scenario2()
+    
+    data.frame(
+      Stage      = c("PLHIV", "Diagnosed", "On ART", "Suppressed"),
+      Baseline   = format(c(outcomes_base$end_plhiv, outcomes_base$end_diagnosed,
+                            outcomes_base$end_on_art, outcomes_base$end_suppressed),
+                          big.mark = ",", scientific = FALSE),
+      Scenario_1 = format(c(outcomes_s1$end_plhiv, outcomes_s1$end_diagnosed,
+                            outcomes_s1$end_on_art, outcomes_s1$end_suppressed),
+                          big.mark = ",", scientific = FALSE),
+      Scenario_2 = format(c(outcomes_s2$end_plhiv, outcomes_s2$end_diagnosed,
+                            outcomes_s2$end_on_art, outcomes_s2$end_suppressed),
+                          big.mark = ",", scientific = FALSE),
+      check.names = FALSE
+    )
+  }, striped = TRUE, hover = TRUE, bordered = TRUE, align = "lrrr",
+  colnames = TRUE)
 }
 
 # ============================================================================
