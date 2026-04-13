@@ -1746,6 +1746,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   end_suppressed <- remaining_est_supp + remaining_new_supp   # fix: include suppressed new initiates
   end_on_art     <- remaining_est_treated + remaining_est_supp + remaining_new_init
   end_diagnosed  <- remaining_diagnosed_not_art + end_on_art
+  
   end_plhiv      <- max(0, remaining_undiagnosed + end_diagnosed)
   
   # Ensure cascade consistency
@@ -1796,6 +1797,11 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     baseline_interventions = baseline_interventions
   )
   end_new_infections <- foi_result$new_infections
+  
+  # Add new infections into PLHIV — they enter as undiagnosed
+  remaining_undiagnosed <- remaining_undiagnosed + end_new_infections
+  end_plhiv             <- max(0, remaining_undiagnosed + end_diagnosed)
+  
   infections_averted <- foi_result$infections_averted
   
   # Validate calibration — logs warnings but does not stop execution
@@ -2074,8 +2080,9 @@ calculate_scenario_difference <- function(scenario, baseline) {
     diff_deaths            = scenario$end_deaths            - baseline$end_deaths,
     
     # Infections/deaths averted (relative to baseline)
-    additional_infections_averted = scenario$total_infections_averted - baseline$total_infections_averted,
-    additional_deaths_averted     = scenario$deaths_averted           - baseline$deaths_averted,
+    additional_infections_averted = -((scenario$end_new_infections - baseline$end_new_infections) +
+                                        (scenario$end_infant_infections - baseline$end_infant_infections)),
+    additional_deaths_averted     = -(scenario$end_deaths - baseline$end_deaths),
     
     # Cost differences
     diff_intervention_cost  = scenario$total_intervention_cost - baseline$total_intervention_cost,

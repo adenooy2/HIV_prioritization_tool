@@ -1938,7 +1938,9 @@ server <- function(input, output, session) {
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Infections Averted:"),
           span(
-            class = "text-success", style = "font-weight: bold;",
+            class = ifelse(diff$additional_infections_averted > 0, "text-success",
+                           ifelse(diff$additional_infections_averted < 0, "text-danger", "text-muted")),
+            style = "font-weight: bold;",
             paste0(ifelse(diff$additional_infections_averted > 0, "+", ""),
                    format(diff$additional_infections_averted, big.mark = ","))
           )
@@ -1946,7 +1948,9 @@ server <- function(input, output, session) {
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Deaths Averted:"),
           span(
-            class = "text-success", style = "font-weight: bold;",
+            class = ifelse(diff$additional_deaths_averted > 0, "text-success",
+                           ifelse(diff$additional_deaths_averted < 0, "text-danger", "text-muted")),
+            style = "font-weight: bold;",
             paste0(ifelse(diff$additional_deaths_averted > 0, "+", ""),
                    format(diff$additional_deaths_averted, big.mark = ","))
           )
@@ -2002,7 +2006,9 @@ server <- function(input, output, session) {
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Infections Averted:"),
           span(
-            class = "text-success", style = "font-weight: bold;",
+            class = ifelse(diff$additional_infections_averted > 0, "text-success",
+                           ifelse(diff$additional_infections_averted < 0, "text-danger", "text-muted")),
+            style = "font-weight: bold;",
             paste0(ifelse(diff$additional_infections_averted > 0, "+", ""),
                    format(diff$additional_infections_averted, big.mark = ","))
           )
@@ -2010,7 +2016,9 @@ server <- function(input, output, session) {
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Deaths Averted:"),
           span(
-            class = "text-success", style = "font-weight: bold;",
+            class = ifelse(diff$additional_deaths_averted > 0, "text-success",
+                           ifelse(diff$additional_deaths_averted < 0, "text-danger", "text-muted")),
+            style = "font-weight: bold;",
             paste0(ifelse(diff$additional_deaths_averted > 0, "+", ""),
                    format(diff$additional_deaths_averted, big.mark = ","))
           )
