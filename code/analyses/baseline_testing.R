@@ -3,6 +3,7 @@ rm(list=ls())
 library(readr)
 grouped_mods=read_excel("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/pepfar_modalities.xlsx")
 
+#AMFAR?PEPFAR https://data.pepfar.gov/datasets
 data <- read_delim("Downloads/Enhanced_Geographical_Analysis.zip", 
                                              delim = "\t", escape_double = FALSE, 
                                              trim_ws = TRUE)
@@ -135,5 +136,93 @@ test_data_props=test_data_props %>% rename(country=Country)
 
 baseline_tetsing=left_join(test_data_props,multiplier_summary_final)
 
-write.csv(baseline_tetsing,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/baseline_testing.csv")
+##EID
+#https://data.unicef.org/topic/hivaids/paediatric-treatment-and-care/
+eid_data=read_excel(paste(data_dir,"EID_PMTCT_UNICEF_data.xlsx",sep=""),sheet="eid_coverage")
 
+eid_data=eid_data %>% select(country=Country,eid=Value) %>% mutate(eid=as.numeric(eid))
+
+baseline_tetsing=left_join(baseline_tetsing,eid_data)
+
+av_eid=mean(baseline_tetsing$eid,na.rm = TRUE)
+baseline_tetsing$eid[is.na(baseline_tetsing$eid)==TRUE]=av_eid
+
+# GAM DATA BASELINE - PREVNTION -------------------------------------------
+#"PEOPLE_ON_PREP Total",
+
+#Condoms
+gam_data_condoms=gam_data %>% select(Area,Area.ID,Indicator,Indicator_GId,Subgroup,label,year=Time.Period,Data.value) %>% 
+  filter(label%in%c(
+                    "CONDOMS_DISTRIBUTED Male condoms Total","CONDOMS_DISTRIBUTED Female condoms Total")) %>% 
+  group_by(Indicator,Indicator_GId,Subgroup,Area) %>%  
+  arrange(Area,Indicator,Indicator_GId,Subgroup,desc(year)) %>% 
+  slice(1) %>% 
+  ungroup() %>% 
+  unique() %>% select(Area,Area.ID,Subgroup,year,Data.value) %>% spread(Subgroup,Data.value)
+
+gam_data_condoms$`Female condoms Total`[is.na(gam_data_condoms$`Female condoms Total`)==TRUE]=0
+gam_data_condoms$`Male condoms Total`[is.na(gam_data_condoms$`Male condoms Total`)==TRUE]=0
+
+gam_data_condoms$condoms=round(gam_data_condoms$`Female condoms Total`+gam_data_condoms$`Male condoms Total`,-3)
+
+gam_data_condoms=gam_data_condoms %>% select(country=Area,year,condoms) %>% group_by(country) %>% arrange(country, desc(year)) %>% slice(1) %>% 
+  select(country,condoms)
+
+#Prep
+gam_data_prep=gam_data %>% select(Area,Area.ID,Indicator,Indicator_GId,Subgroup,label,year=Time.Period,Data.value) %>% 
+  filter(label%in%c( "PEOPLE_ON_PREP Total")) %>% 
+  group_by(Indicator,Indicator_GId,Subgroup,Area) %>%  
+  arrange(Area,Indicator,Indicator_GId,Subgroup,desc(year)) %>% 
+  slice(1) %>% 
+  ungroup() %>% 
+  unique() %>% select(Area,Area.ID,Subgroup,year,Data.value) %>% spread(Subgroup,Data.value) %>% select(country=Area, prep_oral=Total) %>% 
+  mutate(prep_oral=round(prep_oral,-2))
+
+gam_data_prep$prep_lenacapavir=0
+
+gam_data_prev=full_join(gam_data_condoms,gam_data_prep)  
+gam_data_prev$prep_oral[is.na(gam_data_prev$prep_oral)==TRUE]=0
+gam_data_prev$prep_lenacapavir[is.na(gam_data_prev$prep_lenacapavir)==TRUE]=0
+
+##VMMC
+
+gam_data_vmmc=gam_data %>% select(Area,Area.ID,Indicator,Indicator_GId,Subgroup,label,year=Time.Period,Data.value) %>% 
+  filter(label%in%c( "MALE_CIRCUMCISIONS_PERFORMED All ages")) %>% 
+  group_by(Indicator,Indicator_GId,Subgroup,Area) %>%  
+  arrange(Area,Indicator,Indicator_GId,Subgroup,desc(year)) %>% 
+  slice(1) %>% 
+  ungroup() %>% 
+  unique() %>% select(Area,Area.ID,Subgroup,year,Data.value) %>% spread(Subgroup,Data.value) %>% select(country=Area,vmmc='All ages') %>% 
+  mutate(vmmc=round(vmmc,-2))
+  
+gam_data_prev=full_join(gam_data_prev,gam_data_vmmc)
+gam_data_prev$vmmc[is.na(gam_data_prev$vmmc)==TRUE]=0
+
+
+baseline_data=left_join(baseline_tetsing,gam_data_prev)
+
+
+# IeDea Data --------------------------------------------------------------
+enroll_data=read.csv(paste(data_dir,"iedea_indicators/indicator_enroll.csv",sep=""))
+Region=unique(enroll_data$Region)
+
+Region=data.frame(reg,c("Asia-Pacific","Central Africa","CCASAnet (Latin America)","East Africa", "NA-ACCORD (North America)","Southern Africa","West Africa"))
+colnames(Region)=c("Region","reg name")
+
+enroll_data=left_join(enroll_data,Region)
+
+enroll_data=enroll_data %>% filter(Year!="ALL",Sex=="ALL",Age=="ALL") %>%
+  mutate(Year=as.numeric(Year),cd4_enroll_perc=as.numeric(cd4_enroll_perc),cd4_enr_0_200=as.numeric(cd4_enr_0_200),cd4_enroll_n=as.numeric(cd4_enroll_n)) %>% 
+  filter(Year<2024)
+
+
+ggplot(enroll_data,aes(Year,cd4_enroll_perc,color=Region))+geom_point()+geom_line()
+
+enroll_data_latest=enroll_data %>% filter(is.na(cd4_enroll_perc)==FALSE) %>% group_by(Region) %>% arrange(desc(Year)) %>% slice(1)
+
+enroll_data_latest$ahd=round(enroll_data_latest$cd4_enr_0_200/enroll_data_latest$cd4_enroll_n,2)
+
+######
+write.csv(baseline_data,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/baseline_testing.csv")
+
+#temp=gam_data %>% select(Indicator,Indicator_GId) %>% unique()

@@ -40,20 +40,20 @@ MORTALITY_RATES <- list(
   )
 )
 
-# MORTALITY_RATES <- list(
-#   untreated_undiagnosed = 0,  # undiagnosed PLHIV + diagnosed not on ART
-#   new_art_initiations   = 0,  # first year on ART (pre-stabilisation)
-#   treated               = 0, # established on ART, not virally suppressed
-#   suppressed            = 0, # established on ART, virally suppressed
-#   ahd                   = 0,  # advanced HIV disease (CD4 < 200), any stage
-#   prop_ahd = list(
-#     undiagnosed        = 0.20,   # undiagnosed PLHIV
-#     diagnosed_not_art  = 0.20,   # diagnosed but not on ART
-#     new_initiations    = 0.20,   # first year on ART
-#     established_treated= 0.00,   # established on ART, not suppressed
-#     established_supp   = 0.00    # established on ART, suppressed
-#   )
-# )
+MORTALITY_RATES <- list(
+  untreated_undiagnosed = 0.06,  # undiagnosed PLHIV + diagnosed not on ART
+  new_art_initiations   = 0.03,  # first year on ART (pre-stabilisation)
+  treated               = 0.008, # established on ART, not virally suppressed
+  suppressed            = 0.005, # established on ART, virally suppressed
+  ahd                   = 0.15,  # advanced HIV disease (CD4 < 200), any stage
+  prop_ahd = list(
+    undiagnosed        = 0.20,   # undiagnosed PLHIV
+    diagnosed_not_art  = 0.20,   # diagnosed but not on ART
+    new_initiations    = 0.20,   # first year on ART
+    established_treated= 0.00,   # established on ART, not suppressed
+    established_supp   = 0.00    # established on ART, suppressed
+  )
+)
 
 
 # ============================================================================
@@ -111,7 +111,7 @@ country_data_csv <- content(response, as = "parsed", type = "text/csv")
 
 # Load country-level baseline intervention volumes
 # Replace the URL below with the actual share link for the baseline CSV
-baseline_response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=LPB0JCL&download=1")
+baseline_response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=96oyQi&download=1")
 baseline_data_csv <- content(baseline_response, as = "parsed", type = "text/csv") 
 
 
