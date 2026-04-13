@@ -220,7 +220,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "test_facility_general")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_facility_general")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_facility_general")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_facility_general")$yield_multiplier,
           outcomes = c("testing")
         ),
         test_network = list(
@@ -232,7 +231,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "test_network")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_network")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_network")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_network")$yield_multiplier,
           outcomes = c("testing")
         ),
         test_index = list(
@@ -244,7 +242,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "test_index")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_index")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_index")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_index")$yield_multiplier,
           outcomes = c("testing")
         ),
         test_community = list(
@@ -256,7 +253,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "test_community")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_community")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_community")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_community")$yield_multiplier,
           outcomes = c("testing")
         ),
         test_kpsti = list(
@@ -268,7 +264,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "test_kpsti")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_kpsti")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_kpsti")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_kpsti")$yield_multiplier,
           outcomes = c("testing")
         ),
         hivst_facility = list(
@@ -280,7 +275,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "hivst_facility")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "hivst_facility")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "hivst_facility")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "hivst_facility")$yield_multiplier,
           outcomes = c("testing")
         ),
         hivst_community = list(
@@ -292,7 +286,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "hivst_community")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "hivst_community")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "hivst_community")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "hivst_community")$yield_multiplier,
           outcomes = c("testing")
         ),
         eid = list(
@@ -304,7 +297,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "eid")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "eid")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "eid")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "eid")$yield_multiplier,
           outcomes = c("infant_diagnosis")
         ),
         anc_hiv_testing = list(
@@ -316,7 +308,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "anc_hiv_testing")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "anc_hiv_testing")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "anc_hiv_testing")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "anc_hiv_testing")$yield_multiplier,
           outcomes = c("testing")
         ),
         pnc_hiv_testing = list(
@@ -328,7 +319,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "pnc_hiv_testing")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "pnc_hiv_testing")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "pnc_hiv_testing")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "pnc_hiv_testing")$yield_multiplier,
           outcomes = c("testing")
         )
       )
@@ -1341,10 +1331,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       # precedence; falls back to intervention params default, then 1.
       country_mult <- context$yield_multipliers[[int_key]]
       effective_yield <- base_test_yield *
-        (if (!is.null(country_mult)) country_mult
-         else if (!is.null(intervention$test_yield_multiplier))
-           as.numeric(intervention$test_yield_multiplier)
-         else 1)
+        (if (!is.null(country_mult)) country_mult else 1)
       
       pos_tests <- number_reached * effective_yield * modality_dilution * intervention$efficacy
       positive_tests <- positive_tests + pos_tests
