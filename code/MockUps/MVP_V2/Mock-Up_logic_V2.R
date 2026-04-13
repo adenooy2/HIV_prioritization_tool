@@ -1663,9 +1663,16 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   n_diagnosed_not_art  <- max(0, end_diagnosed_pre_mort - end_on_art_pre_mort)
   n_new_initiations    <- min(art_initiations, end_on_art_pre_mort)
   n_established_on_art <- max(0, end_on_art_pre_mort - n_new_initiations)
-  # Suppression attributed to established patients (new initiates counted at new_art rate)
+  # Suppression split: established patients first, then new initiates absorb any remainder.
+  # Previously all suppression was attributed to established patients, causing end_suppressed
+  # to be capped at n_established_on_art even when new initiates also achieved suppression —
+  # producing a disconnect where infections changed (via suppression_delta) but
+  # end_suppressed did not (overflow was silently discarded).
   n_established_supp   <- min(end_suppressed_pre_mort, n_established_on_art)
   n_established_treated<- max(0, n_established_on_art - n_established_supp)
+  # Suppressed new initiates: suppression that could not fit in the established bucket
+  n_new_supp           <- max(0, min(end_suppressed_pre_mort - n_established_supp, n_new_initiations))
+  n_new_treated        <- max(0, n_new_initiations - n_new_supp)
   
   # ========================================================================
   # EFFECTIVE AHD MORTALITY RATES (intervention-adjusted where applicable)
@@ -1725,11 +1732,18 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   remaining_undiagnosed      <- max(0, n_undiagnosed        - deaths_undiagnosed)
   remaining_diagnosed_not_art<- max(0, n_diagnosed_not_art  - deaths_diagnosed_not_art)
-  remaining_new_init         <- max(0, n_new_initiations     - deaths_new_initiations)
-  remaining_est_treated      <- max(0, n_established_treated - deaths_established_treated)
-  remaining_est_supp         <- max(0, n_established_supp    - deaths_established_supp)
+  # New initiates: apply the same mortality rate proportionally to suppressed/treated sub-groups
+  # (both sub-groups use new_art_initiations rate — suppressed new initiates are still early
+  # in treatment and face the same elevated early-ART mortality as unsuppressed ones).
+  new_init_mort_frac     <- if (n_new_initiations > 0)
+    deaths_new_initiations / n_new_initiations else 0
+  remaining_new_supp     <- max(0, round(n_new_supp    * (1 - new_init_mort_frac)))
+  remaining_new_treated  <- max(0, round(n_new_treated * (1 - new_init_mort_frac)))
+  remaining_new_init     <- remaining_new_supp + remaining_new_treated
+  remaining_est_treated  <- max(0, n_established_treated - deaths_established_treated)
+  remaining_est_supp     <- max(0, n_established_supp    - deaths_established_supp)
   
-  end_suppressed <- remaining_est_supp
+  end_suppressed <- remaining_est_supp + remaining_new_supp   # fix: include suppressed new initiates
   end_on_art     <- remaining_est_treated + remaining_est_supp + remaining_new_init
   end_diagnosed  <- remaining_diagnosed_not_art + end_on_art
   end_plhiv      <- max(0, remaining_undiagnosed + end_diagnosed)
