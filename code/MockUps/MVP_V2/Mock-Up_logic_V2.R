@@ -136,7 +136,7 @@ load_intervention_params <- function(){
   intervention_params$unit_cost <- as.numeric(intervention_params$unit_cost)
   intervention_params$linkage_cost <- as.numeric(intervention_params$linkage_cost)
   intervention_params$linkage_rate <- as.numeric(intervention_params$linkage_rate)
-  intervention_params$multiplier <- as.numeric(intervention_params$multiplier)
+  #intervention_params$multiplier <- as.numeric(intervention_params$multiplier)
   
   return(intervention_params)
 }
