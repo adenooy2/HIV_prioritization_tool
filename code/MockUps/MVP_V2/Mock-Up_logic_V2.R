@@ -1433,17 +1433,31 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       } else {
         # Prevention interventions: COST applies to everyone reached (all on ART),
         # but EFFECT can only act on the at-risk fraction (those who would drop out).
-        # Built multiplicatively so overlapping interventions (MMD + adherence
-        # counseling) cannot double-count the same at-risk person:
-        #   marginal_retained = (fraction not yet retained) * coverage * efficacy
-        # where coverage = fraction of on_art population reached by this intervention.
+        # Two combination rules depending on whether interventions can overlap:
+        #
+        # ADDITIVE — DSD options (eligible_pop == "on_art_stable"):
+        #   mmd_3month / mmd_6month / mmd_12month / fast_track / community_pickup
+        #   are mutually exclusive — the UI enforces they sum to ≤100% of on_art_stable,
+        #   so no person can be enrolled in two DSD slots. Simple addition is correct:
+        #     ltfu_retained_frac += coverage_frac * efficacy
+        #
+        # MULTIPLICATIVE — overlapping interventions (eligible_pop == "on_art"):
+        #   e.g. adherence_counseling targets the full on_art pool and CAN overlap
+        #   with DSD patients. Multiplicative combination prevents double-counting:
+        #     marginal_retained = (1 - ltfu_retained_frac) * coverage_frac * efficacy
         coverage_frac <- ifelse(
           populations$on_art > 0,
           number_reached / populations$on_art,
           0
         )
-        marginal_retained  <- (1 - ltfu_retained_frac) * coverage_frac * intervention$efficacy
-        ltfu_retained_frac <- ltfu_retained_frac + marginal_retained
+        if (intervention$eligible_pop == "on_art_stable") {
+          # Mutually exclusive DSD: additive
+          ltfu_retained_frac <- ltfu_retained_frac + coverage_frac * intervention$efficacy
+        } else {
+          # Overlapping interventions (e.g. adherence_counseling): multiplicative
+          marginal_retained  <- (1 - ltfu_retained_frac) * coverage_frac * intervention$efficacy
+          ltfu_retained_frac <- ltfu_retained_frac + marginal_retained
+        }
       }
       
       total_intervention_cost <- total_intervention_cost +
