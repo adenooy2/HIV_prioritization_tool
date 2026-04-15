@@ -57,12 +57,18 @@ MORTALITY_RATES <- list(
 
 
 # ============================================================================
-# LTFU RATES BY SUPPRESSION STATUS (UPDATE THESE BASED ON LITERATURE)
-# Suppressed patients: stable, feel well, lower side-effect burden -> lower dropout
-# Unsuppressed patients: treatment struggling, side effects, stigma -> higher dropout
+# LTFU RATES BY STABILITY STATUS (UPDATE THESE BASED ON LITERATURE)
+# Stable patients (on_art_stable = 85% of on_art): established, clinically stable,
+#   DSD-eligible — lower dropout. Rate calibrated from 3MMD conventional care
+#   retention (86.4%) in Matsimela et al. 2024: 1 - 0.864 = 13.6%.
+# Unstable patients (remaining 15% of on_art): treatment-struggling, side effects,
+#   not yet DSD-eligible — higher dropout. Rate calibrated from "not eligible for
+#   DSD" retention (77.7%): 1 - 0.777 = 22.3%.
+# New initiates are excluded from this LTFU calculation — their dropout is
+#   implicitly captured upstream via linkage rates (<100%) in the testing cascade.
 # ============================================================================
-ANNUAL_LTFU_RATE_SUPPRESSED   <- 0.05   # 5%  of suppressed on ART become LTFU per year
-ANNUAL_LTFU_RATE_UNSUPPRESSED <- 0.15   # 15% of unsuppressed on ART become LTFU per year
+ANNUAL_LTFU_RATE_STABLE   <- 0.136  # 13.6% of stable on-ART patients become LTFU per year
+ANNUAL_LTFU_RATE_UNSTABLE <- 0.223  # 22.3% of unstable on-ART patients become LTFU per year
 
 # Proportion of *retained* unsuppressed patients who achieve viral suppression
 # as a direct result of the improved adherence that prevented their dropout.
@@ -502,11 +508,14 @@ calculate_populations <- function(context) {
   prop_hr       <- if (!is.null(context$prop_high_risk) && !is.na(context$prop_high_risk))
     context$prop_high_risk else 0.05
   
-  # LTFU flow: people dropping off ART during the year, split by suppression status.
-  # Suppressed patients have lower dropout (stable, feel well, fewer side effects).
-  # Unsuppressed patients have higher dropout (side effects, treatment fatigue, stigma).
-  ltfu_new_suppressed   <- suppressed       * ANNUAL_LTFU_RATE_SUPPRESSED
-  ltfu_new_unsuppressed <- unsuppressed_on_art * ANNUAL_LTFU_RATE_UNSUPPRESSED
+  # LTFU flow: people dropping off ART during the year, split by stability status.
+  # Stable patients (on_art × 0.85): DSD-eligible, lower dropout risk.
+  # Unstable patients (on_art × 0.15): not DSD-eligible, higher dropout risk.
+  # New initiates excluded — their dropout is captured upstream via linkage rates.
+  on_art_stable_n   <- on_art * 0.85
+  on_art_unstable_n <- on_art * 0.15
+  ltfu_new_stable   <- on_art_stable_n   * ANNUAL_LTFU_RATE_STABLE
+  ltfu_new_unstable <- on_art_unstable_n * ANNUAL_LTFU_RATE_UNSTABLE
   
   list(
     total = context$total_population,
@@ -524,10 +533,10 @@ calculate_populations <- function(context) {
     unsuppressed = unsuppressed_on_art,
     # Prevalent LTFU stock (people already lost before the year begins)
     ltfu = on_art * 0.15,
-    # Incident LTFU flow (people becoming LTFU during the year), by suppression status
-    ltfu_new_suppressed   = ltfu_new_suppressed,
-    ltfu_new_unsuppressed = ltfu_new_unsuppressed,
-    ltfu_new              = ltfu_new_suppressed + ltfu_new_unsuppressed,
+    # Incident LTFU flow (people becoming LTFU during the year), by stability status
+    ltfu_new_stable   = ltfu_new_stable,
+    ltfu_new_unstable = ltfu_new_unstable,
+    ltfu_new          = ltfu_new_stable + ltfu_new_unstable,
     # ── FOI strata (used by stratified infection model) ──────────────────
     high_risk_negative       = hiv_negative * prop_hr,
     general_female           = hiv_negative * (1 - prop_male_pct/100) * (1 - prop_hr),
@@ -1511,29 +1520,34 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # ── LTFU FLOW ─────────────────────────────────────────────────────────────
   # Prevention interventions reduce incident LTFU, split proportionally across
-  # the suppressed and unsuppressed dropout sub-groups.
+  # the stable and unstable dropout sub-groups.
   # If ltfu_new == 0 (no dropout), prevention has nothing to act on.
-  prop_ltfu_supp <- ifelse(
+  prop_ltfu_stable <- ifelse(
     populations$ltfu_new > 0,
-    populations$ltfu_new_suppressed / populations$ltfu_new,
+    populations$ltfu_new_stable / populations$ltfu_new,
     0
   )
-  prop_ltfu_unsupp <- 1 - prop_ltfu_supp
+  prop_ltfu_unstable <- 1 - prop_ltfu_stable
   
-  ltfu_prevented_supp   <- ltfu_prevented * prop_ltfu_supp
-  ltfu_prevented_unsupp <- ltfu_prevented * prop_ltfu_unsupp
+  ltfu_prevented_stable   <- ltfu_prevented * prop_ltfu_stable
+  ltfu_prevented_unstable <- ltfu_prevented * prop_ltfu_unstable
   
-  # Suppression gain from retention: unsuppressed patients who were kept in care
-  # by prevention interventions have improved adherence; a proportion will achieve
-  # viral suppression. Added to additional_suppressed here — BEFORE the
-  # max_additional_suppressed cap — so it is correctly bounded downstream.
+  # Suppression gain from retention: only the unsuppressed portion of retained
+  # unstable patients can generate new suppressions — those already suppressed
+  # are retained but add nothing to additional_suppressed.
+  # Unsuppressed fraction assumed equal to the general on-ART unsuppressed rate.
+  prop_unsuppressed_on_art <- ifelse(
+    populations$on_art > 0,
+    1 - (populations$suppressed / populations$on_art),
+    0
+  )
   additional_suppressed <- additional_suppressed +
-    ltfu_prevented_unsupp * RETENTION_SUPPRESSION_RATE
+    ltfu_prevented_unstable * prop_unsuppressed_on_art * RETENTION_SUPPRESSION_RATE
   
-  # Net incident LTFU after prevention interventions, by suppression status
-  suppressed_ltfu   <- max(0, populations$ltfu_new_suppressed   - ltfu_prevented_supp)
-  unsuppressed_ltfu <- max(0, populations$ltfu_new_unsuppressed - ltfu_prevented_unsupp)
-  ltfu_new_effective <- suppressed_ltfu + unsuppressed_ltfu
+  # Net incident LTFU after prevention interventions, by stability status
+  stable_ltfu    <- max(0, populations$ltfu_new_stable   - ltfu_prevented_stable)
+  unstable_ltfu  <- max(0, populations$ltfu_new_unstable - ltfu_prevented_unstable)
+  ltfu_new_effective <- stable_ltfu + unstable_ltfu
   
   # Full pool available for re-engagement = prevalent stock + net incident LTFU
   total_ltfu_pool <- populations$ltfu + ltfu_new_effective
@@ -1579,7 +1593,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # ltfu_reengaged must be included: they are on ART and some were previously
   # suppressed before dropping out, so the ceiling must account for them.
   max_additional_suppressed <- effective_on_art + art_initiations + ltfu_reengaged -
-    populations$suppressed + suppressed_ltfu
+    populations$suppressed + stable_ltfu
   additional_suppressed <- min(additional_suppressed, max(0, max_additional_suppressed))
   
   # ========================================================================
@@ -1653,7 +1667,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
                                  populations$plhiv)
   end_on_art_pre_mort     <- min(max(effective_on_art + art_initiations + ltfu_reengaged, 0),
                                  end_diagnosed_pre_mort)
-  end_suppressed_pre_mort <- min(max(populations$suppressed - suppressed_ltfu + additional_suppressed, 0),
+  end_suppressed_pre_mort <- min(max(populations$suppressed - stable_ltfu + additional_suppressed, 0),
                                  end_on_art_pre_mort)
   
   # ========================================================================
@@ -2002,8 +2016,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     ltfu_new_effective  = round(ltfu_new_effective),   # net people lost to follow-up
     ltfu_prevented      = round(ltfu_prevented),        # prevented from dropping off by MMD/adherence
     ltfu_reengaged      = round(ltfu_reengaged),        # re-engaged by tracking/tracing
-    suppressed_ltfu     = round(suppressed_ltfu),       # suppressed patients lost (cascade impact)
-    unsuppressed_ltfu   = round(unsuppressed_ltfu),     # unsuppressed patients lost
+    suppressed_ltfu     = round(stable_ltfu),        # stable patients lost (cascade impact)
+    unsuppressed_ltfu   = round(unstable_ltfu),       # unstable patients lost
     
     # Health outcomes (infections/deaths averted)
     adult_infections_averted = round(infections_averted),
