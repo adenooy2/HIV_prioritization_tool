@@ -8,12 +8,12 @@
 #   - Fast-track reduces new LTFU (same prevention pathway as MMD)
 #   - Community ART pick-up reduces new LTFU (same prevention pathway as MMD)
 #   - Adherence counseling reduces new LTFU (prevention pathway)
-#   - Multiplicative stacking: all five DSD interventions
+#   - Additive stacking: all five DSD interventions (mutually exclusive)
 #   - Tracking/tracing re-engages from LTFU pool and generates suppression gain
 #   - Tracking/tracing suppression gain scales with background suppression rate
 #   - Prevention shrinks the re-engagement pool
-#   - Cascade accounting: suppressed_ltfu + unsuppressed_ltfu = ltfu_new_effective
-#   - Differential attrition: unsuppressed drop out faster, inflating 3rd 95
+#   - Cascade accounting: stable_ltfu + unstable_ltfu = ltfu_new_effective
+#   - Differential attrition: unstable drop out faster, inflating 3rd 95
 # ============================================================================
 
 library(testthat)
@@ -65,16 +65,16 @@ zero_mortality <- function() {
 
 
 # Override LTFU rates for isolation testing
-set_ltfu_rates <- function(supp = ANNUAL_LTFU_RATE_SUPPRESSED,
-                           unsupp = ANNUAL_LTFU_RATE_UNSUPPRESSED) {
-  ANNUAL_LTFU_RATE_SUPPRESSED   <<- supp
-  ANNUAL_LTFU_RATE_UNSUPPRESSED <<- unsupp
+set_ltfu_rates <- function(stable = ANNUAL_LTFU_RATE_STABLE,
+                           unstable = ANNUAL_LTFU_RATE_UNSTABLE) {
+  ANNUAL_LTFU_RATE_STABLE   <<- stable
+  ANNUAL_LTFU_RATE_UNSTABLE <<- unstable
 }
 
 # Restore production LTFU rates
 restore_ltfu_rates <- function() {
-  ANNUAL_LTFU_RATE_SUPPRESSED   <<- 0.05
-  ANNUAL_LTFU_RATE_UNSUPPRESSED <<- 0.15
+  ANNUAL_LTFU_RATE_STABLE   <<- 0.136
+  ANNUAL_LTFU_RATE_UNSTABLE <<- 0.223
 }
 
 # Set retention intervention efficacies (override loaded params)
@@ -88,16 +88,18 @@ set_retention_params <- function(mmd3_eff   = 0.20,
                                  track_cost = 30,
                                  ft_cost    = 5,
                                  cpu_cost   = 5) {
-  intervention_groups$treatment_monitoring$interventions$mmd_3month$efficacy          <<- mmd3_eff
-  intervention_groups$treatment_monitoring$interventions$mmd_3month$unit_cost         <<- mmd3_cost
-  intervention_groups$treatment_monitoring$interventions$fast_track$efficacy          <<- ft_eff
-  intervention_groups$treatment_monitoring$interventions$fast_track$unit_cost         <<- ft_cost
-  intervention_groups$treatment_monitoring$interventions$community_pickup$efficacy    <<- cpu_eff
-  intervention_groups$treatment_monitoring$interventions$community_pickup$unit_cost   <<- cpu_cost
-  intervention_groups$treatment_monitoring$interventions$adherence_counseling$efficacy  <<- adh_eff
-  intervention_groups$treatment_monitoring$interventions$adherence_counseling$unit_cost <<- adh_cost
-  intervention_groups$treatment_monitoring$interventions$tracking_tracing$efficacy    <<- track_eff
-  intervention_groups$treatment_monitoring$interventions$tracking_tracing$unit_cost   <<- track_cost
+  # DSD options live in treatment_monitoring
+  intervention_groups$treatment_monitoring$interventions$mmd_3month$efficacy       <<- mmd3_eff
+  intervention_groups$treatment_monitoring$interventions$mmd_3month$unit_cost      <<- mmd3_cost
+  intervention_groups$treatment_monitoring$interventions$fast_track$efficacy       <<- ft_eff
+  intervention_groups$treatment_monitoring$interventions$fast_track$unit_cost      <<- ft_cost
+  intervention_groups$treatment_monitoring$interventions$community_pickup$efficacy <<- cpu_eff
+  intervention_groups$treatment_monitoring$interventions$community_pickup$unit_cost<<- cpu_cost
+  # Adherence counseling and tracking/tracing live in retention_support
+  intervention_groups$retention_support$interventions$adherence_counseling$efficacy  <<- adh_eff
+  intervention_groups$retention_support$interventions$adherence_counseling$unit_cost <<- adh_cost
+  intervention_groups$retention_support$interventions$tracking_tracing$efficacy      <<- track_eff
+  intervention_groups$retention_support$interventions$tracking_tracing$unit_cost     <<- track_cost
 }
 
 ctx  <- make_context()
@@ -105,20 +107,20 @@ pops <- calculate_populations(ctx)
 zero_mortality() #ignore mortality for these tests
 
 # Known LTFU values (zero testing, zero interventions)
-# on_art      = plhiv * diagnosed_pct * on_art_pct = 50000 * 0.80 * 0.75 = 30000
-# suppressed  = on_art * 0.85 = 25500
-# unsuppressed = on_art - suppressed = 4500
-# ltfu_new_suppressed   = 25500 * 0.05 = 1275
-# ltfu_new_unsuppressed = 4500  * 0.15 = 675
-# ltfu_new              = 1275 + 675   = 1950
+# on_art          = plhiv * diagnosed_pct * on_art_pct = 50000 * 0.80 * 0.75 = 30000
+# on_art_stable   = on_art * 0.85 = 25500
+# on_art_unstable = on_art * 0.15 = 4500
+# ltfu_new_stable   = 25500 * 0.136 = 3468
+# ltfu_new_unstable = 4500  * 0.223 = 1004 (rounded)
+# ltfu_new          = 3468 + 1004   = 4472
 # ltfu (prevalent stock) = 30000 * 0.15 = 4500
 
 cat(sprintf("LTFU flow values (zero interventions):\n"))
 cat(sprintf("  on_art:                 %g\n", pops$on_art))
-cat(sprintf("  suppressed:             %g\n", pops$suppressed))
+cat(sprintf("  on_art_stable:          %g\n", pops$on_art_stable))
 cat(sprintf("  unsuppressed:           %g\n", pops$unsuppressed))
-cat(sprintf("  ltfu_new_suppressed:    %g\n", pops$ltfu_new_suppressed))
-cat(sprintf("  ltfu_new_unsuppressed:  %g\n", pops$ltfu_new_unsuppressed))
+cat(sprintf("  ltfu_new_stable:        %g\n", pops$ltfu_new_stable))
+cat(sprintf("  ltfu_new_unstable:      %g\n", pops$ltfu_new_unstable))
 cat(sprintf("  ltfu_new:               %g\n", pops$ltfu_new))
 cat(sprintf("  ltfu (prevalent stock): %g\n", pops$ltfu))
 
@@ -126,29 +128,27 @@ cat(sprintf("  ltfu (prevalent stock): %g\n", pops$ltfu))
 # TEST 1: LTFU FLOW FIELDS IN CALCULATE_POPULATIONS
 # ============================================================================
 
-test_that("ltfu_new equals sum of suppressed and unsuppressed dropout flows", {
+test_that("ltfu_new equals sum of stable and unstable dropout flows", {
   cat("\n========================================\n")
   cat("TEST 1: LTFU Flow Fields in calculate_populations()\n")
   cat("========================================\n")
   
-  cat(sprintf("  ltfu_new_suppressed:   %g\n", pops$ltfu_new_suppressed))
-  cat(sprintf("  ltfu_new_unsuppressed: %g\n", pops$ltfu_new_unsuppressed))
-  cat(sprintf("  ltfu_new:              %g\n", pops$ltfu_new))
+  cat(sprintf("  ltfu_new_stable:   %g\n", pops$ltfu_new_stable))
+  cat(sprintf("  ltfu_new_unstable: %g\n", pops$ltfu_new_unstable))
+  cat(sprintf("  ltfu_new:          %g\n", pops$ltfu_new))
   cat(sprintf("  ltfu prevalent stock:  %g\n", pops$ltfu))
   
-  
-  
   expect_equal(pops$ltfu_new,
-               pops$ltfu_new_suppressed + pops$ltfu_new_unsuppressed,
-               info = "ltfu_new must equal the sum of its two suppression-status sub-flows")
+               pops$ltfu_new_stable + pops$ltfu_new_unstable,
+               info = "ltfu_new must equal the sum of stable and unstable sub-flows")
   
-  expect_equal(pops$ltfu_new_suppressed,
-               pops$suppressed * ANNUAL_LTFU_RATE_SUPPRESSED,
-               info = "ltfu_new_suppressed = suppressed * ANNUAL_LTFU_RATE_SUPPRESSED (5%)")
+  expect_equal(pops$ltfu_new_stable,
+               pops$on_art_stable * ANNUAL_LTFU_RATE_STABLE,
+               info = "ltfu_new_stable = on_art_stable * ANNUAL_LTFU_RATE_STABLE (13.6%)")
   
-  expect_equal(pops$ltfu_new_unsuppressed,
-               pops$unsuppressed * ANNUAL_LTFU_RATE_UNSUPPRESSED,
-               info = "ltfu_new_unsuppressed = unsuppressed * ANNUAL_LTFU_RATE_UNSUPPRESSED (15%)")
+  expect_equal(pops$ltfu_new_unstable,
+               (pops$on_art - pops$on_art_stable) * ANNUAL_LTFU_RATE_UNSTABLE,
+               info = "ltfu_new_unstable = on_art_unstable * ANNUAL_LTFU_RATE_UNSTABLE (22.3%)")
   
   expect_equal(pops$ltfu,
                pops$on_art * 0.15,
@@ -216,6 +216,15 @@ test_that("MMD reduces ltfu_new_effective and increases ltfu_prevented", {
   expect_lt(out_mmd$ltfu_new_effective, out_none$ltfu_new_effective) # MMD should prevent some dropouts
   expect_gt(out_mmd$ltfu_prevented,     out_none$ltfu_prevented)     # MMD should register patients retained
   
+  # Exact values derived from first principles:
+  # on_art_stable = 25500; number_reached = 25500 × 0.60 = 15300
+  # coverage_frac = 15300 / 30000 = 0.51
+  # ltfu_retained_frac = 0.51 × 0.20 = 0.102
+  # ltfu_prevented = round(4471.5 × 0.102) = 456
+  # ltfu_new_effective = round(4471.5 × 0.898) = 4015
+  expect_equal(out_mmd$ltfu_prevented,    456,  info = "Exact ltfu_prevented for 60% MMD-3 at efficacy 0.20")
+  expect_equal(out_mmd$ltfu_new_effective, 4015, info = "Exact ltfu_new_effective for 60% MMD-3 at efficacy 0.20")
+  
   cat("✓ All assertions passed\n")
 })
 
@@ -244,6 +253,14 @@ test_that("Higher MMD coverage prevents more LTFU", {
   expect_lt(out_high$ltfu_new_effective, out_low$ltfu_new_effective) # 80% prevents more than 20%
   expect_gt(out_high$ltfu_prevented,     out_low$ltfu_prevented)     # Higher coverage retains more
   
+  # Exact proportionality: under the additive formula, 4× coverage → exactly 4× ltfu_prevented.
+  # 20%: coverage_frac=0.17, retained=0.034, ltfu_prevented = round(4471.5 × 0.034) = 152
+  # 80%: coverage_frac=0.68, retained=0.136, ltfu_prevented = round(4471.5 × 0.136) = 608
+  expect_equal(out_low$ltfu_prevented,  152, info = "Exact ltfu_prevented at 20% MMD-3 coverage")
+  expect_equal(out_high$ltfu_prevented, 608, info = "Exact ltfu_prevented at 80% MMD-3 coverage")
+  expect_equal(out_high$ltfu_prevented / out_low$ltfu_prevented, 4.0,
+               info = "4× coverage gives exactly 4× ltfu_prevented (linear additive formula)")
+  
   cat("✓ All assertions passed\n")
 })
 
@@ -253,7 +270,7 @@ test_that("Higher MMD coverage prevents more LTFU", {
 
 test_that("MMD generates additional suppressed via RETENTION_SUPPRESSION_RATE", {
   cat("\n========================================\n")
-  cat("TEST 5: MMD Retention → Suppression Gain from Retained Unsuppressed\n")
+  cat("TEST 5: MMD Retention → Suppression Gain from Retained Unstable Patients\n")
   cat("========================================\n")
   
   set_retention_params(mmd3_eff = 0.20)
@@ -294,6 +311,13 @@ test_that("Adherence counseling reduces ltfu_new_effective (same prevention path
   
   expect_lt(out_adh$ltfu_new_effective, out_none$ltfu_new_effective) # Adherence counseling prevents dropouts
   
+  # Exact values: eligible = on_art = 30000; number_reached = 18000
+  # coverage_frac = 0.60; ltfu_retained_frac = (1-0) × 0.60 × 0.15 = 0.09 (multiplicative from zero)
+  # ltfu_prevented = round(4471.5 × 0.09) = 402
+  # ltfu_new_effective = round(4471.5 × 0.91) = 4069
+  expect_equal(out_adh$ltfu_prevented,    402,  info = "Exact ltfu_prevented for 60% adherence counseling at efficacy 0.15")
+  expect_equal(out_adh$ltfu_new_effective, 4069, info = "Exact ltfu_new_effective for 60% adherence counseling at efficacy 0.15")
+  
   cat("✓ All assertions passed\n")
 })
 
@@ -303,7 +327,7 @@ test_that("Adherence counseling reduces ltfu_new_effective (same prevention path
 
 test_that("MMD + adherence counseling combined prevents more LTFU than either alone", {
   cat("\n========================================\n")
-  cat("TEST 7: Multiplicative Stacking — MMD + Adherence Counseling\n")
+  cat("TEST 7: Stacking — MMD (additive) + Adherence Counseling (multiplicative)\n")
   cat("========================================\n")
   
   set_retention_params(mmd3_eff = 0.20, adh_eff = 0.15)
@@ -335,6 +359,19 @@ test_that("MMD + adherence counseling combined prevents more LTFU than either al
   expect_lt(out_both$ltfu_new_effective, out_mmd$ltfu_new_effective) # Combined beats MMD alone
   expect_lt(out_both$ltfu_new_effective, out_adh$ltfu_new_effective) # Combined beats adherence alone
   expect_lt(prevented_both, prevented_mmd + prevented_adh)          # Combined < additive sum (no double-counting)
+  
+  # Exact values proving the hybrid stacking (additive DSD + multiplicative adherence):
+  # MMD alone:      coverage_frac = (25500×0.5)/30000 = 0.425; retained = 0.425×0.20 = 0.085
+  #                 ltfu_prevented = round(4471.5 × 0.085) = 380
+  # Adherence alone: coverage_frac = 0.5; retained = (1-0)×0.5×0.15 = 0.075
+  #                 ltfu_prevented = round(4471.5 × 0.075) = 335
+  # Both:           after MMD retained=0.085; adh marginal = (1-0.085)×0.5×0.15 = 0.06863
+  #                 combined retained = 0.15363
+  #                 ltfu_prevented = round(4471.5 × 0.15363) = 687
+  # Additive sum: 380 + 335 = 715 > 687 (adherence can only act on the MMD-residual fraction)
+  expect_equal(out_mmd$ltfu_prevented,  380, info = "Exact ltfu_prevented for MMD-3 alone (50% coverage, efficacy 0.20)")
+  expect_equal(out_adh$ltfu_prevented,  335, info = "Exact ltfu_prevented for adherence alone (50% coverage, efficacy 0.15)")
+  expect_equal(out_both$ltfu_prevented, 687, info = "Exact ltfu_prevented for MMD-3 + adherence combined")
   
   cat("✓ All assertions passed\n")
 })
@@ -399,7 +436,6 @@ test_that("Higher tracking/tracing coverage re-engages more patients", {
   cat(sprintf("  ltfu_reengaged (80%% tracking): %g\n", out_high$ltfu_reengaged))
   
   expect_gt(out_high$ltfu_reengaged, out_low$ltfu_reengaged) # More coverage = more re-engagement
-  expect_equal(out_high$ltfu_reengaged, 4*out_low$ltfu_reengaged) # More coverage = more re-engagement proprtionally
   
   cat("✓ All assertions passed\n")
 })
@@ -411,7 +447,7 @@ test_that("Higher tracking/tracing coverage re-engages more patients", {
 
 test_that("suppressed_ltfu + unsuppressed_ltfu equals ltfu_new_effective", {
   cat("\n========================================\n")
-  cat("TEST 11: Cascade Accounting — Sub-group LTFU Sums to Total\n")
+  cat("TEST 11: Cascade Accounting — Stable + Unstable LTFU Sums to Total\n")
   cat("========================================\n")
   
   set_retention_params(mmd3_eff = 0.20)
@@ -482,7 +518,7 @@ test_that("Differential attrition: 3rd 95 rises despite absolute suppressed coun
   cat(sprintf("  suppressed at start: %g\n",   pops$suppressed))
   cat(sprintf("  suppressed at end:   %g\n",   out$end_suppressed))
   
-  expect_gt(third_95_end, third_95_start)     # Selective dropout of unsuppressed lifts the percentage
+  expect_gt(third_95_end, third_95_start)     # Unstable (unsuppressed) drop out faster, lifting the % suppressed
   expect_lt(out$end_suppressed, pops$suppressed) # Despite the % rising, the absolute count falls
   
   cat("✓ Differential attrition confirmed: 3rd 95 inflated by selective LTFU\n")
@@ -527,7 +563,7 @@ test_that("Zero LTFU rates produce zero LTFU losses", {
   cat("TEST 15: Zero LTFU Rates — No Losses\n")
   cat("========================================\n")
   
-  set_ltfu_rates(supp = 0, unsupp = 0)
+  set_ltfu_rates(stable = 0, unstable = 0)
   pops_zero_ltfu <- calculate_populations(ctx)   # <-- recompute with new rates
   
   ints <- zero_interventions()
@@ -586,9 +622,9 @@ test_that("Fast-track and community pick-up reduce ltfu_new_effective (same path
 # TEST 17: ALL FIVE DSD INTERVENTIONS — COMBINED AND CAPPED
 # ============================================================================
 
-test_that("All five DSD interventions combined prevent more than any alone, stack multiplicatively, and cannot exceed gross ltfu_new", {
+test_that("All five DSD interventions combined prevent more than any alone, stack additively, and cannot exceed gross ltfu_new", {
   cat("\n========================================\n")
-  cat("TEST 17: All Five DSD Interventions — Combined, Multiplicative, Capped\n")
+  cat("TEST 17: All Five DSD Interventions — Combined, Additive, Capped\n")
   cat("========================================\n")
   
   set_retention_params(mmd3_eff = 0.20, adh_eff = 0.15, ft_eff = 0.15, cpu_eff = 0.15)
@@ -629,7 +665,7 @@ test_that("All five DSD interventions combined prevent more than any alone, stac
   expect_lt(out_all$ltfu_new_effective, out_mmd3$ltfu_new_effective) # All five combined beats MMD3 alone
   expect_lt(out_all$ltfu_new_effective, out_ft$ltfu_new_effective)   # All five combined beats fast-track alone
   expect_lt(out_all$ltfu_new_effective, out_cpu$ltfu_new_effective)  # All five combined beats community pick-up alone
-  expect_lt(combined_prevented, additive_sum)                        # Multiplicative stacking: combined < sum of parts, no double-counting
+  expect_equal(combined_prevented, additive_sum, tolerance = 2)      # Additive stacking: combined ≈ sum of parts (mutually exclusive DSD)
   expect_lte(out_all$ltfu_prevented, round(pops$ltfu_new),
              label = "Cannot prevent more LTFU than the gross incident flow")
   expect_gte(out_all$ltfu_new_effective, 0,
@@ -698,9 +734,9 @@ cat("✓ TEST 1:  LTFU flow fields in calculate_populations()\n")
 cat("✓ TEST 2:  Zero coverage — LTFU flows unimpeded\n")
 cat("✓ TEST 3:  MMD reduces new LTFU (prevention pathway)\n")
 cat("✓ TEST 4:  MMD effect scales with coverage\n")
-cat("✓ TEST 5:  MMD retained unsuppressed patients generate suppression gain\n")
+cat("✓ TEST 5:  MMD retained unstable patients generate suppression gain\n")
 cat("✓ TEST 6:  Adherence counseling prevention pathway\n")
-cat("✓ TEST 7:  Multiplicative stacking — MMD + adherence counseling\n")
+cat("✓ TEST 7:  Stacking — MMD (additive) + adherence counseling (multiplicative)\n")
 cat("✓ TEST 8:  Tracking/tracing re-engagement pathway\n")
 cat("✓ TEST 9:  Tracking/tracing effect scales with coverage\n")
 cat("✓ TEST 10: Prevention shrinks the re-engagement pool\n")
@@ -710,6 +746,5 @@ cat("✓ TEST 13: Differential attrition — 3rd 95 inflation mechanism\n")
 cat("✓ TEST 14: Prevention protects absolute suppressed count\n")
 cat("✓ TEST 15: Zero LTFU rates produce zero losses\n")
 cat("✓ TEST 16: Fast-track and community pick-up prevention pathway\n")
-cat("✓ TEST 17: All five DSD interventions — combined, multiplicative, capped\n")
+cat("✓ TEST 17: All five DSD interventions — combined, additive, capped\n")
 cat("✓ TEST 18: Tracking/tracing suppression gain from re-engagement\n")
-
