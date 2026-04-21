@@ -171,6 +171,10 @@ ui <- page_sidebar(
           card_header("Combined Cascade Comparison"),
           card_body(plotOutput("cascade_combined", height = "500px"))
         ),
+        card(
+          card_header("Cascade Numbers"),
+          card_body(tableOutput("cascade_table"))
+        ),
         
         # Other Outcomes Row
         h3("Key Outcomes Summary", class = "mt-4 mb-3"),
@@ -1937,7 +1941,9 @@ server <- function(input, output, session) {
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Infections Averted:"),
           span(
-            class = "text-success", style = "font-weight: bold;",
+            class = ifelse(diff$additional_infections_averted > 0, "text-success",
+                           ifelse(diff$additional_infections_averted < 0, "text-danger", "text-muted")),
+            style = "font-weight: bold;",
             paste0(ifelse(diff$additional_infections_averted > 0, "+", ""),
                    format(diff$additional_infections_averted, big.mark = ","))
           )
@@ -1945,7 +1951,9 @@ server <- function(input, output, session) {
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Deaths Averted:"),
           span(
-            class = "text-success", style = "font-weight: bold;",
+            class = ifelse(diff$additional_deaths_averted > 0, "text-success",
+                           ifelse(diff$additional_deaths_averted < 0, "text-danger", "text-muted")),
+            style = "font-weight: bold;",
             paste0(ifelse(diff$additional_deaths_averted > 0, "+", ""),
                    format(diff$additional_deaths_averted, big.mark = ","))
           )
@@ -2001,7 +2009,9 @@ server <- function(input, output, session) {
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Infections Averted:"),
           span(
-            class = "text-success", style = "font-weight: bold;",
+            class = ifelse(diff$additional_infections_averted > 0, "text-success",
+                           ifelse(diff$additional_infections_averted < 0, "text-danger", "text-muted")),
+            style = "font-weight: bold;",
             paste0(ifelse(diff$additional_infections_averted > 0, "+", ""),
                    format(diff$additional_infections_averted, big.mark = ","))
           )
@@ -2009,7 +2019,9 @@ server <- function(input, output, session) {
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span("Deaths Averted:"),
           span(
-            class = "text-success", style = "font-weight: bold;",
+            class = ifelse(diff$additional_deaths_averted > 0, "text-success",
+                           ifelse(diff$additional_deaths_averted < 0, "text-danger", "text-muted")),
+            style = "font-weight: bold;",
             paste0(ifelse(diff$additional_deaths_averted > 0, "+", ""),
                    format(diff$additional_deaths_averted, big.mark = ","))
           )
@@ -2048,21 +2060,7 @@ server <- function(input, output, session) {
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-3 bg-light p-2",
           strong("Total Program Cost:"),
           strong(paste0("$", format(outcomes$total_cost, big.mark = ",")))
-      ),
-      if (outcomes$total_infections_averted > 0) {
-        div(class = "d-flex justify-content-between border-bottom pb-2 mb-2 mt-3",
-            span("Cost per Infection Averted:"),
-            span(style = "font-weight: bold;",
-                 paste0("$", format(round(outcomes$total_intervention_cost / outcomes$total_infections_averted), big.mark = ",")))
-        )
-      },
-      if (outcomes$deaths_averted > 0) {
-        div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-            span("Cost per Death Averted:"),
-            span(style = "font-weight: bold;",
-                 paste0("$", format(round(outcomes$total_intervention_cost / outcomes$deaths_averted), big.mark = ",")))
-        )
-      }
+      )
     )
   })
   
@@ -2084,20 +2082,6 @@ server <- function(input, output, session) {
                         format(abs(diff$diff_intervention_cost), big.mark = ","), ")"))
           )
       ),
-      if (diff$scale_up_cost > 0) {
-        div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-            span(style = "padding-left: 15px; font-size: 0.9em;", "→ Scale-up costs:"),
-            span(class = "text-primary", style = "font-weight: bold;",
-                 paste0("+$", format(diff$scale_up_cost, big.mark = ",")))
-        )
-      },
-      if (diff$scale_down_savings > 0) {
-        div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-            span(style = "padding-left: 15px; font-size: 0.9em;", "→ Scale-down savings:"),
-            span(class = "text-success", style = "font-weight: bold;",
-                 paste0("-$", format(diff$scale_down_savings, big.mark = ",")))
-        )
-      },
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span(style = "font-style: italic; font-size: 0.9em;", "ART Provision:"),
           span(
@@ -2122,27 +2106,7 @@ server <- function(input, output, session) {
                  paste0("(", ifelse(diff$diff_total_cost > 0, "+", ""), "$",
                         format(abs(diff$diff_total_cost), big.mark = ","), ")"))
           )
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
-          span(strong("Net Budget Impact vs Baseline:")),
-          strong(class = ifelse(diff$diff_total_cost >= 0, "text-primary", "text-success"),
-                 paste0(ifelse(diff$diff_total_cost >= 0, "+", ""), "$",
-                        format(diff$diff_total_cost, big.mark = ",")))
-      ),
-      if (outcomes$total_infections_averted > 0) {
-        div(class = "d-flex justify-content-between border-bottom pb-2 mb-2 mt-3",
-            span("Cost per Infection Averted:"),
-            span(style = "font-weight: bold;",
-                 paste0("$", format(round(outcomes$total_intervention_cost / outcomes$total_infections_averted), big.mark = ",")))
-        )
-      },
-      if (outcomes$deaths_averted > 0) {
-        div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-            span("Cost per Death Averted:"),
-            span(style = "font-weight: bold;",
-                 paste0("$", format(round(outcomes$total_intervention_cost / outcomes$deaths_averted), big.mark = ",")))
-        )
-      }
+      )
     )
   })
   
@@ -2164,20 +2128,7 @@ server <- function(input, output, session) {
                         format(abs(diff$diff_intervention_cost), big.mark = ","), ")"))
           )
       ),
-      if (diff$scale_up_cost > 0) {
-        div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-            span(style = "padding-left: 15px; font-size: 0.9em;", "→ Scale-up costs:"),
-            span(class = "text-primary", style = "font-weight: bold;",
-                 paste0("+$", format(diff$scale_up_cost, big.mark = ",")))
-        )
-      },
-      if (diff$scale_down_savings > 0) {
-        div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-            span(style = "padding-left: 15px; font-size: 0.9em;", "→ Scale-down savings:"),
-            span(class = "text-success", style = "font-weight: bold;",
-                 paste0("-$", format(diff$scale_down_savings, big.mark = ",")))
-        )
-      },
+      
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span(style = "font-style: italic; font-size: 0.9em;", "ART Provision:"),
           span(
@@ -2202,27 +2153,7 @@ server <- function(input, output, session) {
                  paste0("(", ifelse(diff$diff_total_cost > 0, "+", ""), "$",
                         format(abs(diff$diff_total_cost), big.mark = ","), ")"))
           )
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
-          span(strong("Net Budget Impact vs Baseline:")),
-          strong(class = ifelse(diff$diff_total_cost >= 0, "text-primary", "text-success"),
-                 paste0(ifelse(diff$diff_total_cost >= 0, "+", ""), "$",
-                        format(diff$diff_total_cost, big.mark = ",")))
-      ),
-      if (outcomes$total_infections_averted > 0) {
-        div(class = "d-flex justify-content-between border-bottom pb-2 mb-2 mt-3",
-            span("Cost per Infection Averted:"),
-            span(style = "font-weight: bold;",
-                 paste0("$", format(round(outcomes$total_intervention_cost / outcomes$total_infections_averted), big.mark = ",")))
-        )
-      },
-      if (outcomes$deaths_averted > 0) {
-        div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-            span("Cost per Death Averted:"),
-            span(style = "font-weight: bold;",
-                 paste0("$", format(round(outcomes$total_intervention_cost / outcomes$deaths_averted), big.mark = ",")))
-        )
-      }
+      )
     )
   })
   
@@ -2320,7 +2251,29 @@ server <- function(input, output, session) {
             plot.subtitle = element_text(size = 12),
             axis.text = element_text(size = 12),
             axis.title = element_text(size = 12))
+    
   })
+  
+  output$cascade_table <- renderTable({
+    outcomes_base <- outcomes_baseline()
+    outcomes_s1   <- outcomes_scenario1()
+    outcomes_s2   <- outcomes_scenario2()
+    
+    data.frame(
+      Stage      = c("PLHIV", "Diagnosed", "On ART", "Suppressed"),
+      Baseline   = format(c(outcomes_base$end_plhiv, outcomes_base$end_diagnosed,
+                            outcomes_base$end_on_art, outcomes_base$end_suppressed),
+                          big.mark = ",", scientific = FALSE),
+      Scenario_1 = format(c(outcomes_s1$end_plhiv, outcomes_s1$end_diagnosed,
+                            outcomes_s1$end_on_art, outcomes_s1$end_suppressed),
+                          big.mark = ",", scientific = FALSE),
+      Scenario_2 = format(c(outcomes_s2$end_plhiv, outcomes_s2$end_diagnosed,
+                            outcomes_s2$end_on_art, outcomes_s2$end_suppressed),
+                          big.mark = ",", scientific = FALSE),
+      check.names = FALSE
+    )
+  }, striped = TRUE, hover = TRUE, bordered = TRUE, align = "lrrr",
+  colnames = TRUE)
 }
 
 # ============================================================================

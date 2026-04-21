@@ -40,29 +40,35 @@ MORTALITY_RATES <- list(
   )
 )
 
-# MORTALITY_RATES <- list(
-#   untreated_undiagnosed = 0,  # undiagnosed PLHIV + diagnosed not on ART
-#   new_art_initiations   = 0,  # first year on ART (pre-stabilisation)
-#   treated               = 0, # established on ART, not virally suppressed
-#   suppressed            = 0, # established on ART, virally suppressed
-#   ahd                   = 0,  # advanced HIV disease (CD4 < 200), any stage
-#   prop_ahd = list(
-#     undiagnosed        = 0.20,   # undiagnosed PLHIV
-#     diagnosed_not_art  = 0.20,   # diagnosed but not on ART
-#     new_initiations    = 0.20,   # first year on ART
-#     established_treated= 0.00,   # established on ART, not suppressed
-#     established_supp   = 0.00    # established on ART, suppressed
-#   )
-# )
+MORTALITY_RATES <- list(
+  untreated_undiagnosed = 0.06,  # undiagnosed PLHIV + diagnosed not on ART
+  new_art_initiations   = 0.03,  # first year on ART (pre-stabilisation)
+  treated               = 0.008, # established on ART, not virally suppressed
+  suppressed            = 0.005, # established on ART, virally suppressed
+  ahd                   = 0.15,  # advanced HIV disease (CD4 < 200), any stage
+  prop_ahd = list(
+    undiagnosed        = 0.20,   # undiagnosed PLHIV
+    diagnosed_not_art  = 0.20,   # diagnosed but not on ART
+    new_initiations    = 0.20,   # first year on ART
+    established_treated= 0.00,   # established on ART, not suppressed
+    established_supp   = 0.00    # established on ART, suppressed
+  )
+)
 
 
 # ============================================================================
-# LTFU RATES BY SUPPRESSION STATUS (UPDATE THESE BASED ON LITERATURE)
-# Suppressed patients: stable, feel well, lower side-effect burden -> lower dropout
-# Unsuppressed patients: treatment struggling, side effects, stigma -> higher dropout
+# LTFU RATES BY STABILITY STATUS (UPDATE THESE BASED ON LITERATURE)
+# Stable patients (on_art_stable = 85% of on_art): established, clinically stable,
+#   DSD-eligible — lower dropout. Rate calibrated from 3MMD conventional care
+#   retention (86.4%) in Matsimela et al. 2024: 1 - 0.864 = 13.6%.
+# Unstable patients (remaining 15% of on_art): treatment-struggling, side effects,
+#   not yet DSD-eligible — higher dropout. Rate calibrated from "not eligible for
+#   DSD" retention (77.7%): 1 - 0.777 = 22.3%.
+# New initiates are excluded from this LTFU calculation — their dropout is
+#   implicitly captured upstream via linkage rates (<100%) in the testing cascade.
 # ============================================================================
-ANNUAL_LTFU_RATE_SUPPRESSED   <- 0.05   # 5%  of suppressed on ART become LTFU per year
-ANNUAL_LTFU_RATE_UNSUPPRESSED <- 0.15   # 15% of unsuppressed on ART become LTFU per year
+ANNUAL_LTFU_RATE_STABLE   <- 0.136  # 13.6% of stable on-ART patients become LTFU per year
+ANNUAL_LTFU_RATE_UNSTABLE <- 0.223  # 22.3% of unstable on-ART patients become LTFU per year
 
 # Proportion of *retained* unsuppressed patients who achieve viral suppression
 # as a direct result of the improved adherence that prevented their dropout.
@@ -111,7 +117,7 @@ country_data_csv <- content(response, as = "parsed", type = "text/csv")
 
 # Load country-level baseline intervention volumes
 # Replace the URL below with the actual share link for the baseline CSV
-baseline_response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=LPB0JCL&download=1")
+baseline_response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=96oyQi&download=1")
 baseline_data_csv <- content(baseline_response, as = "parsed", type = "text/csv") 
 
 
@@ -136,7 +142,7 @@ load_intervention_params <- function(){
   intervention_params$unit_cost <- as.numeric(intervention_params$unit_cost)
   intervention_params$linkage_cost <- as.numeric(intervention_params$linkage_cost)
   intervention_params$linkage_rate <- as.numeric(intervention_params$linkage_rate)
-  intervention_params$multiplier <- as.numeric(intervention_params$multiplier)
+  #intervention_params$multiplier <- as.numeric(intervention_params$multiplier)
   
   return(intervention_params)
 }
@@ -220,7 +226,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "test_facility_general")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_facility_general")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_facility_general")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_facility_general")$yield_multiplier,
           outcomes = c("testing")
         ),
         test_network = list(
@@ -232,7 +237,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "test_network")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_network")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_network")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_network")$yield_multiplier,
           outcomes = c("testing")
         ),
         test_index = list(
@@ -244,7 +248,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "test_index")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_index")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_index")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_index")$yield_multiplier,
           outcomes = c("testing")
         ),
         test_community = list(
@@ -256,7 +259,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "test_community")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_community")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_community")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_community")$yield_multiplier,
           outcomes = c("testing")
         ),
         test_kpsti = list(
@@ -268,7 +270,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "test_kpsti")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "test_kpsti")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "test_kpsti")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "test_kpsti")$yield_multiplier,
           outcomes = c("testing")
         ),
         hivst_facility = list(
@@ -280,7 +281,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "hivst_facility")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "hivst_facility")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "hivst_facility")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "hivst_facility")$yield_multiplier,
           outcomes = c("testing")
         ),
         hivst_community = list(
@@ -292,7 +292,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "hivst_community")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "hivst_community")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "hivst_community")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "hivst_community")$yield_multiplier,
           outcomes = c("testing")
         ),
         eid = list(
@@ -304,7 +303,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "eid")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "eid")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "eid")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "eid")$yield_multiplier,
           outcomes = c("infant_diagnosis")
         ),
         anc_hiv_testing = list(
@@ -316,7 +314,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "anc_hiv_testing")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "anc_hiv_testing")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "anc_hiv_testing")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "anc_hiv_testing")$yield_multiplier,
           outcomes = c("testing")
         ),
         pnc_hiv_testing = list(
@@ -328,7 +325,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "pnc_hiv_testing")$unit_cost,
           linkage_rate = subset(intervention_params, intervention_key == "pnc_hiv_testing")$linkage_rate,
           linkage_cost = subset(intervention_params, intervention_key == "pnc_hiv_testing")$linkage_cost,
-          test_yield_multiplier = subset(intervention_params, intervention_key == "pnc_hiv_testing")$yield_multiplier,
           outcomes = c("testing")
         )
       )
@@ -512,11 +508,14 @@ calculate_populations <- function(context) {
   prop_hr       <- if (!is.null(context$prop_high_risk) && !is.na(context$prop_high_risk))
     context$prop_high_risk else 0.05
   
-  # LTFU flow: people dropping off ART during the year, split by suppression status.
-  # Suppressed patients have lower dropout (stable, feel well, fewer side effects).
-  # Unsuppressed patients have higher dropout (side effects, treatment fatigue, stigma).
-  ltfu_new_suppressed   <- suppressed       * ANNUAL_LTFU_RATE_SUPPRESSED
-  ltfu_new_unsuppressed <- unsuppressed_on_art * ANNUAL_LTFU_RATE_UNSUPPRESSED
+  # LTFU flow: people dropping off ART during the year, split by stability status.
+  # Stable patients (on_art × 0.85): DSD-eligible, lower dropout risk.
+  # Unstable patients (on_art × 0.15): not DSD-eligible, higher dropout risk.
+  # New initiates excluded — their dropout is captured upstream via linkage rates.
+  on_art_stable_n   <- on_art * 0.85
+  on_art_unstable_n <- on_art * 0.15
+  ltfu_new_stable   <- on_art_stable_n   * ANNUAL_LTFU_RATE_STABLE
+  ltfu_new_unstable <- on_art_unstable_n * ANNUAL_LTFU_RATE_UNSTABLE
   
   list(
     total = context$total_population,
@@ -534,10 +533,10 @@ calculate_populations <- function(context) {
     unsuppressed = unsuppressed_on_art,
     # Prevalent LTFU stock (people already lost before the year begins)
     ltfu = on_art * 0.15,
-    # Incident LTFU flow (people becoming LTFU during the year), by suppression status
-    ltfu_new_suppressed   = ltfu_new_suppressed,
-    ltfu_new_unsuppressed = ltfu_new_unsuppressed,
-    ltfu_new              = ltfu_new_suppressed + ltfu_new_unsuppressed,
+    # Incident LTFU flow (people becoming LTFU during the year), by stability status
+    ltfu_new_stable   = ltfu_new_stable,
+    ltfu_new_unstable = ltfu_new_unstable,
+    ltfu_new          = ltfu_new_stable + ltfu_new_unstable,
     # ── FOI strata (used by stratified infection model) ──────────────────
     high_risk_negative       = hiv_negative * prop_hr,
     general_female           = hiv_negative * (1 - prop_male_pct/100) * (1 - prop_hr),
@@ -1341,10 +1340,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       # precedence; falls back to intervention params default, then 1.
       country_mult <- context$yield_multipliers[[int_key]]
       effective_yield <- base_test_yield *
-        (if (!is.null(country_mult)) country_mult
-         else if (!is.null(intervention$test_yield_multiplier))
-           as.numeric(intervention$test_yield_multiplier)
-         else 1)
+        (if (!is.null(country_mult)) country_mult else 1)
       
       pos_tests <- number_reached * effective_yield * modality_dilution * intervention$efficacy
       positive_tests <- positive_tests + pos_tests
@@ -1354,20 +1350,33 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       new_dx <- pos_tests * prop_new_dx
       re_eng  <- pos_tests * prop_reeng
       
-      new_diagnoses       <- new_diagnoses + new_dx
-      re_engagement_testing <- re_engagement_testing + re_eng
-      
-      # ART initiations based on linkage rate
-      linkage_rate <- intervention$linkage_rate
-      linked <- pos_tests * linkage_rate
-      art_inititations_testing <- art_inititations_testing + linked
-      
-      additional_suppressed_testing <- additional_suppressed_testing +
-        linked * ((context$percent_suppressed * 0.9) / 100)
-      
-      # Costs
-      total_intervention_cost <- total_intervention_cost +
-        (number_reached * intervention$unit_cost + linked * intervention$linkage_cost)
+      # ANC/PNC HIV testing: general yield path suppressed for cascade metrics.
+      # These women are routed into the adult cascade after the loop via the
+      # PMTCT-specific yield (pmtct_new_diagnoses), which is more accurate than
+      # the background positivity rate for this targeted population.
+      # tests_performed still accrues here — the test is administered to all
+      # women reached. Unit cost accrues here; linkage cost accrues in the
+      # post-loop PMTCT routing block using the PMTCT-specific diagnosed count.
+      if (!(int_key %in% c("anc_hiv_testing", "pnc_hiv_testing"))) {
+        new_diagnoses         <- new_diagnoses         + new_dx
+        re_engagement_testing <- re_engagement_testing + re_eng
+        
+        # ART initiations based on linkage rate
+        linkage_rate <- intervention$linkage_rate
+        linked <- pos_tests * linkage_rate
+        art_inititations_testing <- art_inititations_testing + linked
+        
+        additional_suppressed_testing <- additional_suppressed_testing +
+          linked * ((context$percent_suppressed * 0.9) / 100)
+        
+        # Full costs: unit cost per test + linkage cost per linked patient
+        total_intervention_cost <- total_intervention_cost +
+          (number_reached * intervention$unit_cost + linked * intervention$linkage_cost)
+      } else {
+        # ANC/PNC: unit cost per test only; linkage cost charged in post-loop block
+        total_intervention_cost <- total_intervention_cost +
+          number_reached * intervention$unit_cost
+      }
       
       # ── ANC HIV testing: route newly diagnosed HIV+ pregnant women into PMTCT cascade ──
       # number_reached = pregnant_hiv_testable x (ANC_coverage/100), so coverage is already embedded.
@@ -1433,17 +1442,31 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       } else {
         # Prevention interventions: COST applies to everyone reached (all on ART),
         # but EFFECT can only act on the at-risk fraction (those who would drop out).
-        # Built multiplicatively so overlapping interventions (MMD + adherence
-        # counseling) cannot double-count the same at-risk person:
-        #   marginal_retained = (fraction not yet retained) * coverage * efficacy
-        # where coverage = fraction of on_art population reached by this intervention.
+        # Two combination rules depending on whether interventions can overlap:
+        #
+        # ADDITIVE — DSD options (eligible_pop == "on_art_stable"):
+        #   mmd_3month / mmd_6month / mmd_12month / fast_track / community_pickup
+        #   are mutually exclusive — the UI enforces they sum to ≤100% of on_art_stable,
+        #   so no person can be enrolled in two DSD slots. Simple addition is correct:
+        #     ltfu_retained_frac += coverage_frac * efficacy
+        #
+        # MULTIPLICATIVE — overlapping interventions (eligible_pop == "on_art"):
+        #   e.g. adherence_counseling targets the full on_art pool and CAN overlap
+        #   with DSD patients. Multiplicative combination prevents double-counting:
+        #     marginal_retained = (1 - ltfu_retained_frac) * coverage_frac * efficacy
         coverage_frac <- ifelse(
           populations$on_art > 0,
           number_reached / populations$on_art,
           0
         )
-        marginal_retained  <- (1 - ltfu_retained_frac) * coverage_frac * intervention$efficacy
-        ltfu_retained_frac <- ltfu_retained_frac + marginal_retained
+        if (intervention$eligible_pop == "on_art_stable") {
+          # Mutually exclusive DSD: additive
+          ltfu_retained_frac <- ltfu_retained_frac + coverage_frac * intervention$efficacy
+        } else {
+          # Overlapping interventions (e.g. adherence_counseling): multiplicative
+          marginal_retained  <- (1 - ltfu_retained_frac) * coverage_frac * intervention$efficacy
+          ltfu_retained_frac <- ltfu_retained_frac + marginal_retained
+        }
       }
       
       total_intervention_cost <- total_intervention_cost +
@@ -1454,6 +1477,32 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         number_reached * intervention$unit_cost
     }
   }
+  
+  # ========================================================================
+  # PMTCT -> ADULT CASCADE ROUTING
+  # Route PMTCT-diagnosed women into the adult cascade using the PMTCT-specific
+  # yield and linkage rate, replacing the general yield path for ANC/PNC.
+  # This ensures end_diagnosed, end_on_art, and end_suppressed reflect the
+  # more accurate targeted yield rather than the background positivity rate.
+  #
+  # Linkage rate: uses anc_hiv_testing linkage rate for all PMTCT women,
+  # consistent with the MTCT cascade step 2. ###UPDATE if ANC/PNC linkage
+  # rates diverge substantially and warrant separate tracking.
+  # Suppression discount: 70% of country average — newly initiating pregnant
+  # women are less likely to suppress quickly. ###UPDATE from literature.
+  # ========================================================================
+  pmtct_cascade_linkage_rate <- all_interventions$anc_hiv_testing$linkage_rate %||% 0.85
+  pmtct_cascade_supp_rate    <- (context$percent_suppressed / 100) * 0.70
+  pmtct_cascade_linked_art   <- pmtct_new_diagnoses * pmtct_cascade_linkage_rate
+  pmtct_cascade_linked_supp  <- pmtct_cascade_linked_art * pmtct_cascade_supp_rate
+  
+  new_diagnoses                 <- new_diagnoses                 + pmtct_new_diagnoses
+  art_inititations_testing      <- art_inititations_testing      + pmtct_cascade_linked_art
+  additional_suppressed_testing <- additional_suppressed_testing + pmtct_cascade_linked_supp
+  
+  # Linkage cost for PMTCT-linked women (unit cost already charged in loop above)
+  total_intervention_cost <- total_intervention_cost +
+    pmtct_cascade_linked_art * (all_interventions$anc_hiv_testing$linkage_cost %||% 0)
   
   # ========================================================================
   # APPLY CONSTRAINTS - CAP AT REALISTIC MAXIMUMS
@@ -1471,29 +1520,34 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # ── LTFU FLOW ─────────────────────────────────────────────────────────────
   # Prevention interventions reduce incident LTFU, split proportionally across
-  # the suppressed and unsuppressed dropout sub-groups.
+  # the stable and unstable dropout sub-groups.
   # If ltfu_new == 0 (no dropout), prevention has nothing to act on.
-  prop_ltfu_supp <- ifelse(
+  prop_ltfu_stable <- ifelse(
     populations$ltfu_new > 0,
-    populations$ltfu_new_suppressed / populations$ltfu_new,
+    populations$ltfu_new_stable / populations$ltfu_new,
     0
   )
-  prop_ltfu_unsupp <- 1 - prop_ltfu_supp
+  prop_ltfu_unstable <- 1 - prop_ltfu_stable
   
-  ltfu_prevented_supp   <- ltfu_prevented * prop_ltfu_supp
-  ltfu_prevented_unsupp <- ltfu_prevented * prop_ltfu_unsupp
+  ltfu_prevented_stable   <- ltfu_prevented * prop_ltfu_stable
+  ltfu_prevented_unstable <- ltfu_prevented * prop_ltfu_unstable
   
-  # Suppression gain from retention: unsuppressed patients who were kept in care
-  # by prevention interventions have improved adherence; a proportion will achieve
-  # viral suppression. Added to additional_suppressed here — BEFORE the
-  # max_additional_suppressed cap — so it is correctly bounded downstream.
+  # Suppression gain from retention: only the unsuppressed portion of retained
+  # unstable patients can generate new suppressions — those already suppressed
+  # are retained but add nothing to additional_suppressed.
+  # Unsuppressed fraction assumed equal to the general on-ART unsuppressed rate.
+  prop_unsuppressed_on_art <- ifelse(
+    populations$on_art > 0,
+    1 - (populations$suppressed / populations$on_art),
+    0
+  )
   additional_suppressed <- additional_suppressed +
-    ltfu_prevented_unsupp * RETENTION_SUPPRESSION_RATE
+    ltfu_prevented_unstable * prop_unsuppressed_on_art * RETENTION_SUPPRESSION_RATE
   
-  # Net incident LTFU after prevention interventions, by suppression status
-  suppressed_ltfu   <- max(0, populations$ltfu_new_suppressed   - ltfu_prevented_supp)
-  unsuppressed_ltfu <- max(0, populations$ltfu_new_unsuppressed - ltfu_prevented_unsupp)
-  ltfu_new_effective <- suppressed_ltfu + unsuppressed_ltfu
+  # Net incident LTFU after prevention interventions, by stability status
+  stable_ltfu    <- max(0, populations$ltfu_new_stable   - ltfu_prevented_stable)
+  unstable_ltfu  <- max(0, populations$ltfu_new_unstable - ltfu_prevented_unstable)
+  ltfu_new_effective <- stable_ltfu + unstable_ltfu
   
   # Full pool available for re-engagement = prevalent stock + net incident LTFU
   total_ltfu_pool <- populations$ltfu + ltfu_new_effective
@@ -1539,7 +1593,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # ltfu_reengaged must be included: they are on ART and some were previously
   # suppressed before dropping out, so the ceiling must account for them.
   max_additional_suppressed <- effective_on_art + art_initiations + ltfu_reengaged -
-    populations$suppressed + suppressed_ltfu
+    populations$suppressed + stable_ltfu
   additional_suppressed <- min(additional_suppressed, max(0, max_additional_suppressed))
   
   # ========================================================================
@@ -1613,7 +1667,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
                                  populations$plhiv)
   end_on_art_pre_mort     <- min(max(effective_on_art + art_initiations + ltfu_reengaged, 0),
                                  end_diagnosed_pre_mort)
-  end_suppressed_pre_mort <- min(max(populations$suppressed - suppressed_ltfu + additional_suppressed, 0),
+  end_suppressed_pre_mort <- min(max(populations$suppressed - stable_ltfu + additional_suppressed, 0),
                                  end_on_art_pre_mort)
   
   # ========================================================================
@@ -1624,9 +1678,16 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   n_diagnosed_not_art  <- max(0, end_diagnosed_pre_mort - end_on_art_pre_mort)
   n_new_initiations    <- min(art_initiations, end_on_art_pre_mort)
   n_established_on_art <- max(0, end_on_art_pre_mort - n_new_initiations)
-  # Suppression attributed to established patients (new initiates counted at new_art rate)
+  # Suppression split: established patients first, then new initiates absorb any remainder.
+  # Previously all suppression was attributed to established patients, causing end_suppressed
+  # to be capped at n_established_on_art even when new initiates also achieved suppression —
+  # producing a disconnect where infections changed (via suppression_delta) but
+  # end_suppressed did not (overflow was silently discarded).
   n_established_supp   <- min(end_suppressed_pre_mort, n_established_on_art)
   n_established_treated<- max(0, n_established_on_art - n_established_supp)
+  # Suppressed new initiates: suppression that could not fit in the established bucket
+  n_new_supp           <- max(0, min(end_suppressed_pre_mort - n_established_supp, n_new_initiations))
+  n_new_treated        <- max(0, n_new_initiations - n_new_supp)
   
   # ========================================================================
   # EFFECTIVE AHD MORTALITY RATES (intervention-adjusted where applicable)
@@ -1686,13 +1747,21 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   remaining_undiagnosed      <- max(0, n_undiagnosed        - deaths_undiagnosed)
   remaining_diagnosed_not_art<- max(0, n_diagnosed_not_art  - deaths_diagnosed_not_art)
-  remaining_new_init         <- max(0, n_new_initiations     - deaths_new_initiations)
-  remaining_est_treated      <- max(0, n_established_treated - deaths_established_treated)
-  remaining_est_supp         <- max(0, n_established_supp    - deaths_established_supp)
+  # New initiates: apply the same mortality rate proportionally to suppressed/treated sub-groups
+  # (both sub-groups use new_art_initiations rate — suppressed new initiates are still early
+  # in treatment and face the same elevated early-ART mortality as unsuppressed ones).
+  new_init_mort_frac     <- if (n_new_initiations > 0)
+    deaths_new_initiations / n_new_initiations else 0
+  remaining_new_supp     <- max(0, round(n_new_supp    * (1 - new_init_mort_frac)))
+  remaining_new_treated  <- max(0, round(n_new_treated * (1 - new_init_mort_frac)))
+  remaining_new_init     <- remaining_new_supp + remaining_new_treated
+  remaining_est_treated  <- max(0, n_established_treated - deaths_established_treated)
+  remaining_est_supp     <- max(0, n_established_supp    - deaths_established_supp)
   
-  end_suppressed <- remaining_est_supp
+  end_suppressed <- remaining_est_supp + remaining_new_supp   # fix: include suppressed new initiates
   end_on_art     <- remaining_est_treated + remaining_est_supp + remaining_new_init
   end_diagnosed  <- remaining_diagnosed_not_art + end_on_art
+  
   end_plhiv      <- max(0, remaining_undiagnosed + end_diagnosed)
   
   # Ensure cascade consistency
@@ -1743,6 +1812,11 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     baseline_interventions = baseline_interventions
   )
   end_new_infections <- foi_result$new_infections
+  
+  # Add new infections into PLHIV — they enter as undiagnosed
+  remaining_undiagnosed <- remaining_undiagnosed + end_new_infections
+  end_plhiv             <- max(0, remaining_undiagnosed + end_diagnosed)
+  
   infections_averted <- foi_result$infections_averted
   
   # Validate calibration — logs warnings but does not stop execution
@@ -1942,8 +2016,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     ltfu_new_effective  = round(ltfu_new_effective),   # net people lost to follow-up
     ltfu_prevented      = round(ltfu_prevented),        # prevented from dropping off by MMD/adherence
     ltfu_reengaged      = round(ltfu_reengaged),        # re-engaged by tracking/tracing
-    suppressed_ltfu     = round(suppressed_ltfu),       # suppressed patients lost (cascade impact)
-    unsuppressed_ltfu   = round(unsuppressed_ltfu),     # unsuppressed patients lost
+    suppressed_ltfu     = round(stable_ltfu),        # stable patients lost (cascade impact)
+    unsuppressed_ltfu   = round(unstable_ltfu),       # unstable patients lost
     
     # Health outcomes (infections/deaths averted)
     adult_infections_averted = round(infections_averted),
@@ -2021,8 +2095,9 @@ calculate_scenario_difference <- function(scenario, baseline) {
     diff_deaths            = scenario$end_deaths            - baseline$end_deaths,
     
     # Infections/deaths averted (relative to baseline)
-    additional_infections_averted = scenario$total_infections_averted - baseline$total_infections_averted,
-    additional_deaths_averted     = scenario$deaths_averted           - baseline$deaths_averted,
+    additional_infections_averted = -((scenario$end_new_infections - baseline$end_new_infections) +
+                                        (scenario$end_infant_infections - baseline$end_infant_infections)),
+    additional_deaths_averted     = -(scenario$end_deaths - baseline$end_deaths),
     
     # Cost differences
     diff_intervention_cost  = scenario$total_intervention_cost - baseline$total_intervention_cost,
