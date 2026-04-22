@@ -769,7 +769,18 @@ define_strata_params <- function(context = NULL) {
   rr_high             <- if (!is.null(context$rr_high))             context$rr_high             else 8.0
   prop_male_general   <- if (!is.null(context$prop_pop_male))       context$prop_pop_male / 100 else 0.50
   circ_prevalence     <- if (!is.null(context$circ_prevalence))     context$circ_prevalence/100     else 0.20
-  vmmc_risk_reduction <- if (!is.null(context$vmmc_risk_reduction)) context$vmmc_risk_reduction else 0.60
+  # VMMC risk reduction: prefer explicit context override, otherwise route
+  # from the VMMC intervention's efficacy field (single source of truth with
+  # the intervention_params Excel sheet). Hard-coded 0.60 is a final fallback.
+  vmmc_risk_reduction <- if (!is.null(context$vmmc_risk_reduction)) {
+    context$vmmc_risk_reduction
+  } else if (exists("intervention_groups") &&
+             !is.null(intervention_groups$prevention$interventions$vmmc$efficacy) &&
+             !is.na(intervention_groups$prevention$interventions$vmmc$efficacy)) {
+    intervention_groups$prevention$interventions$vmmc$efficacy
+  } else {
+    0.60
+  }
   
   list(
     prop_high_risk      = prop_high_risk,
@@ -1777,16 +1788,18 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Prevention loop below is COSTS ONLY — FOI handles all infection impact.
   # ========================================================================
   
-  # suppression_delta = MARGINAL additional suppression above the baseline
-  # treatment programme. At baseline this is zero (the baseline cascade is
-  # already the reference). For scale-up/down scenarios it reflects the net
-  # change above what baseline treatment achieves.
-  # This prevents double-counting: β was calibrated using the observed cascade
-  # state (percent_suppressed), which already reflects the baseline programme.
+  # suppression_delta = MARGINAL change in suppression above the baseline
+  # treatment programme. Positive when a scenario scales suppression above
+  # baseline (reduces infectious pressure); NEGATIVE when a scenario scales
+  # testing/VL/linkage down below baseline (raises infectious pressure and
+  # therefore infections). At baseline this is zero by construction.
+  # β was calibrated using the observed cascade state (percent_suppressed),
+  # which already reflects the baseline programme, so only marginal change
+  # is applied here — preventing double-counting.
   suppression_delta <- if (is_baseline) {
     0
   } else {
-    max(0, additional_suppressed - baseline_additional_suppressed)
+    additional_suppressed - baseline_additional_suppressed   # allow negative
   }
   
   # Pass efficacies from intervention_params into FOI so they stay in sync

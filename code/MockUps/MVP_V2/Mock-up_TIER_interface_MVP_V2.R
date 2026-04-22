@@ -1936,23 +1936,25 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Infections Averted:"),
+          span("Infections:"),
           span(
-            class = ifelse(diff$additional_infections_averted > 0, "text-success",
-                           ifelse(diff$additional_infections_averted < 0, "text-danger", "text-muted")),
+            # diff_new_infections: +ve = more infections (bad, red); -ve = fewer (good, green)
+            class = ifelse(diff$diff_new_infections < 0, "text-success",
+                           ifelse(diff$diff_new_infections > 0, "text-danger", "text-muted")),
             style = "font-weight: bold;",
-            paste0(ifelse(diff$additional_infections_averted > 0, "+", ""),
-                   format(diff$additional_infections_averted, big.mark = ","))
+            paste0(ifelse(diff$diff_new_infections > 0, "+", ""),
+                   format(diff$diff_new_infections, big.mark = ","))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Deaths Averted:"),
+          span("Deaths:"),
           span(
-            class = ifelse(diff$additional_deaths_averted > 0, "text-success",
-                           ifelse(diff$additional_deaths_averted < 0, "text-danger", "text-muted")),
+            # diff_deaths: +ve = more deaths (bad, red); -ve = fewer (good, green)
+            class = ifelse(diff$diff_deaths < 0, "text-success",
+                           ifelse(diff$diff_deaths > 0, "text-danger", "text-muted")),
             style = "font-weight: bold;",
-            paste0(ifelse(diff$additional_deaths_averted > 0, "+", ""),
-                   format(diff$additional_deaths_averted, big.mark = ","))
+            paste0(ifelse(diff$diff_deaths > 0, "+", ""),
+                   format(diff$diff_deaths, big.mark = ","))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
@@ -2004,27 +2006,29 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Infections Averted:"),
+          span("Infections:"),
           span(
-            class = ifelse(diff$additional_infections_averted > 0, "text-success",
-                           ifelse(diff$additional_infections_averted < 0, "text-danger", "text-muted")),
+            # diff_new_infections: +ve = more infections (bad, red); -ve = fewer (good, green)
+            class = ifelse(diff$diff_new_infections < 0, "text-success",
+                           ifelse(diff$diff_new_infections > 0, "text-danger", "text-muted")),
             style = "font-weight: bold;",
-            paste0(ifelse(diff$additional_infections_averted > 0, "+", ""),
-                   format(diff$additional_infections_averted, big.mark = ","))
+            paste0(ifelse(diff$diff_new_infections > 0, "+", ""),
+                   format(diff$diff_new_infections, big.mark = ","))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Deaths Averted:"),
+          span("Deaths:"),
           span(
-            class = ifelse(diff$additional_deaths_averted > 0, "text-success",
-                           ifelse(diff$additional_deaths_averted < 0, "text-danger", "text-muted")),
+            # diff_deaths: +ve = more deaths (bad, red); -ve = fewer (good, green)
+            class = ifelse(diff$diff_deaths < 0, "text-success",
+                           ifelse(diff$diff_deaths > 0, "text-danger", "text-muted")),
             style = "font-weight: bold;",
-            paste0(ifelse(diff$additional_deaths_averted > 0, "+", ""),
-                   format(diff$additional_deaths_averted, big.mark = ","))
+            paste0(ifelse(diff$diff_deaths > 0, "+", ""),
+                   format(diff$diff_deaths, big.mark = ","))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Additional Suppressed:"),
+          span("Change in Suppressed:"),
           span(
             style = paste0("font-weight: bold; color: ",
                            ifelse(diff$diff_suppressed > 0, "green",
