@@ -2167,16 +2167,22 @@ server <- function(input, output, session) {
     diff <- diff_scenario1()
     
     plot_data <- data.frame(
-      Outcome = c("Infections\nAverted", "Deaths\nAverted", "ART\nInitiations"),
-      Value = c(diff$additional_infections_averted, 
-                diff$additional_deaths_averted, 
-                diff$diff_art_initiations),
-      Baseline = c(outcomes_baseline()$total_infections_averted,
-                   outcomes_baseline()$deaths_averted,
+      Outcome = c("Infections", "Deaths", "ART\nInitiations"),
+      Value   = c(diff$diff_new_infections,
+                  diff$diff_deaths,
+                  diff$diff_art_initiations),
+      # is_good = TRUE when the change is favourable (green); FALSE when adverse (red).
+      # Infections/Deaths: fewer is better -> Value < 0 is good.
+      # ART Initiations:   more is better  -> Value > 0 is good.
+      is_good = c(diff$diff_new_infections < 0,
+                  diff$diff_deaths        < 0,
+                  diff$diff_art_initiations >= 0),
+      Baseline = c(outcomes_baseline()$end_new_infections,
+                   outcomes_baseline()$end_deaths,
                    outcomes_baseline()$art_initiations)
     )
     
-    ggplot(plot_data, aes(x = Outcome, y = Value, fill = Value >= 0)) +
+    ggplot(plot_data, aes(x = Outcome, y = Value, fill = is_good)) +
       geom_col(width = 0.7) +
       scale_fill_manual(values = c("TRUE" = "#10b981", "FALSE" = "#ef4444"), guide = "none") +
       scale_y_continuous(labels = comma) +
@@ -2193,16 +2199,22 @@ server <- function(input, output, session) {
     diff <- diff_scenario2()
     
     plot_data <- data.frame(
-      Outcome = c("Infections\nAverted", "Deaths\nAverted", "ART\nInitiations"),
-      Value = c(diff$additional_infections_averted, 
-                diff$additional_deaths_averted, 
-                diff$diff_art_initiations),
-      Baseline = c(outcomes_baseline()$total_infections_averted,
-                   outcomes_baseline()$deaths_averted,
+      Outcome = c("Infections", "Deaths", "ART\nInitiations"),
+      Value   = c(diff$diff_new_infections,
+                  diff$diff_deaths,
+                  diff$diff_art_initiations),
+      # is_good = TRUE when the change is favourable (green); FALSE when adverse (red).
+      # Infections/Deaths: fewer is better -> Value < 0 is good.
+      # ART Initiations:   more is better  -> Value > 0 is good.
+      is_good = c(diff$diff_new_infections < 0,
+                  diff$diff_deaths        < 0,
+                  diff$diff_art_initiations >= 0),
+      Baseline = c(outcomes_baseline()$end_new_infections,
+                   outcomes_baseline()$end_deaths,
                    outcomes_baseline()$art_initiations)
     )
     
-    ggplot(plot_data, aes(x = Outcome, y = Value, fill = Value >= 0)) +
+    ggplot(plot_data, aes(x = Outcome, y = Value, fill = is_good)) +
       geom_col(width = 0.7) +
       scale_fill_manual(values = c("TRUE" = "#10b981", "FALSE" = "#ef4444"), guide = "none") +
       scale_y_continuous(labels = comma) +
