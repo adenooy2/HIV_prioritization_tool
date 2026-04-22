@@ -343,24 +343,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "vl_monitoring_routine")$unit_cost,
           outcomes = c("viral_suppression")
         ),
-        cotrimoxazole = list(
-          name = "Cotrimoxazole prophylaxis (according to guidelines)",
-          type = "coverage",
-          unit_label = "% of new ART initiations",
-          efficacy = subset(intervention_params, intervention_key == "cotrimoxazole")$efficacy,
-          eligible_pop = "new_art_initiations",
-          unit_cost = subset(intervention_params, intervention_key == "cotrimoxazole")$unit_cost,
-          outcomes = c("mortality")
-        ),
-        oi_management = list(
-          name = "OI screening & management",
-          type = "coverage",
-          unit_label = "% of new ART initiations",
-          efficacy = subset(intervention_params, intervention_key == "oi_management")$efficacy,
-          eligible_pop = "new_art_initiations",
-          unit_cost = subset(intervention_params, intervention_key == "oi_management")$unit_cost,
-          outcomes = c("mortality")
-        ),
         mmd_3month = list(
           name = "MMD: 3-month dispensing",
           type = "coverage",
@@ -574,13 +556,12 @@ calculate_populations <- function(context) {
 default_baseline_interventions <- list(
   prep_oral = 5000, prep_lenacapavir = 0, vmmc = 30000,
   condoms = 200000, pep = 2000, infant_prophylaxis = 70,
-  cotrimoxazole = 60,
   test_facility_general = 25000,
   test_network = 3000, test_index = 2000, test_community = 20000,
   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
   eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
   vl_monitoring_routine = 60, 
-  oi_management = 50, mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track =5, community_pickup=5,
+  mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track =5, community_pickup=5,
   adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68, pnc_vl_testing = 0,
   cd4_testing = 92, ahd_package = 88
 )
@@ -626,7 +607,6 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
       default_baseline_interventions <- list(
         prep_oral = 0.01*pops$total, prep_lenacapavir = 0, vmmc = 0.01*pops$uncircumcised_males,
         condoms = 0.6*pops$total, pep = 0.2*pops$recent_exposure, infant_prophylaxis = 70,
-        cotrimoxazole = 60, 
         test_facility_general = round(0.134*pops$adult_pop, -4), 
         test_network = round(0.0024*pops$adult_pop, -4), 
         test_index = round(0.0024*pops$adult_pop, -4), 
@@ -636,7 +616,7 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
         hivst_community = round(0.0035*pops$adult_pop, -4),
         eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
         vl_monitoring_routine = 60, 
-        oi_management = 50, mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track=5, community_pickup =5, 
+        mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track=5, community_pickup =5, 
         adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68, pnc_vl_testing = 0,
         cd4_testing = 92, ahd_package = 88
       )
@@ -706,7 +686,6 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
     condoms = 0.6*custom_pops$total, 
     pep = 0.2*custom_pops$recent_exposure, 
     infant_prophylaxis = 70,
-    cotrimoxazole = 60, 
     test_facility_general = 0.05*custom_pops$adult_pop, 
     test_network = 0.005*custom_pops$adult_pop, 
     test_index = 0.005*custom_pops$adult_pop, 
@@ -718,7 +697,6 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
     anc_hiv_testing = 88, 
     pnc_hiv_testing = 70,
     vl_monitoring_routine = 60, 
-    oi_management = 50, 
     mmd_3month = 40, 
     mmd_6month = 20, 
     mmd_12month = 5,
@@ -1616,7 +1594,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   #   ahd_diagnosed = cd4_tested x prop_ahd$new_initiations
   #   AHD package effect gated by: cd4_coverage x ahd_pkg_coverage x ahd_pkg_efficacy
   #
-  # Cotrimoxazole and OI management apply to all new initiations (no CD4 test required).
   # AHD package applies only to those diagnosed with AHD via CD4 test.
   # ========================================================================
   
@@ -1624,14 +1601,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # Initialise scalars
   cd4_coverage_frac     <- 0   # proportion of new initiates who receive a CD4 test
-  cotrix_eff_reduction  <- 0   # reduces base mortality rate for new initiations
-  oi_eff_reduction      <- 0   # reduces base mortality rate for new initiations
   ahd_pkg_eff_reduction <- 0   # reduces AHD mortality rate, gated by CD4 diagnosis
   
   # Collect intervention values first (need cd4 before ahd_package)
   cd4_value     <- ifelse(is.null(interventions$cd4_testing),    0, interventions$cd4_testing)
-  cotrix_value  <- ifelse(is.null(interventions$cotrimoxazole),  0, interventions$cotrimoxazole)
-  oi_value      <- ifelse(is.null(interventions$oi_management),  0, interventions$oi_management)
   ahd_pkg_value <- ifelse(is.null(interventions$ahd_package),    0, interventions$ahd_package)
   
   # ── CD4 testing ──────────────────────────────────────────────────────────
@@ -1640,22 +1613,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     cd4_coverage_frac <- n_cd4_tested / art_initiations
     cd4_cost          <- n_cd4_tested * all_interventions$cd4_testing$unit_cost
     total_intervention_cost <- total_intervention_cost + cd4_cost
-  }
-  
-  # ── Cotrimoxazole (all new initiations, no CD4 required) ─────────────────
-  if (cotrix_value > 0 && art_initiations > 0) {
-    n_cotrix             <- min(art_initiations * (cotrix_value / 100), art_initiations)
-    cotrix_cov_frac      <- n_cotrix / art_initiations
-    cotrix_eff_reduction <- cotrix_cov_frac * all_interventions$cotrimoxazole$efficacy
-    total_intervention_cost <- total_intervention_cost + n_cotrix * all_interventions$cotrimoxazole$unit_cost
-  }
-  
-  # ── OI management (all new initiations, no CD4 required) ─────────────────
-  if (oi_value > 0 && art_initiations > 0) {
-    n_oi             <- min(art_initiations * (oi_value / 100), art_initiations)
-    oi_cov_frac      <- n_oi / art_initiations
-    oi_eff_reduction <- oi_cov_frac * all_interventions$oi_management$efficacy
-    total_intervention_cost <- total_intervention_cost + n_oi * all_interventions$oi_management$unit_cost
   }
   
   # ── AHD package (only those diagnosed with AHD via CD4 test) ─────────────
@@ -1710,10 +1667,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   eff_base_rate_untreated <- MORTALITY_RATES$untreated_undiagnosed
   eff_ahd_rate_untreated  <- MORTALITY_RATES$ahd
   
-  # New initiations: cotrimoxazole + OI management reduce the base rate
-  #                  AHD package reduces the AHD rate
-  eff_base_rate_new_init <- MORTALITY_RATES$new_art_initiations *
-    (1 - cotrix_eff_reduction) * (1 - oi_eff_reduction)
+  # New initiations: AHD package reduces the AHD rate; base rate is unchanged
+  eff_base_rate_new_init <- MORTALITY_RATES$new_art_initiations
   eff_ahd_rate_new_init  <- MORTALITY_RATES$ahd *
     (1 - ahd_pkg_eff_reduction)
   
