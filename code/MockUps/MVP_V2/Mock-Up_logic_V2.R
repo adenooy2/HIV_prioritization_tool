@@ -70,11 +70,24 @@ MORTALITY_RATES <- list(
 ANNUAL_LTFU_RATE_STABLE   <- 0.136  # 13.6% of stable on-ART patients become LTFU per year
 ANNUAL_LTFU_RATE_UNSTABLE <- 0.223  # 22.3% of unstable on-ART patients become LTFU per year
 
+# ============================================================================
+# SPONTANEOUS RE-ENGAGEMENT RATE (###UPDATE based on literature)
+# Annual proportion of the LTFU pool that returns to care without any explicit
+# tracking/tracing intervention. Captures silent transfers (patients classified
+# as LTFU at one facility but receiving care elsewhere) and self-initiated
+# re-engagement. Literature suggests ~12-15% of those classified as LTFU are
+# silent transfers (Chammartin et al. 2018, Tiendrebeogo et al. 2021), plus
+# additional self-initiated return documented in Zambian tracing cohorts
+# (Beres et al. 2020). A conservative 15% annual return rate is used.
+# ============================================================================
+ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE <- 0.15
+
+
 # Proportion of *retained* unsuppressed patients who achieve viral suppression
 # as a direct result of the improved adherence that prevented their dropout.
 # i.e. the intervention both keeps them in care AND improves their adherence enough
 # to suppress. ###UPDATE based on literature
-RETENTION_SUPPRESSION_RATE <- 0.30
+RETENTION_SUPPRESSION_RATE <- 0.4
 
 # ============================================================================
 # MTCT RATES BY MATERNAL ART/SUPPRESSION STATUS (###UPDATE based on literature)
@@ -1549,6 +1562,18 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   ltfu_reengaged <- min(ltfu_reengaged,
                         max(0, total_ltfu_pool * 0.95 - re_engagement_testing))
+  
+  # ── SPONTANEOUS RE-ENGAGEMENT ────────────────────────────────────────────
+  # Background return to care (silent transfers + self-initiated return),
+  # drawn from whatever remains of the LTFU pool after testing re-engagement
+  # and active tracking/tracing have taken their share. This is why LTFU
+  # rates in the literature overstate NET attrition: a meaningful share of
+  # "lost" patients return on their own. Keeping this separate (rather than
+  # discounting the LTFU rates) preserves the epidemiological distinction
+  # and lets tracking/tracing act additively on top of the baseline flow.
+  remaining_ltfu_pool <- max(0, total_ltfu_pool * 0.95 - re_engagement_testing - ltfu_reengaged)
+  spontaneous_reengaged <- remaining_ltfu_pool * ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE
+  ltfu_reengaged <- ltfu_reengaged + spontaneous_reengaged
   
   # Suppression gain from re-engaged patients (tracking/tracing).
   # Re-engaged patients return to ART; those who were previously suppressed
