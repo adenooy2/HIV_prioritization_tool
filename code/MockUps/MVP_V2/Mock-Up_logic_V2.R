@@ -26,21 +26,6 @@ library(readxl)
 # MORTALITY RATES BY CASCADE STAGE (UPDATE THESE BASED ON LITERATURE)
 # ============================================================================
 MORTALITY_RATES <- list(
-  untreated_undiagnosed = 0.10,  # undiagnosed PLHIV + diagnosed not on ART
-  new_art_initiations   = 0.06,  # first year on ART (pre-stabilisation)
-  treated               = 0.008, # established on ART, not virally suppressed
-  suppressed            = 0.003, # established on ART, virally suppressed
-  ahd                   = 0.20,  # advanced HIV disease (CD4 < 200), any stage
-  prop_ahd = list(
-    undiagnosed        = 0.20,   # undiagnosed PLHIV
-    diagnosed_not_art  = 0.20,   # diagnosed but not on ART
-    new_initiations    = 0.20,   # first year on ART
-    established_treated= 0.00,   # established on ART, not suppressed
-    established_supp   = 0.00    # established on ART, suppressed
-  )
-)
-
-MORTALITY_RATES <- list(
   untreated_undiagnosed = 0.06,  # undiagnosed PLHIV + diagnosed not on ART
   new_art_initiations   = 0.03,  # first year on ART (pre-stabilisation)
   treated               = 0.008, # established on ART, not virally suppressed
@@ -1247,7 +1232,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   }
   
   # ── VOLUME DILUTION: order-independent two-pass approach ─────────────────
-  # When total planned tests exceed 150% of prior-year volume, positivity
+  # When total planned tests exceed 100% of prior-year volume, positivity
   # drops because the easy-to-find positives are exhausted. Rather than
   # penalising whichever modalities happen to be processed last in the loop,
   # we compute a single global dilution factor from total planned volume and
@@ -1263,7 +1248,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # If prior_year_tests is not supplied, threshold = Inf and factor = 1.0.
   # ─────────────────────────────────────────────────────────────────────────
   volume_threshold <- if (!is.null(context$prior_year_tests) && !is.na(context$prior_year_tests))
-    context$prior_year_tests * 1.5 else Inf
+    context$prior_year_tests * 1 else Inf
   
   # Index testing: exempt from yield dilution (targeted contacts remain high-yield
   # regardless of total programme volume) but capped at 2x prior-year new infections

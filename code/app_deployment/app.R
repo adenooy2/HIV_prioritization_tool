@@ -1744,6 +1744,11 @@ server <- function(input, output, session) {
           span(strong("New LTFU:")),
           span(style = "font-size: 1.3em; font-weight: bold;",
                format(outcomes$ltfu_new_effective, big.mark = ","))
+      ),
+      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
+          span(strong("Re-engaged in care:")),
+          span(style = "font-size: 1.3em; font-weight: bold;",
+               format(outcomes$ltfu_reengaged, big.mark = ","))
       )
     )
   })
@@ -1812,6 +1817,21 @@ server <- function(input, output, session) {
                  paste0("(", ifelse(diff$diff_ltfu_new_effective > 0, "+", ""),
                         format(diff$diff_ltfu_new_effective, big.mark = ","), ")"))
           )
+      ),
+      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
+          span(strong("Re-engaged in care:")),
+          span(
+            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
+                                ifelse(diff$diff_ltfu_reengaged > 0, "green",
+                                       ifelse(diff$diff_ltfu_reengaged < 0, "red", "gray")), ";"),
+                 format(outcomes$ltfu_reengaged, big.mark = ",")),
+            br(),
+            span(style = paste0("font-size: 0.9em; color: ",
+                                ifelse(diff$diff_ltfu_reengaged > 0, "green",
+                                       ifelse(diff$diff_ltfu_reengaged < 0, "red", "gray")), ";"),
+                 paste0("(", ifelse(diff$diff_ltfu_reengaged > 0, "+", ""),
+                        format(diff$diff_ltfu_reengaged, big.mark = ","), ")"))
+          )
       )
     )
   })
@@ -1879,6 +1899,21 @@ server <- function(input, output, session) {
                                        ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
                  paste0("(", ifelse(diff$diff_ltfu_new_effective > 0, "+", ""),
                         format(diff$diff_ltfu_new_effective, big.mark = ","), ")"))
+          )
+      ),
+      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
+          span(strong("Re-engaged in care:")),
+          span(
+            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
+                                ifelse(diff$diff_ltfu_reengaged > 0, "green",
+                                       ifelse(diff$diff_ltfu_reengaged < 0, "red", "gray")), ";"),
+                 format(outcomes$ltfu_reengaged, big.mark = ",")),
+            br(),
+            span(style = paste0("font-size: 0.9em; color: ",
+                                ifelse(diff$diff_ltfu_reengaged > 0, "green",
+                                       ifelse(diff$diff_ltfu_reengaged < 0, "red", "gray")), ";"),
+                 paste0("(", ifelse(diff$diff_ltfu_reengaged > 0, "+", ""),
+                        format(diff$diff_ltfu_reengaged, big.mark = ","), ")"))
           )
       )
     )
