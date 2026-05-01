@@ -222,6 +222,15 @@ enroll_data_latest=enroll_data %>% filter(is.na(cd4_enroll_perc)==FALSE) %>% gro
 
 enroll_data_latest$ahd=round(enroll_data_latest$cd4_enr_0_200/enroll_data_latest$cd4_enroll_n,2)
 
+##############DSD Assumptions
+
+baseline_data$mmd_3month=30
+baseline_data$mmd_6month=60
+baseline_data$mmd_12month=0
+baseline_data$fast_track=5
+baseline_data$community_pickup=5
+
+
 ######
 write.csv(baseline_data,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/baseline_testing.csv")
 

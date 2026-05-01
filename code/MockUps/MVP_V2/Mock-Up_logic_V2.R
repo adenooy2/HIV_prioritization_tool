@@ -146,6 +146,28 @@ load_intervention_params <- function(){
 }
 
 # ============================================================================
+# LOAD MODEL PARAMETERS FROM EXCEL
+# Reads the flat key/value sheet 'params_for_loading' and returns a named list.
+# Falls back to hardcoded defaults if the download fails.
+# ============================================================================
+load_hiv_model_params <- function() {
+  sharepoint_url_params <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
+  
+    temp_file_params <- tempfile(fileext = ".xlsx")
+    download.file(sharepoint_url_params, temp_file_params,
+                  mode = "wb", method = "libcurl")
+    df <- read_excel(temp_file_params, sheet = "general_values")
+    out <- as.list(setNames(as.numeric(df$value), df$key))
+    out[!is.na(names(out)) & nzchar(names(out))]
+ 
+  
+}
+
+# Global parameter store — loaded once at app startup
+hiv_params <- load_hiv_model_params()
+
+
+# ============================================================================
 # BUILD INTERVENTION GROUPS
 # ============================================================================
 build_intervention_groups <- function(intervention_params){
