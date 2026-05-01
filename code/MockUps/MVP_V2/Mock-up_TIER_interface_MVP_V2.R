@@ -1950,16 +1950,6 @@ server <- function(input, output, session) {
                    format(diff$diff_tests_performed, big.mark = ","))
           )
       ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("New Diagnoses:"),
-          span(
-            style = paste0("font-weight: bold; color: ",
-                           ifelse(diff$diff_new_diagnoses > 0, "green",
-                                  ifelse(diff$diff_new_diagnoses < 0, "red", "gray")), ";"),
-            paste0(ifelse(diff$diff_new_diagnoses > 0, "+", ""),
-                   format(diff$diff_new_diagnoses, big.mark = ","))
-          )
-      ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
           strong("ART Initiations:"),
           strong(
@@ -2018,16 +2008,6 @@ server <- function(input, output, session) {
                                   ifelse(diff$diff_tests_performed < 0, "orange", "gray")), ";"),
             paste0(ifelse(diff$diff_tests_performed > 0, "+", ""),
                    format(diff$diff_tests_performed, big.mark = ","))
-          )
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("New Diagnoses:"),
-          span(
-            style = paste0("font-weight: bold; color: ",
-                           ifelse(diff$diff_new_diagnoses > 0, "green",
-                                  ifelse(diff$diff_new_diagnoses < 0, "red", "gray")), ";"),
-            paste0(ifelse(diff$diff_new_diagnoses > 0, "+", ""),
-                   format(diff$diff_new_diagnoses, big.mark = ","))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
