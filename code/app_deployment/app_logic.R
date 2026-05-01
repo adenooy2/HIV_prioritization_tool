@@ -26,21 +26,6 @@ library(readxl)
 # MORTALITY RATES BY CASCADE STAGE (UPDATE THESE BASED ON LITERATURE)
 # ============================================================================
 MORTALITY_RATES <- list(
-  untreated_undiagnosed = 0.10,  # undiagnosed PLHIV + diagnosed not on ART
-  new_art_initiations   = 0.06,  # first year on ART (pre-stabilisation)
-  treated               = 0.008, # established on ART, not virally suppressed
-  suppressed            = 0.003, # established on ART, virally suppressed
-  ahd                   = 0.20,  # advanced HIV disease (CD4 < 200), any stage
-  prop_ahd = list(
-    undiagnosed        = 0.20,   # undiagnosed PLHIV
-    diagnosed_not_art  = 0.20,   # diagnosed but not on ART
-    new_initiations    = 0.20,   # first year on ART
-    established_treated= 0.00,   # established on ART, not suppressed
-    established_supp   = 0.00    # established on ART, suppressed
-  )
-)
-
-MORTALITY_RATES <- list(
   untreated_undiagnosed = 0.06,  # undiagnosed PLHIV + diagnosed not on ART
   new_art_initiations   = 0.03,  # first year on ART (pre-stabilisation)
   treated               = 0.008, # established on ART, not virally suppressed
@@ -130,7 +115,7 @@ country_data_csv <- content(response, as = "parsed", type = "text/csv")
 
 # Load country-level baseline intervention volumes
 # Replace the URL below with the actual share link for the baseline CSV
-baseline_response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=F1zj9T&download=1")
+baseline_response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=96oyQi&download=1")
 baseline_data_csv <- content(baseline_response, as = "parsed", type = "text/csv") 
 
 
@@ -159,6 +144,28 @@ load_intervention_params <- function(){
   
   return(intervention_params)
 }
+
+# ============================================================================
+# LOAD MODEL PARAMETERS FROM EXCEL
+# Reads the flat key/value sheet 'params_for_loading' and returns a named list.
+# Falls back to hardcoded defaults if the download fails.
+# ============================================================================
+load_hiv_model_params <- function() {
+  sharepoint_url_params <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
+  
+  temp_file_params <- tempfile(fileext = ".xlsx")
+  download.file(sharepoint_url_params, temp_file_params,
+                mode = "wb", method = "libcurl")
+  df <- read_excel(temp_file_params, sheet = "general_values")
+  out <- as.list(setNames(as.numeric(df$value), df$key))
+  out[!is.na(names(out)) & nzchar(names(out))]
+  
+  
+}
+
+# Global parameter store — loaded once at app startup
+hiv_params <- load_hiv_model_params()
+
 
 # ============================================================================
 # BUILD INTERVENTION GROUPS
@@ -1247,7 +1254,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   }
   
   # ── VOLUME DILUTION: order-independent two-pass approach ─────────────────
-  # When total planned tests exceed 150% of prior-year volume, positivity
+  # When total planned tests exceed 100% of prior-year volume, positivity
   # drops because the easy-to-find positives are exhausted. Rather than
   # penalising whichever modalities happen to be processed last in the loop,
   # we compute a single global dilution factor from total planned volume and
@@ -1263,7 +1270,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # If prior_year_tests is not supplied, threshold = Inf and factor = 1.0.
   # ─────────────────────────────────────────────────────────────────────────
   volume_threshold <- if (!is.null(context$prior_year_tests) && !is.na(context$prior_year_tests))
-    context$prior_year_tests * 1.5 else Inf
+    context$prior_year_tests * 1 else Inf
   
   # Index testing: exempt from yield dilution (targeted contacts remain high-yield
   # regardless of total programme volume) but capped at 2x prior-year new infections
@@ -1554,27 +1561,34 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Full pool available for re-engagement = prevalent stock + net incident LTFU
   total_ltfu_pool <- populations$ltfu + ltfu_new_effective
   
-  # Testing re-engagement draws from the full pool first;
-  # tracking/tracing takes from whatever remains (up to 95% total)
-  re_engagement_testing <- min(re_engagement_testing, total_ltfu_pool * 0.95)
+  # ── SPONTANEOUS RE-ENGAGEMENT (computed FIRST) ───────────────────────────
+  # Background return to care (silent transfers + self-initiated return) is
+  # an epidemiological flow that occurs regardless of programmatic activity
+  # — literature suggests ~12-15% of those classified as LTFU are silent
+  # transfers (Chammartin et al. 2018, Tiendrebeogo et al. 2021) plus
+  # self-initiated returners (Beres et al. 2020). It must therefore be
+  # computed against the GROSS pool, not against whatever remains after
+  # testing/tracking have drawn down. Otherwise, scaling testing down
+  # mechanically inflates spontaneous re-engagement, producing the perverse
+  # result that less testing → more people re-engaged.
+  spontaneous_reengaged <- total_ltfu_pool * ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE
+  
+  # Programmatic re-engagement (testing + tracking/tracing) competes for the
+  # remainder of the 95% cap, after spontaneous returns are reserved.
+  programmatic_cap <- max(0, total_ltfu_pool * 0.95 - spontaneous_reengaged)
+  
+  # Testing re-engagement draws from the programmatic share first;
+  # tracking/tracing takes from whatever remains.
+  re_engagement_testing <- min(re_engagement_testing, programmatic_cap)
   re_engagement         <- re_engagement_testing
   positive_tests        <- new_diagnoses + re_engagement_testing
   
   ltfu_reengaged <- min(ltfu_reengaged,
-                        max(0, total_ltfu_pool * 0.95 - re_engagement_testing))
+                        max(0, programmatic_cap - re_engagement_testing))
   
-  # ── SPONTANEOUS RE-ENGAGEMENT ────────────────────────────────────────────
-  # Background return to care (silent transfers + self-initiated return),
-  # drawn from whatever remains of the LTFU pool after testing re-engagement
-  # and active tracking/tracing have taken their share. This is why LTFU
-  # rates in the literature overstate NET attrition: a meaningful share of
-  # "lost" patients return on their own. Keeping this separate (rather than
-  # discounting the LTFU rates) preserves the epidemiological distinction
-  # and lets tracking/tracing act additively on top of the baseline flow.
-  remaining_ltfu_pool <- max(0, total_ltfu_pool * 0.95 - re_engagement_testing - ltfu_reengaged)
-  spontaneous_reengaged <- remaining_ltfu_pool * ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE
+  # Spontaneous returns are folded into ltfu_reengaged for downstream cascade
+  # accounting (they re-enter on_art the same way tracking/tracing returnees do).
   ltfu_reengaged <- ltfu_reengaged + spontaneous_reengaged
-  
   # Suppression gain from re-engaged patients (tracking/tracing).
   # Re-engaged patients return to ART; those who were previously suppressed
   # are assumed to re-achieve suppression at 80% of the background rate
