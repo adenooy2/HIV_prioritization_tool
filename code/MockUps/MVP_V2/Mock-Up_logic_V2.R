@@ -1561,27 +1561,34 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Full pool available for re-engagement = prevalent stock + net incident LTFU
   total_ltfu_pool <- populations$ltfu + ltfu_new_effective
   
-  # Testing re-engagement draws from the full pool first;
-  # tracking/tracing takes from whatever remains (up to 95% total)
-  re_engagement_testing <- min(re_engagement_testing, total_ltfu_pool * 0.95)
+  # ── SPONTANEOUS RE-ENGAGEMENT (computed FIRST) ───────────────────────────
+  # Background return to care (silent transfers + self-initiated return) is
+  # an epidemiological flow that occurs regardless of programmatic activity
+  # — literature suggests ~12-15% of those classified as LTFU are silent
+  # transfers (Chammartin et al. 2018, Tiendrebeogo et al. 2021) plus
+  # self-initiated returners (Beres et al. 2020). It must therefore be
+  # computed against the GROSS pool, not against whatever remains after
+  # testing/tracking have drawn down. Otherwise, scaling testing down
+  # mechanically inflates spontaneous re-engagement, producing the perverse
+  # result that less testing → more people re-engaged.
+  spontaneous_reengaged <- total_ltfu_pool * ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE
+  
+  # Programmatic re-engagement (testing + tracking/tracing) competes for the
+  # remainder of the 95% cap, after spontaneous returns are reserved.
+  programmatic_cap <- max(0, total_ltfu_pool * 0.95 - spontaneous_reengaged)
+  
+  # Testing re-engagement draws from the programmatic share first;
+  # tracking/tracing takes from whatever remains.
+  re_engagement_testing <- min(re_engagement_testing, programmatic_cap)
   re_engagement         <- re_engagement_testing
   positive_tests        <- new_diagnoses + re_engagement_testing
   
   ltfu_reengaged <- min(ltfu_reengaged,
-                        max(0, total_ltfu_pool * 0.95 - re_engagement_testing))
+                        max(0, programmatic_cap - re_engagement_testing))
   
-  # ── SPONTANEOUS RE-ENGAGEMENT ────────────────────────────────────────────
-  # Background return to care (silent transfers + self-initiated return),
-  # drawn from whatever remains of the LTFU pool after testing re-engagement
-  # and active tracking/tracing have taken their share. This is why LTFU
-  # rates in the literature overstate NET attrition: a meaningful share of
-  # "lost" patients return on their own. Keeping this separate (rather than
-  # discounting the LTFU rates) preserves the epidemiological distinction
-  # and lets tracking/tracing act additively on top of the baseline flow.
-  remaining_ltfu_pool <- max(0, total_ltfu_pool * 0.95 - re_engagement_testing - ltfu_reengaged)
-  spontaneous_reengaged <- remaining_ltfu_pool * ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE
+  # Spontaneous returns are folded into ltfu_reengaged for downstream cascade
+  # accounting (they re-enter on_art the same way tracking/tracing returnees do).
   ltfu_reengaged <- ltfu_reengaged + spontaneous_reengaged
-  
   # Suppression gain from re-engaged patients (tracking/tracing).
   # Re-engaged patients return to ART; those who were previously suppressed
   # are assumed to re-achieve suppression at 80% of the background rate
