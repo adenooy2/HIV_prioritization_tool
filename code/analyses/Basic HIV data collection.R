@@ -56,7 +56,7 @@ pop_data=pop_data %>% select(Area=country,Area.ID=iso3c,population=SP.POP.TOTL,p
 ###BAsic data
 
 basic_data=est_data %>% 
-  filter(label %in% c("PLHIV_KNOWLEDGE_OF_STATUS_All ages estimate","PERCENT_KNOW_STATUS_ON_ART_All ages estimate",
+  filter(label %in% c("PLWH_All ages estimate","PLHIV_KNOWLEDGE_OF_STATUS_All ages estimate","PERCENT_KNOW_STATUS_ON_ART_All ages estimate",
                       "PERCENT_ON_ART_VL_SUPPRESSED_All ages estimate","HIV_PREVALENCE_Adults (15+) estimate","NEW_INFECTIONS_All ages estimate","AIDS_DEATHS_All ages estimate"))%>% 
   select(Area,Area.ID,Indicator_GId,Time.Period,Data.value) %>% 
   group_by(Area,Indicator_GId) %>% 
@@ -71,10 +71,10 @@ basic_data$diagnoses=(basic_data$PLHIV_KNOWLEDGE_OF_STATUS/100)*basic_data$NEW_I
 
 basic_data=basic_data%>% 
   rename(country=Area.x,total_population=population,hiv_prevalence=`HIV_PREVALENCE`,new_infections_per_year=`NEW_INFECTIONS`,
-         current_diagnoses=  `diagnoses`,percent_on_art=`PERCENT_KNOW_STATUS_ON_ART`,percent_suppressed=`PERCENT_ON_ART_VL_SUPPRESSED`,percent_diagnosed=PLHIV_KNOWLEDGE_OF_STATUS,
+         current_diagnoses=  `diagnoses`,plhiv=PLWH, percent_on_art=`PERCENT_KNOW_STATUS_ON_ART`,percent_suppressed=`PERCENT_ON_ART_VL_SUPPRESSED`,percent_diagnosed=PLHIV_KNOWLEDGE_OF_STATUS,
          aids_deaths_per_year=`AIDS_DEATHS`) %>% 
   select("country", "total_population", "hiv_prevalence", 
-         "new_infections_per_year", "current_diagnoses", "percent_diagnosed",
+         "new_infections_per_year", "current_diagnoses", "percent_diagnosed","plhiv",
          "percent_on_art", "percent_suppressed", "aids_deaths_per_year","prop_male","prop_under14","birth_rate")
 
 basic_data$hiv_prevalence=round(basic_data$hiv_prevalence,1)

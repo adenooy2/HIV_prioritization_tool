@@ -210,6 +210,9 @@ server <- function(input, output, session) {
     prop_pop_under_14 = NULL
   )
   
+  # Store CSV-provided PLHIV value (NULL = not set, fall back to derived)
+  plhiv_from_csv <- reactiveVal(NULL)        
+  
   # Load regional preset when selected
   observeEvent(input$region, {
     preset <- regional_presets[[input$region]]
@@ -227,13 +230,23 @@ server <- function(input, output, session) {
     
     original_population(preset$context$total_population)
     original_baseline(preset$baseline)
+    plhiv_from_csv(preset$context$plhiv)
   }, ignoreInit = FALSE)
   
   # Reactive context
   context <- reactive({
+    
+    # Use CSV plhiv when available; fall back to derived for safety
+    plhiv_val <- if (!is.null(plhiv_from_csv()) && !is.na(plhiv_from_csv())) {
+      plhiv_from_csv()
+    } else {
+      input$total_pop * (input$prevalence / 100)
+    }
+    
     list(
       total_population = input$total_pop,
       hiv_prevalence = input$prevalence / 100,
+      plhiv = plhiv_val,
       new_infections_per_year = input$new_infections,
       percent_on_art = input$pct_on_art,
       percent_suppressed = input$pct_suppressed,

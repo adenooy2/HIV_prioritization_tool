@@ -26,12 +26,12 @@ library(readxl)
 # MORTALITY RATES BY CASCADE STAGE (UPDATE THESE BASED ON LITERATURE)
 # ============================================================================
 MORTALITY_RATES <- list(
-  untreated_undiagnosed = 0.06,  # undiagnosed PLHIV + diagnosed not on ART
+  untreated_undiagnosed = 0.012,  # undiagnosed PLHIV + diagnosed not on ART - assume still realatively high cd4
   new_art_initiations   = 0.03,  # first year on ART (pre-stabilisation)
   treated               = 0.008, # established on ART, not virally suppressed
   suppressed            = 0.005, # established on ART, virally suppressed
-  ahd_untreated         = 0.25,  # AHD (CD4<200) among undiagnosed / diagnosed not on ART
-  ahd_treated           = 0.10,  # AHD (CD4<200) among those on ART (new init or established)
+  ahd_untreated         = 0.2,  # AHD (CD4<200) among undiagnosed / diagnosed not on ART
+  ahd_treated           = 0.08,  # AHD (CD4<200) among those on ART (new init or established)
   prop_ahd = list(
     undiagnosed        = 0.20,
     diagnosed_not_art  = 0.20,
@@ -490,7 +490,7 @@ build_intervention_groups <- function(intervention_params){
 # ============================================================================
 calculate_populations <- function(context) {
   
-  plhiv <- context$total_population * context$hiv_prevalence
+  plhiv <- context$plhiv
   diagnosed <- plhiv * (context$percent_diagnosed/100)
   on_art <- diagnosed * (context$percent_on_art / 100)
   suppressed <- on_art * (context$percent_suppressed / 100)
@@ -524,7 +524,7 @@ calculate_populations <- function(context) {
   list(
     total = context$total_population,
     adult_pop = context$total_population * (1 - prop_under14/100),
-    plhiv = plhiv,
+    plhiv = context$plhiv,
     hiv_negative = hiv_negative,
     sexually_active = sexually_active,
     undiagnosed = plhiv - diagnosed,
@@ -604,6 +604,7 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
         hiv_prevalence = row$hiv_prevalence / 100,
         new_infections_per_year = row$new_infections_per_year,
         current_diagnoses = row$current_diagnoses,
+        plhiv=row$plhiv,
         percent_diagnosed = row$percent_diagnosed,
         percent_on_art = row$percent_on_art,
         percent_suppressed = row$percent_suppressed,
@@ -689,6 +690,7 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
   custom_context <- list(
     total_population = 1000000,
     hiv_prevalence = 0.05,
+    plhiv = NULL,
     percent_diagnosed = 80,
     percent_on_art = 75,
     percent_suppressed = 85,
