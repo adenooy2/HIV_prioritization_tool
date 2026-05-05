@@ -30,20 +30,22 @@ MORTALITY_RATES <- list(
   new_art_initiations   = 0.03,  # first year on ART (pre-stabilisation)
   treated               = 0.008, # established on ART, not virally suppressed
   suppressed            = 0.005, # established on ART, virally suppressed
-  ahd                   = 0.15,  # advanced HIV disease (CD4 < 200), any stage
+  ahd_untreated         = 0.25,  # AHD (CD4<200) among undiagnosed / diagnosed not on ART
+  ahd_treated           = 0.10,  # AHD (CD4<200) among those on ART (new init or established)
   prop_ahd = list(
-    undiagnosed        = 0.20,   # undiagnosed PLHIV
-    diagnosed_not_art  = 0.20,   # diagnosed but not on ART
-    new_initiations    = 0.20,   # first year on ART
-    established_treated= 0.00,   # established on ART, not suppressed
-    established_supp   = 0.00    # established on ART, suppressed
+    undiagnosed        = 0.20,
+    diagnosed_not_art  = 0.20,
+    new_initiations    = 0.20,
+    established_treated= 0.00,
+    established_supp   = 0.00
   )
 )
 
 
 # ============================================================================
 # LTFU RATES BY STABILITY STATUS (UPDATE THESE BASED ON LITERATURE)
-# Stable patients (on_art_stable = 85% of on_art): established, clinically stable,
+# Stable patients: established, clinically stable,assume 10% less than virally suppressed
+
 #   DSD-eligible — lower dropout. Rate calibrated from 3MMD conventional care
 #   retention (86.4%) in Matsimela et al. 2024: 1 - 0.864 = 13.6%.
 # Unstable patients (remaining 15% of on_art): treatment-struggling, side effects,
@@ -514,8 +516,8 @@ calculate_populations <- function(context) {
   # Stable patients (on_art × 0.85): DSD-eligible, lower dropout risk.
   # Unstable patients (on_art × 0.15): not DSD-eligible, higher dropout risk.
   # New initiates excluded — their dropout is captured upstream via linkage rates.
-  on_art_stable_n   <- on_art * 0.85
-  on_art_unstable_n <- on_art * 0.15
+  on_art_stable_n   <- on_art * ((context$percent_suppressed+hiv_params$prop_on_art_stable_diff) / 100)
+  on_art_unstable_n <- on_art-on_art_stable_n
   ltfu_new_stable   <- on_art_stable_n   * ANNUAL_LTFU_RATE_STABLE
   ltfu_new_unstable <- on_art_unstable_n * ANNUAL_LTFU_RATE_UNSTABLE
   
@@ -1699,20 +1701,18 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # ========================================================================
   # EFFECTIVE AHD MORTALITY RATES (intervention-adjusted where applicable)
   # ========================================================================
-  
   prop_ahd <- MORTALITY_RATES$prop_ahd
-  
-  # Untreated groups: no interventions reach them
+  # Untreated groups: no interventions reach them; use untreated AHD rate
   eff_base_rate_untreated <- MORTALITY_RATES$untreated_undiagnosed
-  eff_ahd_rate_untreated  <- MORTALITY_RATES$ahd
+  eff_ahd_rate_untreated  <- MORTALITY_RATES$ahd_untreated
   
-  # New initiations: AHD package reduces the AHD rate; base rate is unchanged
+  # New initiations: use treated AHD rate; AHD package reduces it; base rate unchanged
   eff_base_rate_new_init <- MORTALITY_RATES$new_art_initiations
-  eff_ahd_rate_new_init  <- MORTALITY_RATES$ahd *
+  eff_ahd_rate_new_init  <- MORTALITY_RATES$ahd_treated *
     (1 - ahd_pkg_eff_reduction)
   
-  # Established on ART: AHD package reduces the AHD rate only; base rates unchanged
-  eff_ahd_rate_established <- MORTALITY_RATES$ahd *
+  # Established on ART: use treated AHD rate; AHD package reduces it; base rates unchanged
+  eff_ahd_rate_established <- MORTALITY_RATES$ahd_treated *
     (1 - ahd_pkg_eff_reduction)
   
   # ========================================================================
@@ -1737,9 +1737,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Deaths averted = difference between unadjusted (no interventions) and adjusted deaths
   # Only on-treatment groups are affected by interventions
   unadjusted_deaths_on_treatment <-
-    calc_deaths(n_new_initiations,     MORTALITY_RATES$new_art_initiations, MORTALITY_RATES$ahd, prop_ahd$new_initiations) +
-    calc_deaths(n_established_treated, MORTALITY_RATES$treated,             MORTALITY_RATES$ahd, prop_ahd$established_treated) +
-    calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed,          MORTALITY_RATES$ahd, prop_ahd$established_supp)
+    calc_deaths(n_new_initiations,     MORTALITY_RATES$new_art_initiations, MORTALITY_RATES$ahd_treated, prop_ahd$new_initiations) +
+    calc_deaths(n_established_treated, MORTALITY_RATES$treated,             MORTALITY_RATES$ahd_treated, prop_ahd$established_treated) +
+    calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed,          MORTALITY_RATES$ahd_treated, prop_ahd$established_supp)
   
   adjusted_deaths_on_treatment <- deaths_new_initiations + deaths_established_treated + deaths_established_supp
   
