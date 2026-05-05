@@ -23,21 +23,84 @@ library(readxl)
 `%||%` <- function(a, b) if (!is.null(a) && !is.na(a)) a else b
 
 # ============================================================================
+# LOAD DATA
+# ============================================================================
+# Load country data
+response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQBCFFlfF2AaRLcGuaCvNAcJAbE-8Ak2_gDyNJnL0GQu8Ag?e=k5dAU1&download=1")
+country_data_csv <- content(response, as = "parsed", type = "text/csv")
+
+# Load country-level baseline intervention volumes
+# Replace the URL below with the actual share link for the baseline CSV
+baseline_response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=96oyQi&download=1")
+baseline_data_csv <- content(baseline_response, as = "parsed", type = "text/csv") 
+
+
+# Load intervention parameters from Excel
+load_intervention_params <- function(){
+  sharepoint_url_interventions <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
+  
+  temp_file_int <- tempfile(fileext = ".xlsx")
+  download.file(sharepoint_url_interventions, temp_file_int, mode = "wb", method = "libcurl")
+  
+  intervention_params <- read_excel(temp_file_int, col_names = FALSE)
+  
+  colnames(intervention_params) <- as.character(intervention_params[2, ])
+  intervention_params <- intervention_params[-1, ]
+  intervention_params <- intervention_params[-1, ]
+  
+  intervention_params <- intervention_params %>% 
+    select(category, intervention, intervention_key, parameter_type, current_value) %>% 
+    spread(parameter_type, current_value)
+  
+  intervention_params$efficacy <- as.numeric(intervention_params$efficacy)
+  intervention_params$unit_cost <- as.numeric(intervention_params$unit_cost)
+  intervention_params$linkage_cost <- as.numeric(intervention_params$linkage_cost)
+  intervention_params$linkage_rate <- as.numeric(intervention_params$linkage_rate)
+  #intervention_params$multiplier <- as.numeric(intervention_params$multiplier)
+  
+  return(intervention_params)
+}
+
+# ============================================================================
+# LOAD MODEL PARAMETERS FROM EXCEL
+# Reads the flat key/value sheet 'params_for_loading' and returns a named list.
+# Falls back to hardcoded defaults if the download fails.
+# ============================================================================
+load_hiv_model_params <- function() {
+  sharepoint_url_params <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
+  
+    temp_file_params <- tempfile(fileext = ".xlsx")
+    download.file(sharepoint_url_params, temp_file_params,
+                  mode = "wb", method = "libcurl")
+    df <- read_excel(temp_file_params, sheet = "general_values")
+    out <- as.list(setNames(as.numeric(df$value), df$key))
+    out[!is.na(names(out)) & nzchar(names(out))]
+ 
+  
+}
+
+# Global parameter store — loaded once at app startup
+hiv_params <- load_hiv_model_params()
+
+
+
+
+# ============================================================================
 # MORTALITY RATES BY CASCADE STAGE (UPDATE THESE BASED ON LITERATURE)
 # ============================================================================
 MORTALITY_RATES <- list(
-  untreated_undiagnosed = 0.012,  # undiagnosed PLHIV + diagnosed not on ART - assume still realatively high cd4
-  new_art_initiations   = 0.03,  # first year on ART (pre-stabilisation)
-  treated               = 0.008, # established on ART, not virally suppressed
-  suppressed            = 0.005, # established on ART, virally suppressed
-  ahd_untreated         = 0.2,  # AHD (CD4<200) among undiagnosed / diagnosed not on ART
-  ahd_treated           = 0.08,  # AHD (CD4<200) among those on ART (new init or established)
+  untreated_undiagnosed = hiv_params$mortality_untreated_undiagnosed,  # Average 350-500
+  new_art_initiations   = hiv_params$mortality_new_art_initiations,  # first year on ART (pre-stabilisation)
+  treated               = hiv_params$mortality_treated, # established on ART, not virally suppressed
+  suppressed            = hiv_params$mortality_suppressed, # established on ART, virally suppressed
+  ahd_untreated         = hiv_params$mortality_ahd_untreated,  # AHD (CD4<200) among undiagnosed / diagnosed not on ART
+  ahd_treated           = hiv_params$mortality_ahd,  # AHD (CD4<200) among those on ART (new init or established)
   prop_ahd = list(
-    undiagnosed        = 0.20,
-    diagnosed_not_art  = 0.20,
-    new_initiations    = 0.20,
-    established_treated= 0.00,
-    established_supp   = 0.00
+    undiagnosed        = hiv_params$prop_ahd_undiagnosed,
+    diagnosed_not_art  = hiv_params$prop_ahd_diagnosed_not_art,
+    new_initiations    = hiv_params$prop_ahd_new_initiations,
+    established_treated= hiv_params$prop_ahd_established_treated,
+    established_supp   = hiv_params$prop_ahd_established_supp
   )
 )
 
@@ -108,65 +171,8 @@ ACTS_PER_YEAR_GEN         <- 50    # general population
 CONDOM_USE_RATE_HIGH      <- 0.75
 CONDOM_USE_RATE_GEN       <- 0.55
 
-# ============================================================================
-# LOAD DATA
-# ============================================================================
-# Load country data
-response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQBCFFlfF2AaRLcGuaCvNAcJAbE-8Ak2_gDyNJnL0GQu8Ag?e=k5dAU1&download=1")
-country_data_csv <- content(response, as = "parsed", type = "text/csv")
-
-# Load country-level baseline intervention volumes
-# Replace the URL below with the actual share link for the baseline CSV
-baseline_response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=96oyQi&download=1")
-baseline_data_csv <- content(baseline_response, as = "parsed", type = "text/csv") 
 
 
-# Load intervention parameters from Excel
-load_intervention_params <- function(){
-  sharepoint_url_interventions <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
-  
-  temp_file_int <- tempfile(fileext = ".xlsx")
-  download.file(sharepoint_url_interventions, temp_file_int, mode = "wb", method = "libcurl")
-  
-  intervention_params <- read_excel(temp_file_int, col_names = FALSE)
-  
-  colnames(intervention_params) <- as.character(intervention_params[2, ])
-  intervention_params <- intervention_params[-1, ]
-  intervention_params <- intervention_params[-1, ]
-  
-  intervention_params <- intervention_params %>% 
-    select(category, intervention, intervention_key, parameter_type, current_value) %>% 
-    spread(parameter_type, current_value)
-  
-  intervention_params$efficacy <- as.numeric(intervention_params$efficacy)
-  intervention_params$unit_cost <- as.numeric(intervention_params$unit_cost)
-  intervention_params$linkage_cost <- as.numeric(intervention_params$linkage_cost)
-  intervention_params$linkage_rate <- as.numeric(intervention_params$linkage_rate)
-  #intervention_params$multiplier <- as.numeric(intervention_params$multiplier)
-  
-  return(intervention_params)
-}
-
-# ============================================================================
-# LOAD MODEL PARAMETERS FROM EXCEL
-# Reads the flat key/value sheet 'params_for_loading' and returns a named list.
-# Falls back to hardcoded defaults if the download fails.
-# ============================================================================
-load_hiv_model_params <- function() {
-  sharepoint_url_params <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
-  
-    temp_file_params <- tempfile(fileext = ".xlsx")
-    download.file(sharepoint_url_params, temp_file_params,
-                  mode = "wb", method = "libcurl")
-    df <- read_excel(temp_file_params, sheet = "general_values")
-    out <- as.list(setNames(as.numeric(df$value), df$key))
-    out[!is.na(names(out)) & nzchar(names(out))]
- 
-  
-}
-
-# Global parameter store — loaded once at app startup
-hiv_params <- load_hiv_model_params()
 
 
 # ============================================================================
