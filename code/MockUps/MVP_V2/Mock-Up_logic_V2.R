@@ -69,13 +69,13 @@ load_intervention_params <- function(){
 load_hiv_model_params <- function() {
   sharepoint_url_params <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
   
-    temp_file_params <- tempfile(fileext = ".xlsx")
-    download.file(sharepoint_url_params, temp_file_params,
-                  mode = "wb", method = "libcurl")
-    df <- read_excel(temp_file_params, sheet = "general_values")
-    out <- as.list(setNames(as.numeric(df$value), df$key))
-    out[!is.na(names(out)) & nzchar(names(out))]
- 
+  temp_file_params <- tempfile(fileext = ".xlsx")
+  download.file(sharepoint_url_params, temp_file_params,
+                mode = "wb", method = "libcurl")
+  df <- read_excel(temp_file_params, sheet = "general_values")
+  out <- as.list(setNames(as.numeric(df$value), df$key))
+  out[!is.na(names(out)) & nzchar(names(out))]
+  
   
 }
 
@@ -103,6 +103,22 @@ MORTALITY_RATES <- list(
     established_supp   = hiv_params$prop_ahd_established_supp
   )
 )
+
+# ============================================================================
+# MORTALITY CALIBRATION TOGGLE
+# ----------------------------------------------------------------------------
+# When TRUE, model deaths are scaled at baseline so that total HIV deaths
+# match the country's UNAIDS aids_deaths_per_year value. The same factor
+# is then applied to all scenarios, preserving the relative impact of
+# interventions while anchoring absolute deaths to country reality.
+#
+# When FALSE, model uses raw literature-based per-cascade mortality rates;
+# total deaths reflect SSA-average rates, not country specifics.
+#
+# Set FALSE to compare uncalibrated outputs, run a model audit, or revert
+# to pure literature behaviour without removing any code.
+# ============================================================================
+USE_MORTALITY_CALIBRATION <- FALSE
 
 
 # ============================================================================
@@ -624,11 +640,13 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
         circ_prevalence = if (!is.null(row$circ_prevalence) && !is.na(row$circ_prevalence)) row$circ_prevalence else 0.20,
         prop_high_risk  = if (!is.null(row$prop_high_risk)  && !is.na(row$prop_high_risk))  row$prop_high_risk  else 0.05,
         rr_high          = if (!is.null(row$rr_high)              && !is.na(row$rr_high))              row$rr_high              else 8.0,
-        # Prior-year testing data for yield calibration and volume dilution
         test_yield       = if (!is.null(row$avg_test_yield)       && !is.na(row$avg_test_yield))
           as.numeric(row$avg_test_yield) / 100 else NULL,  # % in CSV -> proportion
         prior_year_tests = if (!is.null(row$total_tests_prev_year) && !is.na(row$total_tests_prev_year))
-          as.numeric(row$total_tests_prev_year) else NULL
+          as.numeric(row$total_tests_prev_year) else NULL,
+        # Retesting probability: country-specific override; NULL means use hiv_params default
+        prop_retesting   = if (!is.null(row$prop_retest)        && !is.na(row$prop_retest))
+          as.numeric(row$prop_retest) else NULL
       )
       
       pops <- calculate_populations(context)
@@ -1211,7 +1229,8 @@ render_calibration_panel <- function(foi_result) {
 calculate_scenario_outcomes <- function(context, interventions, populations,
                                         is_baseline                  = FALSE,
                                         baseline_interventions        = NULL,
-                                        baseline_additional_suppressed = 0) {
+                                        baseline_additional_suppressed = 0,
+                                        mortality_calibration_factor   = NULL) {
   
   # Initialize outcome counters
   infections_averted <- 0
@@ -1249,8 +1268,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
   }
   
-  prop_new_dx <- 0.5 ###UPDATE
-  prop_reeng  <- (1 - prop_new_dx) ###UPDATE
+  prop_reeng <- if (!is.null(context$prop_retesting) && !is.na(context$prop_retesting)) {
+    context$prop_retesting
+  } else {
+    hiv_params$prop_retest_default
+  }
+  prop_new_dx <- 1 - prop_reeng
+  
   
   average_linkage <- 0.9
   
@@ -1742,12 +1766,50 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   total_hiv_deaths <- deaths_undiagnosed + deaths_diagnosed_not_art +
     deaths_new_initiations + deaths_established_treated + deaths_established_supp
   
+  # ========================================================================
+  # MORTALITY CALIBRATION TO COUNTRY UNAIDS TARGET
+  # ------------------------------------------------------------------------
+  # Literature-based per-cascade rates produce SSA-average mortality, which
+  # over- or under-estimates country-specific deaths because cascade
+  # composition (especially the AHD distribution in untreated pools) varies
+  # by country and epidemic maturity. We anchor the model to the country's
+  # UNAIDS-published AIDS deaths.
+  #
+  # Baseline run: compute calibration_factor = target / modelled_deaths
+  # Scenario run: receive baseline_factor and apply it (preserves relative
+  #               impact of interventions while keeping absolute deaths
+  #               anchored to country reality at baseline)
+  # If no target provided, factor defaults to 1 (no calibration).
+  # ========================================================================
+  target_aids_deaths <- context$aids_deaths_per_year
+  
+  if (is_baseline) {
+    if (USE_MORTALITY_CALIBRATION &&
+        !is.null(target_aids_deaths) && !is.na(target_aids_deaths) &&
+        target_aids_deaths > 0 && total_hiv_deaths > 0) {
+      mortality_calibration_factor <- target_aids_deaths / total_hiv_deaths
+    } else {
+      mortality_calibration_factor <- 1
+    }
+  } else if (is.null(mortality_calibration_factor)) {
+    mortality_calibration_factor <- 1
+  }
+  
+  # Apply factor to all death components
+  deaths_undiagnosed         <- deaths_undiagnosed         * mortality_calibration_factor
+  deaths_diagnosed_not_art   <- deaths_diagnosed_not_art   * mortality_calibration_factor
+  deaths_new_initiations     <- deaths_new_initiations     * mortality_calibration_factor
+  deaths_established_treated <- deaths_established_treated * mortality_calibration_factor
+  deaths_established_supp    <- deaths_established_supp    * mortality_calibration_factor
+  total_hiv_deaths           <- total_hiv_deaths           * mortality_calibration_factor
+  
   # Deaths averted = difference between unadjusted (no interventions) and adjusted deaths
   # Only on-treatment groups are affected by interventions
   unadjusted_deaths_on_treatment <-
     calc_deaths(n_new_initiations,     MORTALITY_RATES$new_art_initiations, MORTALITY_RATES$ahd_treated, prop_ahd$new_initiations) +
     calc_deaths(n_established_treated, MORTALITY_RATES$treated,             MORTALITY_RATES$ahd_treated, prop_ahd$established_treated) +
     calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed,          MORTALITY_RATES$ahd_treated, prop_ahd$established_supp)
+  unadjusted_deaths_on_treatment <- unadjusted_deaths_on_treatment * mortality_calibration_factor
   
   adjusted_deaths_on_treatment <- deaths_new_initiations + deaths_established_treated + deaths_established_supp
   
@@ -1764,7 +1826,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # (both sub-groups use new_art_initiations rate — suppressed new initiates are still early
   # in treatment and face the same elevated early-ART mortality as unsuppressed ones).
   new_init_mort_frac     <- if (n_new_initiations > 0)
-    deaths_new_initiations / n_new_initiations else 0
+    min(1, deaths_new_initiations / n_new_initiations) else 0
   remaining_new_supp     <- max(0, round(n_new_supp    * (1 - new_init_mort_frac)))
   remaining_new_treated  <- max(0, round(n_new_treated * (1 - new_init_mort_frac)))
   remaining_new_init     <- remaining_new_supp + remaining_new_treated
@@ -1949,7 +2011,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # are less likely to suppress quickly. ###UPDATE discount from literature.
   # ========================================================================
   eid_linkage_rate     <- all_interventions$eid$linkage_rate %||% 0.80
-  infant_supp_rate     <- (context$percent_suppressed / 100) * 0.70  ###UPDATE discount
+  infant_supp_rate     <- hiv_params$eid_supp_rate
   
   infant_on_art        <- eid_infants_diagnosed * eid_linkage_rate
   infant_suppressed    <- infant_on_art * infant_supp_rate
@@ -2067,6 +2129,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     deaths_new_initiations = round(deaths_new_initiations),
     deaths_established_treated = round(deaths_established_treated),
     deaths_established_suppressed = round(deaths_established_supp),
+    mortality_calibration_factor = mortality_calibration_factor,
     total_hiv_deaths_before_interventions = round(total_hiv_deaths + total_deaths_averted),
     
     # End-of-year epidemiological outcomes (absolute values)

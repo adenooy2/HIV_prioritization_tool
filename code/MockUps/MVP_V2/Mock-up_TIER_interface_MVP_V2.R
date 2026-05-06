@@ -1430,7 +1430,8 @@ server <- function(input, output, session) {
     req(scenario)
     calculate_scenario_outcomes(context(), scenario, populations(),
                                 baseline_interventions          = baseline_input_values(),
-                                baseline_additional_suppressed  = outcomes_baseline()$additional_suppressed)
+                                baseline_additional_suppressed  = outcomes_baseline()$additional_suppressed,
+                                mortality_calibration_factor    = outcomes_baseline()$mortality_calibration_factor)
   })
   
   outcomes_scenario2 <- reactive({
@@ -1439,7 +1440,8 @@ server <- function(input, output, session) {
     req(scenario)
     calculate_scenario_outcomes(context(), scenario, populations(),
                                 baseline_interventions          = baseline_input_values(),
-                                baseline_additional_suppressed  = outcomes_baseline()$additional_suppressed)
+                                baseline_additional_suppressed  = outcomes_baseline()$additional_suppressed,
+                                mortality_calibration_factor    = outcomes_baseline()$mortality_calibration_factor)
   })
   
   diff_scenario1 <- reactive({
@@ -1750,6 +1752,13 @@ server <- function(input, output, session) {
           span(style = "font-size: 1.3em; font-weight: bold;",
                format(outcomes$end_deaths, big.mark = ","))
       ),
+      # Calibration note: shown when calibration factor is meaningfully ≠ 1
+      if (!is.null(outcomes$mortality_calibration_factor) &&
+          abs(outcomes$mortality_calibration_factor - 1) > 0.05) {
+        div(class = "small text-muted mb-2", style = "font-size: 0.85em; font-style: italic;",
+            sprintf("Mortality calibrated to country UNAIDS target (factor: %.2f). Scenarios show relative changes from this baseline.",
+                    outcomes$mortality_calibration_factor))
+      },
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span(strong("New LTFU:")),
           span(style = "font-size: 1.3em; font-weight: bold;",
@@ -1814,19 +1823,19 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-           span(strong("New LTFU:")),
-           span(
-             span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
-                                 ifelse(diff$diff_ltfu_new_effective < 0, "green",
-                                        ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
-                  format(outcomes$ltfu_new_effective, big.mark = ",")),
-             br(),
-             span(style = paste0("font-size: 0.9em; color: ",
-                                 ifelse(diff$diff_ltfu_new_effective < 0, "green",
-                                        ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
-                  paste0("(", ifelse(diff$diff_ltfu_new_effective > 0, "+", ""),
-                         format(diff$diff_ltfu_new_effective, big.mark = ","), ")"))
-           )
+          span(strong("New LTFU:")),
+          span(
+            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
+                                ifelse(diff$diff_ltfu_new_effective < 0, "green",
+                                       ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
+                 format(outcomes$ltfu_new_effective, big.mark = ",")),
+            br(),
+            span(style = paste0("font-size: 0.9em; color: ",
+                                ifelse(diff$diff_ltfu_new_effective < 0, "green",
+                                       ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
+                 paste0("(", ifelse(diff$diff_ltfu_new_effective > 0, "+", ""),
+                        format(diff$diff_ltfu_new_effective, big.mark = ","), ")"))
+          )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span(strong("Re-engaged in care:")),
@@ -1974,7 +1983,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Infections:"),
+          span("Change in Infections:"),
           span(
             # diff_new_infections: +ve = more infections (bad, red); -ve = fewer (good, green)
             class = ifelse(diff$diff_new_infections < 0, "text-success",
@@ -1985,7 +1994,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Deaths:"),
+          span("Change in Deaths:"),
           span(
             # diff_deaths: +ve = more deaths (bad, red); -ve = fewer (good, green)
             class = ifelse(diff$diff_deaths < 0, "text-success",
@@ -1996,7 +2005,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Additional Suppressed:"),
+          span("Change in Suppressed:"),
           span(
             style = paste0("font-weight: bold; color: ",
                            ifelse(diff$diff_suppressed > 0, "green",
@@ -2034,7 +2043,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Infections:"),
+          span("Change in Infections:"),
           span(
             # diff_new_infections: +ve = more infections (bad, red); -ve = fewer (good, green)
             class = ifelse(diff$diff_new_infections < 0, "text-success",
@@ -2045,7 +2054,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Deaths:"),
+          span("Change in Deaths:"),
           span(
             # diff_deaths: +ve = more deaths (bad, red); -ve = fewer (good, green)
             class = ifelse(diff$diff_deaths < 0, "text-success",
@@ -2292,7 +2301,7 @@ server <- function(input, output, session) {
             plot.subtitle = element_text(size = 12),
             axis.text = element_text(size = 12),
             axis.title = element_text(size = 12))
-  
+    
   })
   
   output$cascade_table <- renderTable({

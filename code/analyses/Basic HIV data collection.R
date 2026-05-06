@@ -46,6 +46,8 @@ gam_data_circum=gam_data_sub %>% select(country=Area,Indicator_GId,Data.value) %
   rename(circ_prevalence=PREVALENCE_MALE_CIRCUMCISION)
 
 
+country_codes=gam_data %>% select(Area,Area.ID) %>% unique()
+
 ######worldbank data
 
 pop_data= WDI(indicator =  c( "SP.POP.TOTL","SP.POP.TOTL.MA.ZS","SP.POP.0014.TO.ZS"),start=2024) %>% select(-year)
@@ -132,8 +134,41 @@ test_data=gam_data %>% filter(Indicator_GId %in% c("HIV_TESTS_VOL","HIV_POS_RATE
 test_data=test_data %>% select(country=Area,avg_test_yield = HIV_POS_RATE,total_tests_prev_year=HIV_TESTS_VOL) %>% filter(country %in% sub_countries)
 
 basic_data=left_join(basic_data, test_data)
-#####Fix diagnoses
+
+####REtest props
+
+dir="/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/who_hts_dashboard/"
+files=list.files(path = dir)
+
+hts_data=data.frame()
+length(files)
+for(i in 1: length(files)){
+  data=read.csv(paste(dir,files[i],sep=""))
+  cntry=files[i]
+  cntry=gsub("WHO HTS Data - ","",cntry)
+  cntry=gsub(".csv","",cntry)
+  data$Area.ID=cntry
+  
+  hts_data=rbind(hts_data,data)
+  
+}
 
 
+hts_data=hts_data %>% filter(year>=2023) %>%  group_by(Area.ID, chart,indicator,sex,age) %>% mutate(max_year=max(year)) %>% filter(year==max_year)
+hts_data$label=paste(hts_data$chart,hts_data$indicator,sep="&")
 
+
+retest_data=hts_data %>% ungroup() %>% filter(chart=="HIV-positive tests - new diagnoses and retests") %>% 
+  select(Area.ID,indicator,value) %>% spread(indicator,value) %>% 
+  mutate(total=retests+new_diagnoses,prop_retest=retests/total) %>% left_join(country_codes) %>% 
+  select(country=Area,prop_retest)
+
+
+basic_data=left_join(basic_data,retest_data)
+
+######writes data
 write.csv(basic_data,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/basic_hiv_data.csv")
+
+
+
+
