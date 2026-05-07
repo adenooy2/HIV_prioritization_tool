@@ -136,6 +136,21 @@ test_data_props=test_data_props %>% rename(country=Country)
 
 baseline_tetsing=left_join(test_data_props,multiplier_summary_final)
 
+
+##HIVST numbers
+hivst_com_prop=0.65
+hivst_data=gam_data %>% filter(label=="HIV_SELF_TESTS Distributed")%>% select(Area,Indicator_GId,Time.Period,Data.value) %>% 
+  arrange(Area,Indicator_GId,desc(Time.Period)) %>% group_by(Area,Indicator_GId) %>% slice(1) %>% spread(Indicator_GId,Data.value) %>% 
+  mutate(hivst_community=round(hivst_com_prop*HIV_SELF_TESTS,-3),hivst_facility=round((1-hivst_com_prop)*HIV_SELF_TESTS,-3)) %>% 
+  select(country=Area,hivst_community,hivst_facility)
+
+hivst_data$yield_mult_hivst_community=1.13 #SA Analysis
+hivst_data$yield_mult_hivst_facility=0.6 #SA Analysis
+
+hivst_data=hivst_data %>% filter(country %in%sub_countries)
+
+baseline_tetsing=left_join(hivst_data,multiplier_summary_final)
+
 ##EID
 #https://data.unicef.org/topic/hivaids/paediatric-treatment-and-care/
 eid_data=read_excel(paste(data_dir,"EID_PMTCT_UNICEF_data.xlsx",sep=""),sheet="eid_coverage")
@@ -203,25 +218,33 @@ baseline_data=left_join(baseline_tetsing,gam_data_prev)
 
 
 # IeDea Data --------------------------------------------------------------
-enroll_data=read.csv(paste(data_dir,"iedea_indicators/indicator_enroll.csv",sep=""))
-Region=unique(enroll_data$Region)
+Iedea_data=read.csv(paste(data_dir,"iedea_indicators/indicator_enroll.csv",sep=""))
+reg=unique(Iedea_data$Region)
 
 Region=data.frame(reg,c("Asia-Pacific","Central Africa","CCASAnet (Latin America)","East Africa", "NA-ACCORD (North America)","Southern Africa","West Africa"))
-colnames(Region)=c("Region","reg name")
+colnames(Region)=c("Region","reg_name")
 
-enroll_data=left_join(enroll_data,Region)
+# cd4_data=left_join(cd4_data,Region)
+# 
+# cd4_data_filt=cd4_data %>% filter(Year!="ALL",Sex=="ALL",Age=="ALL")%>%
+#   mutate(Year=as.numeric(Year),cd4_enroll_perc=as.numeric(cd4_enroll_perc)) %>% select(Region, reg_name,Year,cd4_enroll_perc) %>%
+#   filter(is.na(cd4_enroll_perc)==FALSE)%>% group_by(Region) %>% arrange(desc(Year)) %>% slice(1)
+# 
+# enroll_data_latest$ahd=round(enroll_data_latest$cd4_enr_0_200/enroll_data_latest$cd4_enroll_n,2)
 
-enroll_data=enroll_data %>% filter(Year!="ALL",Sex=="ALL",Age=="ALL") %>%
-  mutate(Year=as.numeric(Year),cd4_enroll_perc=as.numeric(cd4_enroll_perc),cd4_enr_0_200=as.numeric(cd4_enr_0_200),cd4_enroll_n=as.numeric(cd4_enroll_n)) %>% 
-  filter(Year<2024)
+
+##IEDEA 2022 website
+cd4_data=data.frame(Region, cd4_testing=c(83,21,58,41,NA,25,26))
 
 
-ggplot(enroll_data,aes(Year,cd4_enroll_perc,color=Region))+geom_point()+geom_line()
+sub_reg_countries=data.frame(country=sub_countries, 
+                             Region=c("SA","WA","SA","WA","EA","SA","SA","SA","WA","CA","SA","EA","EA","EA","SA","SA"))
 
-enroll_data_latest=enroll_data %>% filter(is.na(cd4_enroll_perc)==FALSE) %>% group_by(Region) %>% arrange(desc(Year)) %>% slice(1)
 
-enroll_data_latest$ahd=round(enroll_data_latest$cd4_enr_0_200/enroll_data_latest$cd4_enroll_n,2)
 
+baseline_data=left_join(baseline_data,sub_reg_countries)
+
+baseline_data=left_join(baseline_data,cd4_data)
 ##############DSD Assumptions
 
 baseline_data$mmd_3month=30

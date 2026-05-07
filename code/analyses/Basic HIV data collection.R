@@ -23,6 +23,7 @@ est_data_filt=est_data %>%
   ungroup() %>% 
   unique() 
 
+est_data_AHD=est_data_filt %>% filter(label=="LATE_HIV_DIAGNOSIS_All ages CD4 <200") %>% select(Area, prop_ahd=Data.value)
 
 ##gam DATA
 gam_data=read.csv(paste(data_dir,"GAM_2025_en.csv",sep=""))

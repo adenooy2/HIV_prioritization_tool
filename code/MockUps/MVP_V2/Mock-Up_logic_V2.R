@@ -118,7 +118,7 @@ MORTALITY_RATES <- list(
 # Set FALSE to compare uncalibrated outputs, run a model audit, or revert
 # to pure literature behaviour without removing any code.
 # ============================================================================
-USE_MORTALITY_CALIBRATION <- FALSE
+USE_MORTALITY_CALIBRATION <- TRUE
 
 
 # ============================================================================
@@ -156,23 +156,23 @@ ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE <- 0.15
 RETENTION_SUPPRESSION_RATE <- 0.4
 
 # ============================================================================
-# MTCT RATES BY MATERNAL ART/SUPPRESSION STATUS (###UPDATE based on literature)
+# MTCT RATES BY MATERNAL ART/SUPPRESSION STATUS
 # Covers transmission risk across pregnancy, delivery, and breastfeeding period.
 # ============================================================================
 MTCT_RATES <- list(
-  on_art_suppressed    = 0.02,   # ~2%  — virally suppressed throughout
-  on_art_unsuppressed  = 0.15,   # ~15% — on ART but not suppressed
-  not_on_art           = 0.35    # ~35% — no maternal PMTCT
+  on_art_suppressed    = hiv_params$mtct_on_art_suppressed, 
+  on_art_unsuppressed  = hiv_params$mtct_on_art_unsuppressed,   
+  not_on_art           = hiv_params$mtct_not_on_art 
 )
 
 # ============================================================================
-# INFANT HIV MORTALITY RATES BY TREATMENT STATUS (###UPDATE based on literature)
+# INFANT HIV MORTALITY RATES BY TREATMENT STATUS 
 # Annual mortality risk for HIV-infected infants by treatment/suppression status.
 # ============================================================================
 INFANT_MORTALITY_RATES <- list(
-  untreated     = 0.35,  # ~35% — untreated HIV+ infant, first year
-  on_art        = 0.10,  # ~10% — on ART but not suppressed
-  suppressed    = 0.03   # ~3%  — on ART and virally suppressed
+  untreated     = hiv_params$infant_mort_untreated,   
+  on_art        = hiv_params$infant_mort_on_art,  
+  suppressed    = hiv_params$infant_mort_suppressed   
 )
 
 # ============================================================================
@@ -518,7 +518,7 @@ calculate_populations <- function(context) {
   suppressed <- on_art * (context$percent_suppressed / 100)
   unsuppressed_on_art <- on_art - suppressed
   hiv_negative <- context$total_population - plhiv
-  sexually_active <- context$total_population * 0.60
+  sexually_active <- context$total_population * hiv_params$sexually_active_frac
   births <- (context$total_population * context$birth_rate)/1000
   hiv_positive_births <- births * context$hiv_prevalence * 1.5
   
@@ -526,13 +526,13 @@ calculate_populations <- function(context) {
   # prop_pop_male drives uncircumcised_males and all FOI strata; if NULL, vmmc
   # baseline and FOI strata would silently become NULL and display as 0.
   prop_male_pct <- if (!is.null(context$prop_pop_male) && !is.na(context$prop_pop_male))
-    context$prop_pop_male else 49
+    context$prop_pop_male else hiv_params$default_prop_pop_male
   prop_under14  <- if (!is.null(context$prop_pop_under_14) && !is.na(context$prop_pop_under_14))
-    context$prop_pop_under_14 else 40
+    context$prop_pop_under_14 else hiv_params$default_prop_pop_under_14
   circ_prev     <- if (!is.null(context$circ_prevalence) && !is.na(context$circ_prevalence))
-    context$circ_prevalence/100 else 0.20
+    context$circ_prevalence/100 else hiv_params$default_circ_prevalence
   prop_hr       <- if (!is.null(context$prop_high_risk) && !is.na(context$prop_high_risk))
-    context$prop_high_risk else 0.05
+    context$prop_high_risk else hiv_params$default_prop_high_risk
   
   # LTFU flow: people dropping off ART during the year, split by stability status.
   # Stable patients (on_art × 0.85): DSD-eligible, lower dropout risk.
@@ -553,8 +553,7 @@ calculate_populations <- function(context) {
     diagnosed = diagnosed,
     diagnosed_not_on_art = diagnosed - on_art,
     on_art = on_art,
-    on_art_stable = on_art * 0.85,
-    on_art_suspected_failure = on_art * 0.08,
+    on_art_stable = on_art_stable_n ,
     suppressed = suppressed,
     unsuppressed = unsuppressed_on_art,
     # Prevalent LTFU stock (people already lost before the year begins)
@@ -570,7 +569,7 @@ calculate_populations <- function(context) {
     circ_male                = hiv_negative * (prop_male_pct/100) * circ_prev,
     # kept for VMMC eligible_pop reference in cost loop
     uncircumcised_males      = hiv_negative * (prop_male_pct/100) * (1 - circ_prev),
-    sexually_active_negative = hiv_negative * 0.60,
+    sexually_active_negative = hiv_negative * hiv_params$sexually_active_frac,
     recent_exposure = hiv_negative * 0.002,
     hiv_exposed_infants = hiv_positive_births,
     pregnant_women      = births,
@@ -589,8 +588,7 @@ calculate_populations <- function(context) {
     pregnant_undiagnosed         = births * context$hiv_prevalence * (1 - context$percent_diagnosed / 100),
     # HIV testing eligible pool: HIV-negative + HIV+ undiagnosed pregnant women
     # (already-diagnosed HIV+ women are not re-offered an HIV test)
-    pregnant_hiv_testable        = births * (1 - context$hiv_prevalence * (context$percent_diagnosed / 100)),
-    newly_diagnosed_advanced     = (plhiv - diagnosed) * 0.20
+    pregnant_hiv_testable        = births * (1 - context$hiv_prevalence * (context$percent_diagnosed / 100))
   )
 }
 
@@ -633,13 +631,13 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
         aids_deaths_per_year = row$aids_deaths_per_year,
         birth_rate = row$birth_rate,
         prop_pop_male = if (!is.null(row$prop_male) && !is.na(row$prop_male))
-          as.numeric(row$prop_male) else 49,
+          as.numeric(row$prop_male) else hiv_params$default_prop_pop_male,
         prop_pop_under_14 = if (!is.null(row$prop_under14) && !is.na(row$prop_under14))
-          as.numeric(row$prop_under14) else 40,
+          as.numeric(row$prop_under14) else hiv_params$default_prop_pop_under_14,
         # FOI parameters (optional CSV columns; defaults used if absent)
-        circ_prevalence = if (!is.null(row$circ_prevalence) && !is.na(row$circ_prevalence)) row$circ_prevalence else 0.20,
-        prop_high_risk  = if (!is.null(row$prop_high_risk)  && !is.na(row$prop_high_risk))  row$prop_high_risk  else 0.05,
-        rr_high          = if (!is.null(row$rr_high)              && !is.na(row$rr_high))              row$rr_high              else 8.0,
+        circ_prevalence = if (!is.null(row$circ_prevalence) && !is.na(row$circ_prevalence)) row$circ_prevalence else hiv_params$default_circ_prevalence,
+        prop_high_risk  = if (!is.null(row$prop_high_risk)  && !is.na(row$prop_high_risk))  row$prop_high_risk  else hiv_params$default_prop_high_risk,
+        rr_high          = if (!is.null(row$rr_high)              && !is.na(row$rr_high))   row$rr_high  else hiv_params$default_rr_high,
         test_yield       = if (!is.null(row$avg_test_yield)       && !is.na(row$avg_test_yield))
           as.numeric(row$avg_test_yield) / 100 else NULL,  # % in CSV -> proportion
         prior_year_tests = if (!is.null(row$total_tests_prev_year) && !is.na(row$total_tests_prev_year))
@@ -791,10 +789,10 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
 # STEP 1: DEFINE STRATUM PARAMETERS
 # ----------------------------------------------------------------------------
 define_strata_params <- function(context = NULL) {
-  prop_high_risk      <- if (!is.null(context$prop_high_risk))      context$prop_high_risk      else 0.05
-  rr_high             <- if (!is.null(context$rr_high))             context$rr_high             else 8.0
-  prop_male_general   <- if (!is.null(context$prop_pop_male))       context$prop_pop_male / 100 else 0.50
-  circ_prevalence     <- if (!is.null(context$circ_prevalence))     context$circ_prevalence/100     else 0.20
+  prop_high_risk      <- if (!is.null(context$prop_high_risk))      context$prop_high_risk      else hiv_params$default_prop_high_risk
+  rr_high             <- if (!is.null(context$rr_high))             context$rr_high             else hiv_params$default_rr_high
+  prop_male_general   <- if (!is.null(context$prop_pop_male))       context$prop_pop_male / 100 else hiv_params$default_prop_pop_male
+  circ_prevalence     <- if (!is.null(context$circ_prevalence))     context$circ_prevalence/100 else hiv_params$default_circ_prevalence
   # VMMC risk reduction: prefer explicit context override, otherwise route
   # from the VMMC intervention's efficacy field (single source of truth with
   # the intervention_params Excel sheet). Hard-coded 0.60 is a final fallback.
@@ -804,8 +802,6 @@ define_strata_params <- function(context = NULL) {
              !is.null(intervention_groups$prevention$interventions$vmmc$efficacy) &&
              !is.na(intervention_groups$prevention$interventions$vmmc$efficacy)) {
     intervention_groups$prevention$interventions$vmmc$efficacy
-  } else {
-    0.60
   }
   
   list(
