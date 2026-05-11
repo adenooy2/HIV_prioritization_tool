@@ -118,7 +118,7 @@ MORTALITY_RATES <- list(
 # Set FALSE to compare uncalibrated outputs, run a model audit, or revert
 # to pure literature behaviour without removing any code.
 # ============================================================================
-USE_MORTALITY_CALIBRATION <- TRUE
+USE_MORTALITY_CALIBRATION <- FALSE
 
 
 # ============================================================================
@@ -188,7 +188,12 @@ CONDOM_USE_RATE_HIGH      <- 0.75
 CONDOM_USE_RATE_GEN       <- 0.55
 
 
-
+# Targeting of CD4 tests toward suspected AHD cases.
+# Fraction of CD4 tests performed that land on patients who actually have AHD,
+# at low/moderate coverage. Reflects clinical triage (WHO stage, BMI, symptoms).
+# Capped automatically by the AHD pool size, so at high coverage the effective
+# yield converges to prop_ahd$new_initiations.
+CD4_AHD_TARGETING_YIELD <- 0.40   # e.g. 40% of CD4 tests are on true AHD cases
 
 
 # ============================================================================
@@ -1686,13 +1691,24 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # ── AHD package (only those diagnosed with AHD via CD4 test) ─────────────
   if (ahd_pkg_value > 0 && art_initiations > 0) {
-    prop_ahd_new_init        <- MORTALITY_RATES$prop_ahd$new_initiations
-    n_ahd_diagnosed          <- art_initiations * cd4_coverage_frac * prop_ahd_new_init
-    n_ahd_pkg_reached        <- min(n_ahd_diagnosed * (ahd_pkg_value / 100), n_ahd_diagnosed)
-    ahd_pkg_cov_frac_of_ahd  <- if (n_ahd_diagnosed > 0) n_ahd_pkg_reached / n_ahd_diagnosed else 0
-    ahd_pkg_eff_reduction    <- cd4_coverage_frac * ahd_pkg_cov_frac_of_ahd *
+    prop_ahd_new_init <- MORTALITY_RATES$prop_ahd$new_initiations
+    n_cd4_tested      <- art_initiations * cd4_coverage_frac
+    n_ahd_pool        <- art_initiations * prop_ahd_new_init
+    
+    # Targeted yield: CD4 tests preferentially identify AHD cases, capped by pool size.
+    n_ahd_diagnosed   <- min(n_cd4_tested * CD4_AHD_TARGETING_YIELD, n_ahd_pool)
+    
+    # Effective gating fraction = AHD cases found / total AHD cases that exist
+    cd4_ahd_detection_frac <- if (n_ahd_pool > 0) n_ahd_diagnosed / n_ahd_pool else 0
+    
+    n_ahd_pkg_reached       <- min(n_ahd_diagnosed * (ahd_pkg_value / 100), n_ahd_diagnosed)
+    ahd_pkg_cov_frac_of_ahd <- if (n_ahd_diagnosed > 0) n_ahd_pkg_reached / n_ahd_diagnosed else 0
+    
+    ahd_pkg_eff_reduction   <- cd4_ahd_detection_frac * ahd_pkg_cov_frac_of_ahd *
       all_interventions$ahd_package$efficacy
-    total_intervention_cost  <- total_intervention_cost + n_ahd_pkg_reached * all_interventions$ahd_package$unit_cost
+    
+    total_intervention_cost <- total_intervention_cost +
+      n_ahd_pkg_reached * all_interventions$ahd_package$unit_cost
   }
   
   # ========================================================================
