@@ -419,15 +419,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "mmd_12month")$unit_cost,
           outcomes = c("retention")
         ),
-        fast_track = list(
-          name = "Fast-track",
-          type = "coverage",
-          unit_label = "% of stable clients",
-          efficacy = subset(intervention_params, intervention_key == "fast_track")$efficacy,
-          eligible_pop = "on_art_stable",
-          unit_cost =  subset(intervention_params, intervention_key == "fast_track")$unit_cost,     
-          outcomes = c("retention")
-        ),
         community_pickup = list(
           name = "Community ART pick-up",
           type = "coverage",
@@ -608,7 +599,7 @@ default_baseline_interventions <- list(
   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
   eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
   vl_monitoring_routine = 60, 
-  mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track =5, community_pickup=5,
+  mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, community_pickup=5,
   adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68, pnc_vl_testing = 0,
   cd4_testing = 92, ahd_package = 88
 )
@@ -666,7 +657,7 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
         hivst_community = round(0.0035*pops$adult_pop, -4),
         eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
         vl_monitoring_routine = 60, 
-        mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track=5, community_pickup =5, 
+        mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, community_pickup =5, 
         adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68, pnc_vl_testing = 0,
         cd4_testing = 92, ahd_package = 88
       )
@@ -1489,7 +1480,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         # Two combination rules depending on whether interventions can overlap:
         #
         # ADDITIVE — DSD options (eligible_pop == "on_art_stable"):
-        #   mmd_3month / mmd_6month / mmd_12month / fast_track / community_pickup
+        #   mmd_3month / mmd_6month / mmd_12month / community_pickup
         #   are mutually exclusive — the UI enforces they sum to ≤100% of on_art_stable,
         #   so no person can be enrolled in two DSD slots. Simple addition is correct:
         #     ltfu_retained_frac += coverage_frac * efficacy
