@@ -503,19 +503,12 @@ calculate_populations <- function(context) {
   suppressed <- on_art * (context$percent_suppressed / 100)
   unsuppressed_on_art <- on_art - suppressed
   hiv_negative <- context$total_population - plhiv
-  sexually_active <- context$total_population * hiv_params$sexually_active_frac
-  births <- (context$total_population * context$birth_rate)/1000
-  # HIV-EXPOSED INFANTS = births to HIV+ mothers (denominator for EID coverage
-  # and infant prophylaxis eligibility — NOT HIV-positive infants; infant
-  # infections are produced by the MTCT cascade downstream).
-  #
-  # hiv_pos_births_multiplier bridges general-population hiv_prevalence to
-  # prevalence among pregnant women. 
-  hiv_exposed_births <- births * context$hiv_prevalence * hiv_params$hiv_pos_births_multiplier
   
   # Safe defaults — prevents NULL propagation if CSV columns are missing/misnamed.
   # prop_pop_male drives uncircumcised_males and all FOI strata; if NULL, vmmc
   # baseline and FOI strata would silently become NULL and display as 0.
+  # NB: this block must precede the sexually_active calculation, which depends
+  # on prop_under14 to restrict the denominator to adults (15+).
   prop_male_pct <- if (!is.null(context$prop_pop_male) && !is.na(context$prop_pop_male))
     context$prop_pop_male else hiv_params$default_prop_pop_male
   prop_under14  <- if (!is.null(context$prop_pop_under_14) && !is.na(context$prop_pop_under_14))
@@ -524,6 +517,19 @@ calculate_populations <- function(context) {
     context$circ_prevalence/100 else hiv_params$default_circ_prevalence
   prop_hr       <- if (!is.null(context$prop_high_risk) && !is.na(context$prop_high_risk))
     context$prop_high_risk else hiv_params$default_prop_high_risk
+  
+  # Sexually active = adults (15+) × fraction of adults active in past 12 months.
+  # sexually_active_frac is now defined as the share of ADULTS (not total pop)
+  # who report sex in the past 12 months
+  sexually_active <- context$total_population * (1 - prop_under14/100) * hiv_params$sexually_active_frac
+  births <- (context$total_population * context$birth_rate)/1000
+  # HIV-EXPOSED INFANTS = births to HIV+ mothers (denominator for EID coverage
+  # and infant prophylaxis eligibility — NOT HIV-positive infants; infant
+  # infections are produced by the MTCT cascade downstream).
+  #
+  # hiv_pos_births_multiplier bridges general-population hiv_prevalence to
+  # prevalence among pregnant women. 
+  hiv_exposed_births <- births * context$hiv_prevalence * hiv_params$hiv_pos_births_multiplier
   
   # LTFU flow: people dropping off ART during the year, split by stability status.
   # Stable patients: DSD-eligible, lower dropout risk.
@@ -560,7 +566,7 @@ calculate_populations <- function(context) {
     circ_male                = hiv_negative * (prop_male_pct/100) * circ_prev,
     # kept for VMMC eligible_pop reference in cost loop
     uncircumcised_males      = hiv_negative * (prop_male_pct/100) * (1 - circ_prev),
-    sexually_active_negative = hiv_negative * hiv_params$sexually_active_frac,
+    sexually_active_negative = hiv_negative * (1 - prop_under14/100) * hiv_params$sexually_active_frac,
     recent_exposure = hiv_negative * hiv_params$recent_exposure_frac,
     hiv_exposed_infants = hiv_exposed_births,
     pregnant_women      = births,
