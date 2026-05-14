@@ -1,6 +1,7 @@
 rm(list=ls())
 
 library(readr)
+library(stringr)
 grouped_mods=read_excel("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/pepfar_modalities.xlsx")
 
 #AMFAR?PEPFAR https://data.pepfar.gov/datasets
@@ -119,6 +120,15 @@ multiplier_summary_final <- multiplier_summary %>%
   ))
 
 multiplier_summary_final=multiplier_summary_final %>% rename(country=Country)
+
+multiplier_summary_final$yield_mult_hivst_community=multiplier_summary_final$yield_mult_test_community
+multiplier_summary_final$yield_mult_hivst_facility=multiplier_summary_final$yield_mult_test_facility_general
+
+
+##Available baseline data
+baseline_data=read_excel("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/country_baselines/Updated/country_baselines_summarised.xlsx")
+
+baseline_data=left_join(multiplier_summary_final,baseline_data)
 #######baseline testing numbers
 data_dir="/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/"
 gam_data=read.csv(paste(data_dir,"GAM_2025_en.csv",sep=""))
@@ -134,8 +144,10 @@ test_data_props=test_data %>% left_join(props_summary) %>% gather("modality","pr
 
 test_data_props=test_data_props %>% rename(country=Country)
 
-baseline_tetsing=left_join(test_data_props,multiplier_summary_final)
+#baseline_tetsing=left_join(test_data_props,multiplier_summary_final)
 
+baseline_data=rows_patch(baseline_data, test_data_props %>% select(-avg_test_yield,-total_tests_prev_year,-anc_hiv_testing,-pnc_hiv_testing), by = "country")
+baseline_data=left_join(baseline_data,test_data_props %>% select(avg_test_yield,total_tests_prev_year))
 
 ##HIVST numbers
 hivst_com_prop=0.65
@@ -144,12 +156,13 @@ hivst_data=gam_data %>% filter(label=="HIV_SELF_TESTS Distributed")%>% select(Ar
   mutate(hivst_community=round(hivst_com_prop*HIV_SELF_TESTS,-3),hivst_facility=round((1-hivst_com_prop)*HIV_SELF_TESTS,-3)) %>% 
   select(country=Area,hivst_community,hivst_facility)
 
-hivst_data$yield_mult_hivst_community=1.13 #SA Analysis
-hivst_data$yield_mult_hivst_facility=0.6 #SA Analysis
+
 
 hivst_data=hivst_data %>% filter(country %in%sub_countries)
 
-baseline_tetsing=left_join(hivst_data,multiplier_summary_final)
+baseline_data=rows_patch(baseline_data, hivst_data)
+baseline_data$hivst_community[is.na(baseline_data$hivst_community)==TRUE]=0
+baseline_data$hivst_facility[is.na(baseline_data$hivst_facility)==TRUE]=0
 
 ##EID
 #https://data.unicef.org/topic/hivaids/paediatric-treatment-and-care/
@@ -157,10 +170,12 @@ eid_data=read_excel(paste(data_dir,"EID_PMTCT_UNICEF_data.xlsx",sep=""),sheet="e
 
 eid_data=eid_data %>% select(country=Country,eid=Value) %>% mutate(eid=as.numeric(eid))
 
-baseline_tetsing=left_join(baseline_tetsing,eid_data)
+baseline_data=rows_patch(baseline_data, eid_data,unmatched = "ignore")
 
-av_eid=mean(baseline_tetsing$eid,na.rm = TRUE)
-baseline_tetsing$eid[is.na(baseline_tetsing$eid)==TRUE]=av_eid
+av_eid=mean(baseline_data$eid,na.rm = TRUE)
+baseline_data$eid[is.na(baseline_data$eid)==TRUE]=av_eid
+
+
 
 # GAM DATA BASELINE - PREVNTION -------------------------------------------
 #"PEOPLE_ON_PREP Total",
@@ -214,8 +229,9 @@ gam_data_prev=full_join(gam_data_prev,gam_data_vmmc)
 gam_data_prev$vmmc[is.na(gam_data_prev$vmmc)==TRUE]=0
 
 
-baseline_data=left_join(baseline_tetsing,gam_data_prev)
+#baseline_data=left_join(baseline_tetsing,gam_data_prev)
 
+baseline_data=rows_patch(baseline_data, gam_data_prev,unmatched = "ignore")
 
 # IeDea Data --------------------------------------------------------------
 Iedea_data=read.csv(paste(data_dir,"iedea_indicators/indicator_enroll.csv",sep=""))
@@ -242,17 +258,34 @@ sub_reg_countries=data.frame(country=sub_countries,
 
 
 
-baseline_data=left_join(baseline_data,sub_reg_countries)
+temp=left_join(baseline_data %>% select(country),sub_reg_countries)
+temp=left_join(temp,cd4_data,by="Region")
 
-baseline_data=left_join(baseline_data,cd4_data)
-##############DSD Assumptions
+baseline_data=rows_patch(baseline_data, temp %>% select(country,cd4_testing),unmatched = "ignore")
+##############DSD Assumptions -find
 
-baseline_data$mmd_3month=30
-baseline_data$mmd_6month=60
-baseline_data$mmd_12month=0
-baseline_data$fast_track=5
-baseline_data$community_pickup=5
+baseline_data$mmd_3month[is.na(baseline_data$mmd_3month)==TRUE]=30
+baseline_data$mmd_6month[is.na(baseline_data$mmd_6month)==TRUE]=60
+baseline_data$mmd_12month[is.na(baseline_data$mmd_12month)==TRUE]=0
+baseline_data$community_pickup[is.na(baseline_data$community_pickup)==TRUE]=5
 
+
+######### FIND
+baseline_data$tracking_tracing[is.na(baseline_data$tracking_tracing)==TRUE]=80
+baseline_data$adherence_counseling[is.na(baseline_data$adherence_counseling)]=50
+
+baseline_data$anc_hiv_testing[is.na(baseline_data$anc_hiv_testing)==TRUE]=70
+baseline_data$pnc_hiv_testing[is.na(baseline_data$pnc_hiv_testing)==TRUE]=40
+
+baseline_data$anc_vl_testing[is.na(baseline_data$anc_vl_testing)==TRUE]=70
+baseline_data$pnc_vl_testing[is.na(baseline_data$pnc_vl_testing)==TRUE]=80
+
+baseline_data$pep[is.na(baseline_data$pep)==TRUE]=100000
+baseline_data$infant_prophylaxis[is.na(baseline_data$infant_prophylaxis)==TRUE]=90
+
+baseline_data$vl_monitoring_routine[is.na(baseline_data$vl_monitoring_routine)==TRUE]=70
+
+baseline_data$ahd_package[is.na(baseline_data$ahd_package)==TRUE]=80
 
 ######
 write.csv(baseline_data,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/baseline_testing.csv")
