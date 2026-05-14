@@ -213,6 +213,15 @@ server <- function(input, output, session) {
   # Store CSV-provided PLHIV value (NULL = not set, fall back to derived)
   plhiv_from_csv <- reactiveVal(NULL)        
   
+  # Store country-specific calibration fields from preset. These are
+  # invisible plumbing -- they ride along from the preset CSV but are not
+  # exposed as editable inputs. Required for FOI strata partitioning,
+  # testing yield, and re-testing split to remain country-specific. Without
+  # them, calculate_scenario_outcomes falls back to generic defaults which
+  # can over-estimate suppression delta and drive new_infections to zero
+  # under aggressive testing scenarios.
+  country_calibration <- reactiveVal(NULL)
+  
   # Load regional preset when selected
   observeEvent(input$region, {
     preset <- regional_presets[[input$region]]
@@ -231,6 +240,23 @@ server <- function(input, output, session) {
     original_population(preset$context$total_population)
     original_baseline(preset$baseline)
     plhiv_from_csv(preset$context$plhiv)
+    
+    # Capture country-specific calibration fields from the preset.
+    # Keeps these out of the UI surface area while ensuring they reach
+    # calculate_scenario_outcomes() via context(). NULL values are passed
+    # through unchanged -- the logic file handles missing fields with
+    # defensive `if (!is.null(context$X))` checks and falls back to
+    # hiv_params defaults when absent (e.g. for "Custom Country").
+    country_calibration(list(
+      circ_prevalence   = preset$context$circ_prevalence,
+      prop_high_risk    = preset$context$prop_high_risk,
+      rr_high           = preset$context$rr_high,
+      test_yield        = preset$context$test_yield,
+      prior_year_tests  = preset$context$prior_year_tests,
+      prop_retesting    = preset$context$prop_retesting,
+      yield_multipliers = preset$context$yield_multipliers,
+      current_diagnoses = preset$context$current_diagnoses
+    ))
   }, ignoreInit = FALSE)
   
   # Reactive context
@@ -243,6 +269,11 @@ server <- function(input, output, session) {
       input$total_pop * (input$prevalence / 100)
     }
     
+    # Local alias for the calibration reactive -- evaluated once per
+    # invocation. May be NULL on first render (before observeEvent fires)
+    # or when no preset has been selected; handled per-field below.
+    cc <- country_calibration()
+    
     list(
       total_population = input$total_pop,
       hiv_prevalence = input$prevalence / 100,
@@ -254,7 +285,21 @@ server <- function(input, output, session) {
       percent_diagnosed = input$pct_diagnosed,
       birth_rate = demographic_params$birth_rate,
       prop_pop_male = demographic_params$prop_pop_male,
-      prop_pop_under_14 = demographic_params$prop_pop_under_14
+      prop_pop_under_14 = demographic_params$prop_pop_under_14,
+      
+      # Country-specific calibration carried through from preset.
+      # `cc` may be NULL on first render (before observeEvent fires) or for
+      # Custom Country; in both cases the nested $field lookups return NULL
+      # and calculate_scenario_outcomes falls back to hiv_params defaults.
+      # yield_multipliers must remain a named list, not unlisted.
+      circ_prevalence   = if (!is.null(cc)) cc$circ_prevalence   else NULL,
+      prop_high_risk    = if (!is.null(cc)) cc$prop_high_risk    else NULL,
+      rr_high           = if (!is.null(cc)) cc$rr_high           else NULL,
+      test_yield        = if (!is.null(cc)) cc$test_yield        else NULL,
+      prior_year_tests  = if (!is.null(cc)) cc$prior_year_tests  else NULL,
+      prop_retesting    = if (!is.null(cc)) cc$prop_retesting    else NULL,
+      yield_multipliers = if (!is.null(cc)) cc$yield_multipliers else NULL,
+      current_diagnoses = if (!is.null(cc)) cc$current_diagnoses else NULL
     )
   })
   
