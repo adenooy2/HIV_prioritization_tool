@@ -1548,8 +1548,28 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # APPLY CONSTRAINTS - CAP AT REALISTIC MAXIMUMS
   # ========================================================================
   
-  # Cannot diagnose more people than 95% are undiagnosed
-  new_diagnoses <- min(new_diagnoses, populations$undiagnosed * 0.95)
+  # Cannot diagnose more than 95% of the year's "findable" PLHIV pool.
+  # Pool = start-of-year undiagnosed stock + a fraction of incident infections
+  # occurring this year that are detectable before year-end (i.e. past the
+  # serology window period). With ~1 month window and uniform incidence
+  # through the year, on average ~90% of this year's incident infections are
+  # detectable by year-end. `prop_incident_detectable_year` is sourced from
+  # hiv_params if present, else falls back to 0.90. Set to 0 to recover the
+  # legacy behaviour (cap = 0.95 * start-of-year undiagnosed only).
+  prop_inc_det <- if (!is.null(hiv_params$prop_incident_detectable_year) &&
+                      !is.na(hiv_params$prop_incident_detectable_year)) {
+    hiv_params$prop_incident_detectable_year
+  } else {
+    0.90
+  }
+  inc_findable <- if (!is.null(context$new_infections_per_year) &&
+                      !is.na(context$new_infections_per_year)) {
+    context$new_infections_per_year * prop_inc_det
+  } else {
+    0
+  }
+  diagnosis_cap <- 0.95 * (populations$undiagnosed + inc_findable)
+  new_diagnoses <- min(new_diagnoses, diagnosis_cap)
   
   # ── LTFU PREVENTION: convert retained fraction to people ─────────────────
   # ltfu_retained_frac is the multiplicatively-combined fraction of the at-risk
