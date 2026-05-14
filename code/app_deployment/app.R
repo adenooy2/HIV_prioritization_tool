@@ -40,6 +40,7 @@ tryCatch(
 
 
 
+
 # ============================================================================
 # USER INTERFACE
 # ============================================================================
@@ -214,6 +215,9 @@ server <- function(input, output, session) {
     prop_pop_under_14 = NULL
   )
   
+  # Store CSV-provided PLHIV value (NULL = not set, fall back to derived)
+  plhiv_from_csv <- reactiveVal(NULL)        
+  
   # Load regional preset when selected
   observeEvent(input$region, {
     preset <- regional_presets[[input$region]]
@@ -231,13 +235,23 @@ server <- function(input, output, session) {
     
     original_population(preset$context$total_population)
     original_baseline(preset$baseline)
+    plhiv_from_csv(preset$context$plhiv)
   }, ignoreInit = FALSE)
   
   # Reactive context
   context <- reactive({
+    
+    # Use CSV plhiv when available; fall back to derived for safety
+    plhiv_val <- if (!is.null(plhiv_from_csv()) && !is.na(plhiv_from_csv())) {
+      plhiv_from_csv()
+    } else {
+      input$total_pop * (input$prevalence / 100)
+    }
+    
     list(
       total_population = input$total_pop,
       hiv_prevalence = input$prevalence / 100,
+      plhiv = plhiv_val,
       new_infections_per_year = input$new_infections,
       percent_on_art = input$pct_on_art,
       percent_suppressed = input$pct_suppressed,
@@ -260,29 +274,29 @@ server <- function(input, output, session) {
   
   # Validate percentage inputs (0-100%)
   observe({
-    if (!is.null(input$prevalence) && (input$prevalence < 0 || input$prevalence > 100)) {
+    if (!is.null(input$prevalence) && !is.na(input$prevalence) && (input$prevalence < 0 || input$prevalence > 100)) {
       updateNumericInput(session, "prevalence", value = max(0, min(100, input$prevalence)))
     }
-    if (!is.null(input$pct_diagnosed) && (input$pct_diagnosed < 0 || input$pct_diagnosed > 100)) {
+    if (!is.null(input$pct_diagnosed) && !is.na(input$pct_diagnosed) && (input$pct_diagnosed < 0 || input$pct_diagnosed > 100)) {
       updateNumericInput(session, "pct_diagnosed", value = max(0, min(100, input$pct_diagnosed)))
     }
-    if (!is.null(input$pct_on_art) && (input$pct_on_art < 0 || input$pct_on_art > 100)) {
+    if (!is.null(input$pct_on_art) && !is.na(input$pct_on_art) && (input$pct_on_art < 0 || input$pct_on_art > 100)) {
       updateNumericInput(session, "pct_on_art", value = max(0, min(100, input$pct_on_art)))
     }
-    if (!is.null(input$pct_suppressed) && (input$pct_suppressed < 0 || input$pct_suppressed > 100)) {
+    if (!is.null(input$pct_suppressed) && !is.na(input$pct_suppressed) && (input$pct_suppressed < 0 || input$pct_suppressed > 100)) {
       updateNumericInput(session, "pct_suppressed", value = max(0, min(100, input$pct_suppressed)))
     }
   })
   
   # Validate non-negative absolute inputs
   observe({
-    if (!is.null(input$total_pop) && input$total_pop < 0) {
+    if (!is.null(input$total_pop) && !is.na(input$total_pop) && input$total_pop < 0) {
       updateNumericInput(session, "total_pop", value = 0)
     }
-    if (!is.null(input$new_infections) && input$new_infections < 0) {
+    if (!is.null(input$new_infections) && !is.na(input$new_infections) && input$new_infections < 0) {
       updateNumericInput(session, "new_infections", value = 0)
     }
-    if (!is.null(input$aids_deaths) && input$aids_deaths < 0) {
+    if (!is.null(input$aids_deaths) && !is.na(input$aids_deaths) && input$aids_deaths < 0) {
       updateNumericInput(session, "aids_deaths", value = 0)
     }
   })
@@ -378,15 +392,14 @@ server <- function(input, output, session) {
       mmd3 <- input$baseline_mmd_3month
       mmd6 <- input$baseline_mmd_6month
       mmd12 <- input$baseline_mmd_12month
-      ft   <- input$baseline_fast_track
       cpu  <- input$baseline_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
+          !is.null(cpu)  &&
           !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_mmd3 <- max(0, 100 - mmd6 - mmd12 - ft - cpu)
+          !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
+          max_mmd3 <- max(0, 100 - mmd6 - mmd12 - cpu)
           updateNumericInput(session, "baseline_mmd_3month", 
                              value = round(max_mmd3, 1),
                              max = 100)
@@ -407,15 +420,14 @@ server <- function(input, output, session) {
       mmd3 <- input$baseline_mmd_3month
       mmd6 <- input$baseline_mmd_6month
       mmd12 <- input$baseline_mmd_12month
-      ft   <- input$baseline_fast_track
       cpu  <- input$baseline_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
+          !is.null(cpu)  &&
           !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_mmd6 <- max(0, 100 - mmd3 - mmd12 - ft - cpu)
+          !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
+          max_mmd6 <- max(0, 100 - mmd3 - mmd12 - cpu)
           updateNumericInput(session, "baseline_mmd_6month", 
                              value = round(max_mmd6, 1),
                              max = 100)
@@ -436,15 +448,14 @@ server <- function(input, output, session) {
       mmd3 <- input$baseline_mmd_3month
       mmd6 <- input$baseline_mmd_6month
       mmd12 <- input$baseline_mmd_12month
-      ft   <- input$baseline_fast_track
       cpu  <- input$baseline_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
+          !is.null(cpu)  &&
           !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_mmd12 <- max(0, 100 - mmd3 - mmd6 - ft - cpu)
+          !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
+          max_mmd12 <- max(0, 100 - mmd3 - mmd6 - cpu)
           updateNumericInput(session, "baseline_mmd_12month", 
                              value = round(max_mmd12, 1),
                              max = 100)
@@ -459,50 +470,20 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$baseline_mmd_12month)
   
-  # Baseline DSD Validation - Fast-track
-  observe({
-    isolate({
-      mmd3 <- input$baseline_mmd_3month
-      mmd6 <- input$baseline_mmd_6month
-      mmd12 <- input$baseline_mmd_12month
-      ft   <- input$baseline_fast_track
-      cpu  <- input$baseline_community_pickup
-      
-      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_ft <- max(0, 100 - mmd3 - mmd6 - mmd12 - cpu)
-          updateNumericInput(session, "baseline_fast_track",
-                             value = round(max_ft, 1),
-                             max = 100)
-          showNotification(
-            paste0("Baseline: Fast-track capped at ", round(max_ft, 1),
-                   "% (total DSD cannot exceed 100%)"),
-            type = "warning",
-            duration = 4
-          )
-        }
-      }
-    })
-  }) %>% bindEvent(input$baseline_fast_track)
-  
   # Baseline DSD Validation - Community pick-up
   observe({
     isolate({
       mmd3 <- input$baseline_mmd_3month
       mmd6 <- input$baseline_mmd_6month
       mmd12 <- input$baseline_mmd_12month
-      ft   <- input$baseline_fast_track
       cpu  <- input$baseline_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
+          !is.null(cpu)  &&
           !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_cpu <- max(0, 100 - mmd3 - mmd6 - mmd12 - ft)
+          !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
+          max_cpu <- max(0, 100 - mmd3 - mmd6 - mmd12)
           updateNumericInput(session, "baseline_community_pickup",
                              value = round(max_cpu, 1),
                              max = 100)
@@ -627,15 +608,14 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario1_mmd_3month
       mmd6 <- input$scenario1_mmd_6month
       mmd12 <- input$scenario1_mmd_12month
-      ft   <- input$scenario1_fast_track
       cpu  <- input$scenario1_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
+          !is.null(cpu)  &&
           !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_mmd3 <- max(0, 100 - mmd6 - mmd12 - ft - cpu)
+          !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
+          max_mmd3 <- max(0, 100 - mmd6 - mmd12 - cpu)
           updateNumericInput(session, "scenario1_mmd_3month", 
                              value = round(max_mmd3, 1),
                              max = 100)
@@ -654,15 +634,14 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario1_mmd_3month
       mmd6 <- input$scenario1_mmd_6month
       mmd12 <- input$scenario1_mmd_12month
-      ft   <- input$scenario1_fast_track
       cpu  <- input$scenario1_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
+          !is.null(cpu)  &&
           !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_mmd6 <- max(0, 100 - mmd3 - mmd12 - ft - cpu)
+          !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
+          max_mmd6 <- max(0, 100 - mmd3 - mmd12 - cpu)
           updateNumericInput(session, "scenario1_mmd_6month", 
                              value = round(max_mmd6, 1),
                              max = 100)
@@ -681,15 +660,14 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario1_mmd_3month
       mmd6 <- input$scenario1_mmd_6month
       mmd12 <- input$scenario1_mmd_12month
-      ft   <- input$scenario1_fast_track
       cpu  <- input$scenario1_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
+          !is.null(cpu)  &&
           !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_mmd12 <- max(0, 100 - mmd3 - mmd6 - ft - cpu)
+          !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
+          max_mmd12 <- max(0, 100 - mmd3 - mmd6 - cpu)
           updateNumericInput(session, "scenario1_mmd_12month", 
                              value = round(max_mmd12, 1),
                              max = 100)
@@ -708,42 +686,14 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario1_mmd_3month
       mmd6 <- input$scenario1_mmd_6month
       mmd12 <- input$scenario1_mmd_12month
-      ft   <- input$scenario1_fast_track
       cpu  <- input$scenario1_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
+          !is.null(cpu)  &&
           !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_ft <- max(0, 100 - mmd3 - mmd6 - mmd12 - cpu)
-          updateNumericInput(session, "scenario1_fast_track",
-                             value = round(max_ft, 1),
-                             max = 100)
-          showNotification(
-            paste0("Scenario 1: Fast-track capped at ", round(max_ft, 1), "%"),
-            type = "warning",
-            duration = 4
-          )
-        }
-      }
-    })
-  }) %>% bindEvent(input$scenario1_fast_track)
-  
-  observe({
-    isolate({
-      mmd3 <- input$scenario1_mmd_3month
-      mmd6 <- input$scenario1_mmd_6month
-      mmd12 <- input$scenario1_mmd_12month
-      ft   <- input$scenario1_fast_track
-      cpu  <- input$scenario1_community_pickup
-      
-      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_cpu <- max(0, 100 - mmd3 - mmd6 - mmd12 - ft)
+          !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
+          max_cpu <- max(0, 100 - mmd3 - mmd6 - mmd12)
           updateNumericInput(session, "scenario1_community_pickup",
                              value = round(max_cpu, 1),
                              max = 100)
@@ -866,15 +816,14 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario2_mmd_3month
       mmd6 <- input$scenario2_mmd_6month
       mmd12 <- input$scenario2_mmd_12month
-      ft   <- input$scenario2_fast_track
       cpu  <- input$scenario2_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
+          !is.null(cpu)  &&
           !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_mmd3 <- max(0, 100 - mmd6 - mmd12 - ft - cpu)
+          !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
+          max_mmd3 <- max(0, 100 - mmd6 - mmd12 - cpu)
           updateNumericInput(session, "scenario2_mmd_3month", 
                              value = round(max_mmd3, 1),
                              max = 100)
@@ -893,15 +842,14 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario2_mmd_3month
       mmd6 <- input$scenario2_mmd_6month
       mmd12 <- input$scenario2_mmd_12month
-      ft   <- input$scenario2_fast_track
       cpu  <- input$scenario2_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
+          !is.null(cpu)  &&
           !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_mmd6 <- max(0, 100 - mmd3 - mmd12 - ft - cpu)
+          !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
+          max_mmd6 <- max(0, 100 - mmd3 - mmd12 - cpu)
           updateNumericInput(session, "scenario2_mmd_6month", 
                              value = round(max_mmd6, 1),
                              max = 100)
@@ -920,15 +868,14 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario2_mmd_3month
       mmd6 <- input$scenario2_mmd_6month
       mmd12 <- input$scenario2_mmd_12month
-      ft   <- input$scenario2_fast_track
       cpu  <- input$scenario2_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
+          !is.null(cpu)  &&
           !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_mmd12 <- max(0, 100 - mmd3 - mmd6 - ft - cpu)
+          !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
+          max_mmd12 <- max(0, 100 - mmd3 - mmd6 - cpu)
           updateNumericInput(session, "scenario2_mmd_12month", 
                              value = round(max_mmd12, 1),
                              max = 100)
@@ -947,42 +894,14 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario2_mmd_3month
       mmd6 <- input$scenario2_mmd_6month
       mmd12 <- input$scenario2_mmd_12month
-      ft   <- input$scenario2_fast_track
       cpu  <- input$scenario2_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
+          !is.null(cpu)  &&
           !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_ft <- max(0, 100 - mmd3 - mmd6 - mmd12 - cpu)
-          updateNumericInput(session, "scenario2_fast_track",
-                             value = round(max_ft, 1),
-                             max = 100)
-          showNotification(
-            paste0("Scenario 2: Fast-track capped at ", round(max_ft, 1), "%"),
-            type = "warning",
-            duration = 4
-          )
-        }
-      }
-    })
-  }) %>% bindEvent(input$scenario2_fast_track)
-  
-  observe({
-    isolate({
-      mmd3 <- input$scenario2_mmd_3month
-      mmd6 <- input$scenario2_mmd_6month
-      mmd12 <- input$scenario2_mmd_12month
-      ft   <- input$scenario2_fast_track
-      cpu  <- input$scenario2_community_pickup
-      
-      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(ft)   && !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(ft)    && !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + ft + cpu > 100) {
-          max_cpu <- max(0, 100 - mmd3 - mmd6 - mmd12 - ft)
+          !is.na(cpu)) {
+        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
+          max_cpu <- max(0, 100 - mmd3 - mmd6 - mmd12)
           updateNumericInput(session, "scenario2_community_pickup",
                              value = round(max_cpu, 1),
                              max = 100)
@@ -1281,13 +1200,12 @@ server <- function(input, output, session) {
     mmd3  <- input$baseline_mmd_3month
     mmd6  <- input$baseline_mmd_6month
     mmd12 <- input$baseline_mmd_12month
-    ft    <- input$baseline_fast_track
     cpu   <- input$baseline_community_pickup
     
     if (is.null(mmd3) || is.null(mmd6) || is.null(mmd12) ||
-        is.null(ft)   || is.null(cpu)) return(NULL)
+        is.null(cpu)) return(NULL)
     
-    total <- mmd3 + mmd6 + mmd12 + ft + cpu
+    total <- mmd3 + mmd6 + mmd12 + cpu
     color <- ifelse(total > 100, "red", ifelse(total > 90, "orange", "green"))
     
     tags$div(
@@ -1300,13 +1218,12 @@ server <- function(input, output, session) {
     mmd3  <- input$scenario1_mmd_3month
     mmd6  <- input$scenario1_mmd_6month
     mmd12 <- input$scenario1_mmd_12month
-    ft    <- input$scenario1_fast_track
     cpu   <- input$scenario1_community_pickup
     
     if (is.null(mmd3) || is.null(mmd6) || is.null(mmd12) ||
-        is.null(ft)   || is.null(cpu)) return(NULL)
+        is.null(cpu)) return(NULL)
     
-    total <- mmd3 + mmd6 + mmd12 + ft + cpu
+    total <- mmd3 + mmd6 + mmd12 + cpu
     color <- ifelse(total > 100, "red", ifelse(total > 90, "orange", "green"))
     
     tags$div(
@@ -1319,13 +1236,12 @@ server <- function(input, output, session) {
     mmd3  <- input$scenario2_mmd_3month
     mmd6  <- input$scenario2_mmd_6month
     mmd12 <- input$scenario2_mmd_12month
-    ft    <- input$scenario2_fast_track
     cpu   <- input$scenario2_community_pickup
     
     if (is.null(mmd3) || is.null(mmd6) || is.null(mmd12) ||
-        is.null(ft)   || is.null(cpu)) return(NULL)
+        is.null(cpu)) return(NULL)
     
-    total <- mmd3 + mmd6 + mmd12 + ft + cpu
+    total <- mmd3 + mmd6 + mmd12 + cpu
     color <- ifelse(total > 100, "red", ifelse(total > 90, "orange", "green"))
     
     tags$div(
@@ -1421,7 +1337,8 @@ server <- function(input, output, session) {
     req(scenario)
     calculate_scenario_outcomes(context(), scenario, populations(),
                                 baseline_interventions          = baseline_input_values(),
-                                baseline_additional_suppressed  = outcomes_baseline()$additional_suppressed)
+                                baseline_additional_suppressed  = outcomes_baseline()$additional_suppressed,
+                                mortality_calibration_factor    = outcomes_baseline()$mortality_calibration_factor)
   })
   
   outcomes_scenario2 <- reactive({
@@ -1430,7 +1347,8 @@ server <- function(input, output, session) {
     req(scenario)
     calculate_scenario_outcomes(context(), scenario, populations(),
                                 baseline_interventions          = baseline_input_values(),
-                                baseline_additional_suppressed  = outcomes_baseline()$additional_suppressed)
+                                baseline_additional_suppressed  = outcomes_baseline()$additional_suppressed,
+                                mortality_calibration_factor    = outcomes_baseline()$mortality_calibration_factor)
   })
   
   diff_scenario1 <- reactive({
@@ -1741,6 +1659,13 @@ server <- function(input, output, session) {
           span(style = "font-size: 1.3em; font-weight: bold;",
                format(outcomes$end_deaths, big.mark = ","))
       ),
+      # Calibration note: shown when calibration factor is meaningfully ≠ 1
+      if (!is.null(outcomes$mortality_calibration_factor) &&
+          abs(outcomes$mortality_calibration_factor - 1) > 0.05) {
+        div(class = "small text-muted mb-2", style = "font-size: 0.85em; font-style: italic;",
+            sprintf("Mortality calibrated to country UNAIDS target (factor: %.2f). Scenarios show relative changes from this baseline.",
+                    outcomes$mortality_calibration_factor))
+      },
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
           span(strong("New LTFU:")),
           span(style = "font-size: 1.3em; font-weight: bold;",
@@ -1965,7 +1890,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Infections:"),
+          span("Change in Infections:"),
           span(
             # diff_new_infections: +ve = more infections (bad, red); -ve = fewer (good, green)
             class = ifelse(diff$diff_new_infections < 0, "text-success",
@@ -1976,7 +1901,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Deaths:"),
+          span("Change in Deaths:"),
           span(
             # diff_deaths: +ve = more deaths (bad, red); -ve = fewer (good, green)
             class = ifelse(diff$diff_deaths < 0, "text-success",
@@ -1987,7 +1912,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Additional Suppressed:"),
+          span("Change in Suppressed:"),
           span(
             style = paste0("font-weight: bold; color: ",
                            ifelse(diff$diff_suppressed > 0, "green",
@@ -2025,7 +1950,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Infections:"),
+          span("Change in Infections:"),
           span(
             # diff_new_infections: +ve = more infections (bad, red); -ve = fewer (good, green)
             class = ifelse(diff$diff_new_infections < 0, "text-success",
@@ -2036,7 +1961,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span("Deaths:"),
+          span("Change in Deaths:"),
           span(
             # diff_deaths: +ve = more deaths (bad, red); -ve = fewer (good, green)
             class = ifelse(diff$diff_deaths < 0, "text-success",

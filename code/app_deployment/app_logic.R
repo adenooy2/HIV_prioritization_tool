@@ -23,90 +23,6 @@ library(readxl)
 `%||%` <- function(a, b) if (!is.null(a) && !is.na(a)) a else b
 
 # ============================================================================
-# MORTALITY RATES BY CASCADE STAGE (UPDATE THESE BASED ON LITERATURE)
-# ============================================================================
-MORTALITY_RATES <- list(
-  untreated_undiagnosed = 0.06,  # undiagnosed PLHIV + diagnosed not on ART
-  new_art_initiations   = 0.03,  # first year on ART (pre-stabilisation)
-  treated               = 0.008, # established on ART, not virally suppressed
-  suppressed            = 0.005, # established on ART, virally suppressed
-  ahd                   = 0.15,  # advanced HIV disease (CD4 < 200), any stage
-  prop_ahd = list(
-    undiagnosed        = 0.20,   # undiagnosed PLHIV
-    diagnosed_not_art  = 0.20,   # diagnosed but not on ART
-    new_initiations    = 0.20,   # first year on ART
-    established_treated= 0.00,   # established on ART, not suppressed
-    established_supp   = 0.00    # established on ART, suppressed
-  )
-)
-
-
-# ============================================================================
-# LTFU RATES BY STABILITY STATUS (UPDATE THESE BASED ON LITERATURE)
-# Stable patients (on_art_stable = 85% of on_art): established, clinically stable,
-#   DSD-eligible — lower dropout. Rate calibrated from 3MMD conventional care
-#   retention (86.4%) in Matsimela et al. 2024: 1 - 0.864 = 13.6%.
-# Unstable patients (remaining 15% of on_art): treatment-struggling, side effects,
-#   not yet DSD-eligible — higher dropout. Rate calibrated from "not eligible for
-#   DSD" retention (77.7%): 1 - 0.777 = 22.3%.
-# New initiates are excluded from this LTFU calculation — their dropout is
-#   implicitly captured upstream via linkage rates (<100%) in the testing cascade.
-# ============================================================================
-ANNUAL_LTFU_RATE_STABLE   <- 0.136  # 13.6% of stable on-ART patients become LTFU per year
-ANNUAL_LTFU_RATE_UNSTABLE <- 0.223  # 22.3% of unstable on-ART patients become LTFU per year
-
-# ============================================================================
-# SPONTANEOUS RE-ENGAGEMENT RATE (###UPDATE based on literature)
-# Annual proportion of the LTFU pool that returns to care without any explicit
-# tracking/tracing intervention. Captures silent transfers (patients classified
-# as LTFU at one facility but receiving care elsewhere) and self-initiated
-# re-engagement. Literature suggests ~12-15% of those classified as LTFU are
-# silent transfers (Chammartin et al. 2018, Tiendrebeogo et al. 2021), plus
-# additional self-initiated return documented in Zambian tracing cohorts
-# (Beres et al. 2020). A conservative 15% annual return rate is used.
-# ============================================================================
-ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE <- 0.15
-
-
-# Proportion of *retained* unsuppressed patients who achieve viral suppression
-# as a direct result of the improved adherence that prevented their dropout.
-# i.e. the intervention both keeps them in care AND improves their adherence enough
-# to suppress. ###UPDATE based on literature
-RETENTION_SUPPRESSION_RATE <- 0.4
-
-# ============================================================================
-# MTCT RATES BY MATERNAL ART/SUPPRESSION STATUS (###UPDATE based on literature)
-# Covers transmission risk across pregnancy, delivery, and breastfeeding period.
-# ============================================================================
-MTCT_RATES <- list(
-  on_art_suppressed    = 0.02,   # ~2%  — virally suppressed throughout
-  on_art_unsuppressed  = 0.15,   # ~15% — on ART but not suppressed
-  not_on_art           = 0.35    # ~35% — no maternal PMTCT
-)
-
-# ============================================================================
-# INFANT HIV MORTALITY RATES BY TREATMENT STATUS (###UPDATE based on literature)
-# Annual mortality risk for HIV-infected infants by treatment/suppression status.
-# ============================================================================
-INFANT_MORTALITY_RATES <- list(
-  untreated     = 0.35,  # ~35% — untreated HIV+ infant, first year
-  on_art        = 0.10,  # ~10% — on ART but not suppressed
-  suppressed    = 0.03   # ~3%  — on ART and virally suppressed
-)
-
-# ============================================================================
-# CONDOM BEHAVIOURAL PARAMETERS (UPDATE THESE BASED ON LITERATURE)
-# acts_per_year: average sex acts per year by risk group — converts condoms
-#   distributed into people with consistent coverage
-# condom_use_rate: fraction of acts where someone *with access* uses a condom
-#   High-risk rate higher (targeted programmes, stronger motivation)
-# ============================================================================
-ACTS_PER_YEAR_HIGH        <- 100   # KP / high-concurrency
-ACTS_PER_YEAR_GEN         <- 50    # general population
-CONDOM_USE_RATE_HIGH      <- 0.75
-CONDOM_USE_RATE_GEN       <- 0.55
-
-# ============================================================================
 # LOAD DATA
 # ============================================================================
 # Load country data
@@ -165,6 +81,108 @@ load_hiv_model_params <- function() {
 
 # Global parameter store — loaded once at app startup
 hiv_params <- load_hiv_model_params()
+
+
+
+
+# ============================================================================
+# MORTALITY RATES BY CASCADE STAGE (UPDATE THESE BASED ON LITERATURE)
+# ============================================================================
+MORTALITY_RATES <- list(
+  untreated_undiagnosed = hiv_params$mortality_untreated_undiagnosed,  # Average 350-500
+  new_art_initiations   = hiv_params$mortality_new_art_initiations,  # first year on ART (pre-stabilisation)
+  treated               = hiv_params$mortality_treated, # established on ART, not virally suppressed
+  suppressed            = hiv_params$mortality_suppressed, # established on ART, virally suppressed
+  ahd_untreated         = hiv_params$mortality_ahd_untreated,  # AHD (CD4<200) among undiagnosed / diagnosed not on ART
+  ahd_treated           = hiv_params$mortality_ahd,  # AHD (CD4<200) among those on ART (new init or established)
+  prop_ahd = list(
+    undiagnosed        = hiv_params$prop_ahd_undiagnosed,
+    diagnosed_not_art  = hiv_params$prop_ahd_diagnosed_not_art,
+    new_initiations    = hiv_params$prop_ahd_new_initiations,
+    established_treated= hiv_params$prop_ahd_established_treated,
+    established_supp   = hiv_params$prop_ahd_established_supp
+  )
+)
+
+# ============================================================================
+# MORTALITY CALIBRATION TOGGLE
+# ----------------------------------------------------------------------------
+# When TRUE, model deaths are scaled at baseline so that total HIV deaths
+# match the country's UNAIDS aids_deaths_per_year value. The same factor
+# is then applied to all scenarios, preserving the relative impact of
+# interventions while anchoring absolute deaths to country reality.
+#
+# When FALSE, model uses raw literature-based per-cascade mortality rates;
+# total deaths reflect SSA-average rates, not country specifics.
+#
+# Set FALSE to compare uncalibrated outputs, run a model audit, or revert
+# to pure literature behaviour without removing any code.
+# ============================================================================
+USE_MORTALITY_CALIBRATION <- FALSE
+
+# ============================================================================
+# LTFU RATES BY STABILITY STATUS (UPDATE THESE BASED ON LITERATURE)
+# Stable patients: established, clinically stable
+
+# ============================================================================
+ANNUAL_LTFU_RATE_STABLE   <- hiv_params$ltfu_rate_stable  
+ANNUAL_LTFU_RATE_UNSTABLE <- hiv_params$ltfu_rate_unstable
+
+# ============================================================================
+# SPONTANEOUS RE-ENGAGEMENT RATE 
+# Annual proportion of the LTFU pool that returns to care without any explicit
+# intervention. Captures silent transfers (patients classified
+# as LTFU at one facility but receiving care elsewhere) and self-initiated
+# re-engagement.
+# ============================================================================
+ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE =hiv_params$spontaneous_reengagement_rate
+
+
+# Proportion of *retained* unsuppressed patients who achieve viral suppression
+# as a direct result of the improved adherence that prevented their dropout.
+# i.e. the intervention both keeps them in care AND improves their adherence enough
+# to suppress.
+RETENTION_SUPPRESSION_RATE <- hiv_params$retention_suppression_rate
+
+# ============================================================================
+# MTCT RATES BY MATERNAL ART/SUPPRESSION STATUS
+# Covers transmission risk across pregnancy, delivery, and breastfeeding period.
+# ============================================================================
+MTCT_RATES <- list(
+  on_art_suppressed    = hiv_params$mtct_on_art_suppressed, 
+  on_art_unsuppressed  = hiv_params$mtct_on_art_unsuppressed,   
+  not_on_art           = hiv_params$mtct_not_on_art 
+)
+
+# ============================================================================
+# INFANT HIV MORTALITY RATES BY TREATMENT STATUS 
+# Annual mortality risk for HIV-infected infants by treatment/suppression status.
+# ============================================================================
+INFANT_MORTALITY_RATES <- list(
+  untreated     = hiv_params$infant_mort_untreated,   
+  on_art        = hiv_params$infant_mort_on_art,  
+  suppressed    = hiv_params$infant_mort_suppressed   
+)
+
+# ============================================================================
+# CONDOM BEHAVIOURAL PARAMETERS (UPDATE THESE BASED ON LITERATURE)
+# acts_per_year: average sex acts per year by risk group — converts condoms
+#   distributed into people with consistent coverage
+# condom_use_rate: fraction of acts where someone *with access* uses a condom
+#   High-risk rate higher (targeted programmes, stronger motivation)
+# ============================================================================
+ACTS_PER_YEAR_HIGH        <- hiv_params$acts_per_year_high   # KP / high-concurrency
+ACTS_PER_YEAR_GEN         <- hiv_params$acts_per_year_gen   # general population
+CONDOM_USE_RATE_HIGH      <- hiv_params$condom_use_rate_high
+CONDOM_USE_RATE_GEN       <- hiv_params$condom_use_rate_gen
+
+
+# Targeting of CD4 tests toward suspected AHD cases.
+# Fraction of CD4 tests performed that land on patients who actually have AHD,
+# at low/moderate coverage. Reflects clinical triage (WHO stage, BMI, symptoms).
+# Capped automatically by the AHD pool size, so at high coverage the effective
+# yield converges to prop_ahd$new_initiations.
+CD4_AHD_TARGETING_YIELD <- hiv_params$prop_cd4_ahd 
 
 
 # ============================================================================
@@ -390,15 +408,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "mmd_12month")$unit_cost,
           outcomes = c("retention")
         ),
-        fast_track = list(
-          name = "Fast-track",
-          type = "coverage",
-          unit_label = "% of stable clients",
-          efficacy = subset(intervention_params, intervention_key == "fast_track")$efficacy,
-          eligible_pop = "on_art_stable",
-          unit_cost =  subset(intervention_params, intervention_key == "fast_track")$unit_cost,     
-          outcomes = c("retention")
-        ),
         community_pickup = list(
           name = "Community ART pick-up",
           type = "coverage",
@@ -488,53 +497,64 @@ build_intervention_groups <- function(intervention_params){
 # ============================================================================
 calculate_populations <- function(context) {
   
-  plhiv <- context$total_population * context$hiv_prevalence
+  plhiv <- context$plhiv
   diagnosed <- plhiv * (context$percent_diagnosed/100)
   on_art <- diagnosed * (context$percent_on_art / 100)
   suppressed <- on_art * (context$percent_suppressed / 100)
   unsuppressed_on_art <- on_art - suppressed
   hiv_negative <- context$total_population - plhiv
-  sexually_active <- context$total_population * 0.60
-  births <- (context$total_population * context$birth_rate)/1000
-  hiv_positive_births <- births * context$hiv_prevalence * 1.5
   
   # Safe defaults — prevents NULL propagation if CSV columns are missing/misnamed.
   # prop_pop_male drives uncircumcised_males and all FOI strata; if NULL, vmmc
   # baseline and FOI strata would silently become NULL and display as 0.
+  # NB: this block must precede the sexually_active calculation, which depends
+  # on prop_under14 to restrict the denominator to adults (15+).
   prop_male_pct <- if (!is.null(context$prop_pop_male) && !is.na(context$prop_pop_male))
-    context$prop_pop_male else 49
+    context$prop_pop_male else hiv_params$default_prop_pop_male
   prop_under14  <- if (!is.null(context$prop_pop_under_14) && !is.na(context$prop_pop_under_14))
-    context$prop_pop_under_14 else 40
+    context$prop_pop_under_14 else hiv_params$default_prop_pop_under_14
   circ_prev     <- if (!is.null(context$circ_prevalence) && !is.na(context$circ_prevalence))
-    context$circ_prevalence/100 else 0.20
+    context$circ_prevalence/100 else hiv_params$default_circ_prevalence
   prop_hr       <- if (!is.null(context$prop_high_risk) && !is.na(context$prop_high_risk))
-    context$prop_high_risk else 0.05
+    context$prop_high_risk else hiv_params$default_prop_high_risk
+  
+  # Sexually active = adults (15+) × fraction of adults active in past 12 months.
+  # sexually_active_frac is now defined as the share of ADULTS (not total pop)
+  # who report sex in the past 12 months
+  sexually_active <- context$total_population * (1 - prop_under14/100) * hiv_params$sexually_active_frac
+  births <- (context$total_population * context$birth_rate)/1000
+  # HIV-EXPOSED INFANTS = births to HIV+ mothers (denominator for EID coverage
+  # and infant prophylaxis eligibility — NOT HIV-positive infants; infant
+  # infections are produced by the MTCT cascade downstream).
+  #
+  # hiv_pos_births_multiplier bridges general-population hiv_prevalence to
+  # prevalence among pregnant women. 
+  hiv_exposed_births <- births * context$hiv_prevalence * hiv_params$hiv_pos_births_multiplier
   
   # LTFU flow: people dropping off ART during the year, split by stability status.
-  # Stable patients (on_art × 0.85): DSD-eligible, lower dropout risk.
-  # Unstable patients (on_art × 0.15): not DSD-eligible, higher dropout risk.
+  # Stable patients: DSD-eligible, lower dropout risk.
+  # Unstable patients: not DSD-eligible, higher dropout risk.
   # New initiates excluded — their dropout is captured upstream via linkage rates.
-  on_art_stable_n   <- on_art * 0.85
-  on_art_unstable_n <- on_art * 0.15
+  on_art_stable_n   <- on_art * ((context$percent_suppressed+hiv_params$prop_on_art_stable_diff) / 100)
+  on_art_unstable_n <- on_art-on_art_stable_n
   ltfu_new_stable   <- on_art_stable_n   * ANNUAL_LTFU_RATE_STABLE
   ltfu_new_unstable <- on_art_unstable_n * ANNUAL_LTFU_RATE_UNSTABLE
   
   list(
     total = context$total_population,
     adult_pop = context$total_population * (1 - prop_under14/100),
-    plhiv = plhiv,
+    plhiv = context$plhiv,
     hiv_negative = hiv_negative,
     sexually_active = sexually_active,
     undiagnosed = plhiv - diagnosed,
     diagnosed = diagnosed,
     diagnosed_not_on_art = diagnosed - on_art,
     on_art = on_art,
-    on_art_stable = on_art * 0.85,
-    on_art_suspected_failure = on_art * 0.08,
+    on_art_stable = on_art_stable_n ,
     suppressed = suppressed,
     unsuppressed = unsuppressed_on_art,
     # Prevalent LTFU stock (people already lost before the year begins)
-    ltfu = on_art * 0.15,
+    ltfu = on_art * hiv_params$prevalent_ltfu_frac,
     # Incident LTFU flow (people becoming LTFU during the year), by stability status
     ltfu_new_stable   = ltfu_new_stable,
     ltfu_new_unstable = ltfu_new_unstable,
@@ -546,27 +566,30 @@ calculate_populations <- function(context) {
     circ_male                = hiv_negative * (prop_male_pct/100) * circ_prev,
     # kept for VMMC eligible_pop reference in cost loop
     uncircumcised_males      = hiv_negative * (prop_male_pct/100) * (1 - circ_prev),
-    sexually_active_negative = hiv_negative * 0.60,
-    recent_exposure = hiv_negative * 0.002,
-    hiv_exposed_infants = hiv_positive_births,
+    sexually_active_negative = hiv_negative * (1 - prop_under14/100) * hiv_params$sexually_active_frac,
+    recent_exposure = hiv_negative * hiv_params$recent_exposure_frac,
+    hiv_exposed_infants = hiv_exposed_births,
     pregnant_women      = births,
-    # PMTCT cascade sub-populations (denominator = births x hiv_prevalence)
-    pregnant_hiv_pos_cascade     = births * context$hiv_prevalence,
-    pregnant_on_art              = births * context$hiv_prevalence *
+    # PMTCT cascade sub-populations
+    # Denominator = births × hiv_prevalence × hiv_pos_births_multiplier
+    # The multiplier bridges general-population prevalence to prevalence among
+    # pregnant women and MUST match hiv_exposed_births for cohort consistency
+    # (every HIV-exposed infant corresponds to one pregnant HIV+ woman).
+    pregnant_hiv_pos_cascade     = hiv_exposed_births,
+    pregnant_on_art              = hiv_exposed_births *
       (context$percent_diagnosed / 100) * (context$percent_on_art / 100),
-    pregnant_on_art_suppressed   = births * context$hiv_prevalence *
+    pregnant_on_art_suppressed   = hiv_exposed_births *
       (context$percent_diagnosed / 100) * (context$percent_on_art / 100) *
       (context$percent_suppressed / 100),
-    pregnant_on_art_unsuppressed = births * context$hiv_prevalence *
+    pregnant_on_art_unsuppressed = hiv_exposed_births *
       (context$percent_diagnosed / 100) * (context$percent_on_art / 100) *
       (1 - context$percent_suppressed / 100),
-    pregnant_not_on_art          = births * context$hiv_prevalence *
+    pregnant_not_on_art          = hiv_exposed_births *
       (1 - (context$percent_diagnosed / 100) * (context$percent_on_art / 100)),
-    pregnant_undiagnosed         = births * context$hiv_prevalence * (1 - context$percent_diagnosed / 100),
-    # HIV testing eligible pool: HIV-negative + HIV+ undiagnosed pregnant women
-    # (already-diagnosed HIV+ women are not re-offered an HIV test)
-    pregnant_hiv_testable        = births * (1 - context$hiv_prevalence * (context$percent_diagnosed / 100)),
-    newly_diagnosed_advanced     = (plhiv - diagnosed) * 0.20
+    pregnant_undiagnosed         = hiv_exposed_births * (1 - context$percent_diagnosed / 100),
+    # HIV testing eligible pool: HIV-negative pregnant + HIV+ undiagnosed pregnant
+    pregnant_hiv_testable        = (births - hiv_exposed_births) +
+      (hiv_exposed_births * (1 - context$percent_diagnosed / 100))
   )
 }
 
@@ -581,7 +604,7 @@ default_baseline_interventions <- list(
   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
   eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
   vl_monitoring_routine = 60, 
-  mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track =5, community_pickup=5,
+  mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, community_pickup=5,
   adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68, pnc_vl_testing = 0,
   cd4_testing = 92, ahd_package = 88
 )
@@ -602,24 +625,27 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
         hiv_prevalence = row$hiv_prevalence / 100,
         new_infections_per_year = row$new_infections_per_year,
         current_diagnoses = row$current_diagnoses,
+        plhiv=row$plhiv,
         percent_diagnosed = row$percent_diagnosed,
         percent_on_art = row$percent_on_art,
         percent_suppressed = row$percent_suppressed,
         aids_deaths_per_year = row$aids_deaths_per_year,
         birth_rate = row$birth_rate,
         prop_pop_male = if (!is.null(row$prop_male) && !is.na(row$prop_male))
-          as.numeric(row$prop_male) else 49,
+          as.numeric(row$prop_male) else hiv_params$default_prop_pop_male,
         prop_pop_under_14 = if (!is.null(row$prop_under14) && !is.na(row$prop_under14))
-          as.numeric(row$prop_under14) else 40,
+          as.numeric(row$prop_under14) else hiv_params$default_prop_pop_under_14,
         # FOI parameters (optional CSV columns; defaults used if absent)
-        circ_prevalence = if (!is.null(row$circ_prevalence) && !is.na(row$circ_prevalence)) row$circ_prevalence else 0.20,
-        prop_high_risk  = if (!is.null(row$prop_high_risk)  && !is.na(row$prop_high_risk))  row$prop_high_risk  else 0.05,
-        rr_high          = if (!is.null(row$rr_high)              && !is.na(row$rr_high))              row$rr_high              else 8.0,
-        # Prior-year testing data for yield calibration and volume dilution
+        circ_prevalence = if (!is.null(row$circ_prevalence) && !is.na(row$circ_prevalence)) row$circ_prevalence else hiv_params$default_circ_prevalence,
+        prop_high_risk  = if (!is.null(row$prop_high_risk)  && !is.na(row$prop_high_risk))  row$prop_high_risk  else hiv_params$default_prop_high_risk,
+        rr_high          = if (!is.null(row$rr_high)              && !is.na(row$rr_high))   row$rr_high  else hiv_params$default_rr_high,
         test_yield       = if (!is.null(row$avg_test_yield)       && !is.na(row$avg_test_yield))
           as.numeric(row$avg_test_yield) / 100 else NULL,  # % in CSV -> proportion
         prior_year_tests = if (!is.null(row$total_tests_prev_year) && !is.na(row$total_tests_prev_year))
-          as.numeric(row$total_tests_prev_year) else NULL
+          as.numeric(row$total_tests_prev_year) else NULL,
+        # Retesting probability: country-specific override; NULL means use hiv_params default
+        prop_retesting   = if (!is.null(row$prop_retest)        && !is.na(row$prop_retest))
+          as.numeric(row$prop_retest) else NULL
       )
       
       pops <- calculate_populations(context)
@@ -636,7 +662,7 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
         hivst_community = round(0.0035*pops$adult_pop, -4),
         eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
         vl_monitoring_routine = 60, 
-        mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, fast_track=5, community_pickup =5, 
+        mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, community_pickup =5, 
         adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68, pnc_vl_testing = 0,
         cd4_testing = 92, ahd_package = 88
       )
@@ -687,6 +713,7 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
   custom_context <- list(
     total_population = 1000000,
     hiv_prevalence = 0.05,
+    plhiv = NULL,
     percent_diagnosed = 80,
     percent_on_art = 75,
     percent_suppressed = 85,
@@ -749,8 +776,8 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
 #         (PrEP, condoms, VMMC)
 #
 # STRATA:
-#   1. High-risk (KP, high-concurrency partners)    ~5% of HIV-negative sexually active
-#   2. General female                                ~47.5% of HIV-negative sexually active
+#   1. High-risk (KP, high-concurrency partners)    ~% of HIV-negative sexually active
+#   2. General female                                ~% of HIV-negative sexually active
 #   3. General uncircumcised male                    variable by country
 #   4. General circumcised male                      variable by country (lower β)
 #
@@ -763,10 +790,10 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
 # STEP 1: DEFINE STRATUM PARAMETERS
 # ----------------------------------------------------------------------------
 define_strata_params <- function(context = NULL) {
-  prop_high_risk      <- if (!is.null(context$prop_high_risk))      context$prop_high_risk      else 0.05
-  rr_high             <- if (!is.null(context$rr_high))             context$rr_high             else 8.0
-  prop_male_general   <- if (!is.null(context$prop_pop_male))       context$prop_pop_male / 100 else 0.50
-  circ_prevalence     <- if (!is.null(context$circ_prevalence))     context$circ_prevalence/100     else 0.20
+  prop_high_risk      <- if (!is.null(context$prop_high_risk))      context$prop_high_risk      else hiv_params$default_prop_high_risk
+  rr_high             <- if (!is.null(context$rr_high))             context$rr_high             else hiv_params$default_rr_high
+  prop_male_general   <- if (!is.null(context$prop_pop_male))       context$prop_pop_male / 100 else hiv_params$default_prop_pop_male
+  circ_prevalence     <- if (!is.null(context$circ_prevalence))     context$circ_prevalence/100 else hiv_params$default_circ_prevalence
   # VMMC risk reduction: prefer explicit context override, otherwise route
   # from the VMMC intervention's efficacy field (single source of truth with
   # the intervention_params Excel sheet). Hard-coded 0.60 is a final fallback.
@@ -776,8 +803,6 @@ define_strata_params <- function(context = NULL) {
              !is.null(intervention_groups$prevention$interventions$vmmc$efficacy) &&
              !is.na(intervention_groups$prevention$interventions$vmmc$efficacy)) {
     intervention_groups$prevention$interventions$vmmc$efficacy
-  } else {
-    0.60
   }
   
   list(
@@ -1201,7 +1226,8 @@ render_calibration_panel <- function(foi_result) {
 calculate_scenario_outcomes <- function(context, interventions, populations,
                                         is_baseline                  = FALSE,
                                         baseline_interventions        = NULL,
-                                        baseline_additional_suppressed = 0) {
+                                        baseline_additional_suppressed = 0,
+                                        mortality_calibration_factor   = NULL) {
   
   # Initialize outcome counters
   infections_averted <- 0
@@ -1239,10 +1265,15 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     base_test_yield <- min(base_test_yield, 0.1)  # Cap at 10% positivity for realism
   }
   
-  prop_new_dx <- 0.5 ###UPDATE
-  prop_reeng  <- (1 - prop_new_dx) ###UPDATE
+  prop_reeng <- if (!is.null(context$prop_retesting) && !is.na(context$prop_retesting)) {
+    context$prop_retesting
+  } else {
+    hiv_params$prop_retest_default
+  }
+  prop_new_dx <- 1 - prop_reeng
   
-  average_linkage <- 0.9
+  
+  average_linkage_cap <- hiv_params$average_linkage_cap
   
   # Flatten intervention structure
   all_interventions <- list()
@@ -1454,7 +1485,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         # Two combination rules depending on whether interventions can overlap:
         #
         # ADDITIVE — DSD options (eligible_pop == "on_art_stable"):
-        #   mmd_3month / mmd_6month / mmd_12month / fast_track / community_pickup
+        #   mmd_3month / mmd_6month / mmd_12month / community_pickup
         #   are mutually exclusive — the UI enforces they sum to ≤100% of on_art_stable,
         #   so no person can be enrolled in two DSD slots. Simple addition is correct:
         #     ltfu_retained_frac += coverage_frac * efficacy
@@ -1577,6 +1608,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # remainder of the 95% cap, after spontaneous returns are reserved.
   programmatic_cap <- max(0, total_ltfu_pool * 0.95 - spontaneous_reengaged)
   
+  
   # Testing re-engagement draws from the programmatic share first;
   # tracking/tracing takes from whatever remains.
   re_engagement_testing <- min(re_engagement_testing, programmatic_cap)
@@ -1599,7 +1631,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # ── ART INITIATIONS ───────────────────────────────────────────────────────
   art_inititations_testing <- min(art_inititations_testing,
-                                  average_linkage * (new_diagnoses + re_engagement_testing))
+                                  average_linkage_cap * (new_diagnoses + re_engagement_testing))
   art_initiations <- art_inititations_testing + art_initiations
   
   # Additional suppressed from testing
@@ -1646,6 +1678,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   cd4_value     <- ifelse(is.null(interventions$cd4_testing),    0, interventions$cd4_testing)
   ahd_pkg_value <- ifelse(is.null(interventions$ahd_package),    0, interventions$ahd_package)
   
+  
+  
   # ── CD4 testing ──────────────────────────────────────────────────────────
   if (cd4_value > 0 && art_initiations > 0) {
     n_cd4_tested      <- min(art_initiations * (cd4_value / 100), art_initiations)
@@ -1656,13 +1690,24 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # ── AHD package (only those diagnosed with AHD via CD4 test) ─────────────
   if (ahd_pkg_value > 0 && art_initiations > 0) {
-    prop_ahd_new_init        <- MORTALITY_RATES$prop_ahd$new_initiations
-    n_ahd_diagnosed          <- art_initiations * cd4_coverage_frac * prop_ahd_new_init
-    n_ahd_pkg_reached        <- min(n_ahd_diagnosed * (ahd_pkg_value / 100), n_ahd_diagnosed)
-    ahd_pkg_cov_frac_of_ahd  <- if (n_ahd_diagnosed > 0) n_ahd_pkg_reached / n_ahd_diagnosed else 0
-    ahd_pkg_eff_reduction    <- cd4_coverage_frac * ahd_pkg_cov_frac_of_ahd *
+    prop_ahd_new_init <- MORTALITY_RATES$prop_ahd$new_initiations
+    n_cd4_tested      <- art_initiations * cd4_coverage_frac
+    n_ahd_pool        <- art_initiations * prop_ahd_new_init
+    
+    # Targeted yield: CD4 tests preferentially identify AHD cases, capped by pool size.
+    n_ahd_diagnosed   <- min(n_cd4_tested * CD4_AHD_TARGETING_YIELD, n_ahd_pool)
+    
+    # Effective gating fraction = AHD cases found / total AHD cases that exist
+    cd4_ahd_detection_frac <- if (n_ahd_pool > 0) n_ahd_diagnosed / n_ahd_pool else 0
+    
+    n_ahd_pkg_reached       <- min(n_ahd_diagnosed * (ahd_pkg_value / 100), n_ahd_diagnosed)
+    ahd_pkg_cov_frac_of_ahd <- if (n_ahd_diagnosed > 0) n_ahd_pkg_reached / n_ahd_diagnosed else 0
+    
+    ahd_pkg_eff_reduction   <- cd4_ahd_detection_frac * ahd_pkg_cov_frac_of_ahd *
       all_interventions$ahd_package$efficacy
-    total_intervention_cost  <- total_intervention_cost + n_ahd_pkg_reached * all_interventions$ahd_package$unit_cost
+    
+    total_intervention_cost <- total_intervention_cost +
+      n_ahd_pkg_reached * all_interventions$ahd_package$unit_cost
   }
   
   # ========================================================================
@@ -1699,20 +1744,18 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # ========================================================================
   # EFFECTIVE AHD MORTALITY RATES (intervention-adjusted where applicable)
   # ========================================================================
-  
   prop_ahd <- MORTALITY_RATES$prop_ahd
-  
-  # Untreated groups: no interventions reach them
+  # Untreated groups: no interventions reach them; use untreated AHD rate
   eff_base_rate_untreated <- MORTALITY_RATES$untreated_undiagnosed
-  eff_ahd_rate_untreated  <- MORTALITY_RATES$ahd
+  eff_ahd_rate_untreated  <- MORTALITY_RATES$ahd_untreated
   
-  # New initiations: AHD package reduces the AHD rate; base rate is unchanged
+  # New initiations: use treated AHD rate; AHD package reduces it; base rate unchanged
   eff_base_rate_new_init <- MORTALITY_RATES$new_art_initiations
-  eff_ahd_rate_new_init  <- MORTALITY_RATES$ahd *
+  eff_ahd_rate_new_init  <- MORTALITY_RATES$ahd_treated *
     (1 - ahd_pkg_eff_reduction)
   
-  # Established on ART: AHD package reduces the AHD rate only; base rates unchanged
-  eff_ahd_rate_established <- MORTALITY_RATES$ahd *
+  # Established on ART: use treated AHD rate; AHD package reduces it; base rates unchanged
+  eff_ahd_rate_established <- MORTALITY_RATES$ahd_treated *
     (1 - ahd_pkg_eff_reduction)
   
   # ========================================================================
@@ -1734,12 +1777,50 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   total_hiv_deaths <- deaths_undiagnosed + deaths_diagnosed_not_art +
     deaths_new_initiations + deaths_established_treated + deaths_established_supp
   
+  # ========================================================================
+  # MORTALITY CALIBRATION TO COUNTRY UNAIDS TARGET
+  # ------------------------------------------------------------------------
+  # Literature-based per-cascade rates produce SSA-average mortality, which
+  # over- or under-estimates country-specific deaths because cascade
+  # composition (especially the AHD distribution in untreated pools) varies
+  # by country and epidemic maturity. We anchor the model to the country's
+  # UNAIDS-published AIDS deaths.
+  #
+  # Baseline run: compute calibration_factor = target / modelled_deaths
+  # Scenario run: receive baseline_factor and apply it (preserves relative
+  #               impact of interventions while keeping absolute deaths
+  #               anchored to country reality at baseline)
+  # If no target provided, factor defaults to 1 (no calibration).
+  # ========================================================================
+  target_aids_deaths <- context$aids_deaths_per_year
+  
+  if (is_baseline) {
+    if (USE_MORTALITY_CALIBRATION &&
+        !is.null(target_aids_deaths) && !is.na(target_aids_deaths) &&
+        target_aids_deaths > 0 && total_hiv_deaths > 0) {
+      mortality_calibration_factor <- target_aids_deaths / total_hiv_deaths
+    } else {
+      mortality_calibration_factor <- 1
+    }
+  } else if (is.null(mortality_calibration_factor)) {
+    mortality_calibration_factor <- 1
+  }
+  
+  # Apply factor to all death components
+  deaths_undiagnosed         <- deaths_undiagnosed         * mortality_calibration_factor
+  deaths_diagnosed_not_art   <- deaths_diagnosed_not_art   * mortality_calibration_factor
+  deaths_new_initiations     <- deaths_new_initiations     * mortality_calibration_factor
+  deaths_established_treated <- deaths_established_treated * mortality_calibration_factor
+  deaths_established_supp    <- deaths_established_supp    * mortality_calibration_factor
+  total_hiv_deaths           <- total_hiv_deaths           * mortality_calibration_factor
+  
   # Deaths averted = difference between unadjusted (no interventions) and adjusted deaths
   # Only on-treatment groups are affected by interventions
   unadjusted_deaths_on_treatment <-
-    calc_deaths(n_new_initiations,     MORTALITY_RATES$new_art_initiations, MORTALITY_RATES$ahd, prop_ahd$new_initiations) +
-    calc_deaths(n_established_treated, MORTALITY_RATES$treated,             MORTALITY_RATES$ahd, prop_ahd$established_treated) +
-    calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed,          MORTALITY_RATES$ahd, prop_ahd$established_supp)
+    calc_deaths(n_new_initiations,     MORTALITY_RATES$new_art_initiations, MORTALITY_RATES$ahd_treated, prop_ahd$new_initiations) +
+    calc_deaths(n_established_treated, MORTALITY_RATES$treated,             MORTALITY_RATES$ahd_treated, prop_ahd$established_treated) +
+    calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed,          MORTALITY_RATES$ahd_treated, prop_ahd$established_supp)
+  unadjusted_deaths_on_treatment <- unadjusted_deaths_on_treatment * mortality_calibration_factor
   
   adjusted_deaths_on_treatment <- deaths_new_initiations + deaths_established_treated + deaths_established_supp
   
@@ -1756,7 +1837,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # (both sub-groups use new_art_initiations rate — suppressed new initiates are still early
   # in treatment and face the same elevated early-ART mortality as unsuppressed ones).
   new_init_mort_frac     <- if (n_new_initiations > 0)
-    deaths_new_initiations / n_new_initiations else 0
+    min(1, deaths_new_initiations / n_new_initiations) else 0
   remaining_new_supp     <- max(0, round(n_new_supp    * (1 - new_init_mort_frac)))
   remaining_new_treated  <- max(0, round(n_new_treated * (1 - new_init_mort_frac)))
   remaining_new_init     <- remaining_new_supp + remaining_new_treated
@@ -1941,7 +2022,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # are less likely to suppress quickly. ###UPDATE discount from literature.
   # ========================================================================
   eid_linkage_rate     <- all_interventions$eid$linkage_rate %||% 0.80
-  infant_supp_rate     <- (context$percent_suppressed / 100) * 0.70  ###UPDATE discount
+  infant_supp_rate     <- hiv_params$eid_supp_rate
   
   infant_on_art        <- eid_infants_diagnosed * eid_linkage_rate
   infant_suppressed    <- infant_on_art * infant_supp_rate
@@ -2059,6 +2140,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     deaths_new_initiations = round(deaths_new_initiations),
     deaths_established_treated = round(deaths_established_treated),
     deaths_established_suppressed = round(deaths_established_supp),
+    mortality_calibration_factor = mortality_calibration_factor,
     total_hiv_deaths_before_interventions = round(total_hiv_deaths + total_deaths_averted),
     
     # End-of-year epidemiological outcomes (absolute values)

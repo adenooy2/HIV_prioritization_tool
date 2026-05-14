@@ -1608,6 +1608,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # remainder of the 95% cap, after spontaneous returns are reserved.
   programmatic_cap <- max(0, total_ltfu_pool * 0.95 - spontaneous_reengaged)
   
+  
   # Testing re-engagement draws from the programmatic share first;
   # tracking/tracing takes from whatever remains.
   re_engagement_testing <- min(re_engagement_testing, programmatic_cap)
@@ -1676,6 +1677,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Collect intervention values first (need cd4 before ahd_package)
   cd4_value     <- ifelse(is.null(interventions$cd4_testing),    0, interventions$cd4_testing)
   ahd_pkg_value <- ifelse(is.null(interventions$ahd_package),    0, interventions$ahd_package)
+  
+  
   
   # ── CD4 testing ──────────────────────────────────────────────────────────
   if (cd4_value > 0 && art_initiations > 0) {

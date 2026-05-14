@@ -269,29 +269,29 @@ server <- function(input, output, session) {
   
   # Validate percentage inputs (0-100%)
   observe({
-    if (!is.null(input$prevalence) && (input$prevalence < 0 || input$prevalence > 100)) {
+    if (!is.null(input$prevalence) && !is.na(input$prevalence) && (input$prevalence < 0 || input$prevalence > 100)) {
       updateNumericInput(session, "prevalence", value = max(0, min(100, input$prevalence)))
     }
-    if (!is.null(input$pct_diagnosed) && (input$pct_diagnosed < 0 || input$pct_diagnosed > 100)) {
+    if (!is.null(input$pct_diagnosed) && !is.na(input$pct_diagnosed) && (input$pct_diagnosed < 0 || input$pct_diagnosed > 100)) {
       updateNumericInput(session, "pct_diagnosed", value = max(0, min(100, input$pct_diagnosed)))
     }
-    if (!is.null(input$pct_on_art) && (input$pct_on_art < 0 || input$pct_on_art > 100)) {
+    if (!is.null(input$pct_on_art) && !is.na(input$pct_on_art) && (input$pct_on_art < 0 || input$pct_on_art > 100)) {
       updateNumericInput(session, "pct_on_art", value = max(0, min(100, input$pct_on_art)))
     }
-    if (!is.null(input$pct_suppressed) && (input$pct_suppressed < 0 || input$pct_suppressed > 100)) {
+    if (!is.null(input$pct_suppressed) && !is.na(input$pct_suppressed) && (input$pct_suppressed < 0 || input$pct_suppressed > 100)) {
       updateNumericInput(session, "pct_suppressed", value = max(0, min(100, input$pct_suppressed)))
     }
   })
   
   # Validate non-negative absolute inputs
   observe({
-    if (!is.null(input$total_pop) && input$total_pop < 0) {
+    if (!is.null(input$total_pop) && !is.na(input$total_pop) && input$total_pop < 0) {
       updateNumericInput(session, "total_pop", value = 0)
     }
-    if (!is.null(input$new_infections) && input$new_infections < 0) {
+    if (!is.null(input$new_infections) && !is.na(input$new_infections) && input$new_infections < 0) {
       updateNumericInput(session, "new_infections", value = 0)
     }
-    if (!is.null(input$aids_deaths) && input$aids_deaths < 0) {
+    if (!is.null(input$aids_deaths) && !is.na(input$aids_deaths) && input$aids_deaths < 0) {
       updateNumericInput(session, "aids_deaths", value = 0)
     }
   })
