@@ -425,13 +425,13 @@ build_intervention_groups <- function(intervention_params){
       color = "#ec4899",
       interventions = list(
         adherence_counseling = list(
-          name = "Enhanced adherence counselling",
+          name = "Adherence counseling/psychosocial support",
           type = "coverage",
-          unit_label = "% of VL-identified unsuppressed on ART",
+          unit_label = "% of people on ART",
           efficacy = subset(intervention_params, intervention_key == "adherence_counseling")$efficacy,
           eligible_pop = "on_art",
           unit_cost = subset(intervention_params, intervention_key == "adherence_counseling")$unit_cost,
-          outcomes = c("viral_suppression")
+          outcomes = c("retention")
         ),
         tracking_tracing = list(
           name = "Tracking & tracing",
@@ -1238,6 +1238,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   re_engagement_testing <- 0
   additional_suppressed <- 0
   additional_suppressed_testing <- 0
+  # INSTRUMENTATION: source-level decomposition of additional_suppressed.
+  # Each variable accumulates contributions BEFORE the line 1655 cap is applied.
+  as_src_testing       <- 0   # line 1409 (testing -> ART -> suppression)
+  as_src_vs_interv     <- 0   # line 1462 (VL/adherence/MMD interventions)
+  as_src_pmtct         <- 0   # line 1541 (PMTCT cascade)
+  as_src_ltfu_retain   <- 0   # line 1584 (LTFU prevention/retention)
+  as_src_ltfu_reeng    <- 0   # line 1629 (LTFU re-engagement + spontaneous)
   art_initiations <- 0
   art_inititations_testing <- 0
   # PMTCT / infant cascade trackers
@@ -1408,6 +1415,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         
         additional_suppressed_testing <- additional_suppressed_testing +
           linked * ((context$percent_suppressed * 0.9) / 100)
+        # INSTR: track separately for source decomposition
+        as_src_testing <- as_src_testing +
+          linked * ((context$percent_suppressed * 0.9) / 100)
         
         # Full costs: unit cost per test + linkage cost per linked patient
         total_intervention_cost <- total_intervention_cost +
@@ -1459,42 +1469,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       eid_infants_reached <- number_reached
       
     } else if ("viral_suppression" %in% intervention$outcomes) {
-      # ── Routine VL monitoring: identification only, NO direct suppression effect ──
-      # vl_monitoring_routine identifies unsuppressed patients but does not itself
-      # convert them to suppressed. Its effect is realised downstream via Enhanced
-      # Adherence Counselling (EAC), which acts on the VL-identified unsuppressed
-      # pool. The VL test cost still applies here.
-      if (int_key == "vl_monitoring_routine") {
-        total_intervention_cost <- total_intervention_cost +
-          number_reached * intervention$unit_cost
-        next
-      }
-      
-      # ── Enhanced Adherence Counselling (EAC) ──────────────────────────────
-      # EAC acts ONLY on unsuppressed patients identified via VL monitoring.
-      # Reach   = on_art × vl_coverage × unsuppressed_rate × eac_coverage
-      # Effect  = reach × eac_efficacy        (added to additional_suppressed)
-      # Cost    = reach × eac_unit_cost       (only those who actually receive EAC)
-      # If vl_monitoring_routine coverage is 0, EAC has no eligible pool and
-      # contributes nothing to suppression or cost.
-      if (int_key == "adherence_counseling") {
-        vl_cov_frac       <- (interventions$vl_monitoring_routine %||% 0) / 100
-        eac_cov_frac      <- intervention_value / 100
-        unsuppressed_rate <- 1 - context$percent_suppressed / 100
-        
-        eac_reach <- populations$on_art * vl_cov_frac * unsuppressed_rate * eac_cov_frac
-        
-        additional_suppressed <- additional_suppressed +
-          eac_reach * intervention$efficacy
-        
-        total_intervention_cost <- total_intervention_cost +
-          eac_reach * intervention$unit_cost
-        
-        next
-      }
-      
-      # ── All other viral_suppression interventions (ANC/PNC VL testing, etc.) ──
       additional_suppressed <- additional_suppressed +
+        number_reached * (1 - context$percent_suppressed / 100) * intervention$efficacy
+      # INSTR: track separately for source decomposition
+      as_src_vs_interv <- as_src_vs_interv +
         number_reached * (1 - context$percent_suppressed / 100) * intervention$efficacy
       
       total_intervention_cost <- total_intervention_cost +
@@ -1510,7 +1488,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     } else if ("retention" %in% intervention$outcomes) {
       # ── Two distinct retention pathways ──────────────────────────────────
       # tracking_tracing (eligible_pop == "ltfu"): re-engages people already LTFU
-      # MMD / DSD options (eligible_pop != "ltfu"): prevents people
+      # MMD / adherence_counseling (eligible_pop != "ltfu"): prevents people
       #   from becoming LTFU in the first place
       if (intervention$eligible_pop == "ltfu") {
         ltfu_reengaged <- ltfu_reengaged + number_reached * intervention$efficacy
@@ -1526,9 +1504,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         #     ltfu_retained_frac += coverage_frac * efficacy
         #
         # MULTIPLICATIVE — overlapping interventions (eligible_pop == "on_art"):
-        #   None currently — kept for future overlapping retention interventions
-        #   that target the full on_art pool. Multiplicative combination prevents
-        #   double-counting:
+        #   e.g. adherence_counseling targets the full on_art pool and CAN overlap
+        #   with DSD patients. Multiplicative combination prevents double-counting:
         #     marginal_retained = (1 - ltfu_retained_frac) * coverage_frac * efficacy
         coverage_frac <- ifelse(
           populations$on_art > 0,
@@ -1539,7 +1516,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
           # Mutually exclusive DSD: additive
           ltfu_retained_frac <- ltfu_retained_frac + coverage_frac * intervention$efficacy
         } else {
-          # Overlapping interventions (none currently): multiplicative
+          # Overlapping interventions (e.g. adherence_counseling): multiplicative
           marginal_retained  <- (1 - ltfu_retained_frac) * coverage_frac * intervention$efficacy
           ltfu_retained_frac <- ltfu_retained_frac + marginal_retained
         }
@@ -1575,6 +1552,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   new_diagnoses                 <- new_diagnoses                 + pmtct_new_diagnoses
   art_inititations_testing      <- art_inititations_testing      + pmtct_cascade_linked_art
   additional_suppressed_testing <- additional_suppressed_testing + pmtct_cascade_linked_supp
+  # INSTR: track separately
+  as_src_pmtct <- as_src_pmtct + pmtct_cascade_linked_supp
   
   # Linkage cost for PMTCT-linked women (unit cost already charged in loop above)
   total_intervention_cost <- total_intervention_cost +
@@ -1584,8 +1563,28 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # APPLY CONSTRAINTS - CAP AT REALISTIC MAXIMUMS
   # ========================================================================
   
-  # Cannot diagnose more people than 95% are undiagnosed
-  new_diagnoses <- min(new_diagnoses, populations$undiagnosed * 0.95)
+  # Cannot diagnose more than 95% of the year's "findable" PLHIV pool.
+  # Pool = start-of-year undiagnosed stock + a fraction of incident infections
+  # occurring this year that are detectable before year-end (i.e. past the
+  # serology window period). With ~1 month window and uniform incidence
+  # through the year, on average ~90% of this year's incident infections are
+  # detectable by year-end. `prop_incident_detectable_year` is sourced from
+  # hiv_params if present, else falls back to 0.90. Set to 0 to recover the
+  # legacy behaviour (cap = 0.95 * start-of-year undiagnosed only).
+  prop_inc_det <- if (!is.null(hiv_params$prop_incident_detectable_year) &&
+                      !is.na(hiv_params$prop_incident_detectable_year)) {
+    hiv_params$prop_incident_detectable_year
+  } else {
+    0.90
+  }
+  inc_findable <- if (!is.null(context$new_infections_per_year) &&
+                      !is.na(context$new_infections_per_year)) {
+    context$new_infections_per_year * prop_inc_det
+  } else {
+    0
+  }
+  diagnosis_cap <- 0.95 * (populations$undiagnosed + inc_findable)
+  new_diagnoses <- min(new_diagnoses, diagnosis_cap)
   
   # ── LTFU PREVENTION: convert retained fraction to people ─────────────────
   # ltfu_retained_frac is the multiplicatively-combined fraction of the at-risk
@@ -1618,6 +1617,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     0
   )
   additional_suppressed <- additional_suppressed +
+    ltfu_prevented_unstable * prop_unsuppressed_on_art * RETENTION_SUPPRESSION_RATE
+  # INSTR: track separately
+  as_src_ltfu_retain <- as_src_ltfu_retain +
     ltfu_prevented_unstable * prop_unsuppressed_on_art * RETENTION_SUPPRESSION_RATE
   
   # Net incident LTFU after prevention interventions, by stability status
@@ -1664,6 +1666,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # greater disruption of a period out of care). ###UPDATE
   additional_suppressed <- additional_suppressed +
     ltfu_reengaged * ((context$percent_suppressed * 0.8) / 100)
+  # INSTR: track separately
+  as_src_ltfu_reeng <- as_src_ltfu_reeng +
+    ltfu_reengaged * ((context$percent_suppressed * 0.8) / 100)
   
   # ── ART INITIATIONS ───────────────────────────────────────────────────────
   art_inititations_testing <- min(art_inititations_testing,
@@ -1690,6 +1695,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # suppressed before dropping out, so the ceiling must account for them.
   max_additional_suppressed <- effective_on_art + art_initiations + ltfu_reengaged -
     populations$suppressed + stable_ltfu
+  # INSTR: capture pre-cap value for decomposition output
+  as_pre_cap <- additional_suppressed
+  as_cap_max <- max(0, max_additional_suppressed)
   additional_suppressed <- min(additional_suppressed, max(0, max_additional_suppressed))
   
   # ========================================================================
@@ -2136,6 +2144,20 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     # Treatment outcomes
     art_initiations = round(art_initiations),
     additional_suppressed = round(additional_suppressed),  # exposed for baseline→scenario delta
+    # INSTR: source decomposition of additional_suppressed (pre-cap raw values)
+    # These sum to as_pre_cap. If as_pre_cap > as_cap_max, the cap was binding
+    # and additional_suppressed was clipped to as_cap_max.
+    instr_as_pre_cap        = round(as_pre_cap),
+    instr_as_cap_max        = round(as_cap_max),
+    instr_as_src_testing    = round(as_src_testing),
+    instr_as_src_vs_interv  = round(as_src_vs_interv),
+    instr_as_src_pmtct      = round(as_src_pmtct),
+    instr_as_src_ltfu_retain= round(as_src_ltfu_retain),
+    instr_as_src_ltfu_reeng = round(as_src_ltfu_reeng),
+    # n_unsuppressed at start-of-year for FOI comparison
+    instr_n_unsuppressed_start = round(populations$unsuppressed +
+                                         populations$diagnosed_not_on_art +
+                                         populations$undiagnosed),
     # LTFU flow outputs (replacing old single retention_improvement)
     ltfu_new_effective  = round(ltfu_new_effective),   # net people lost to follow-up
     ltfu_prevented      = round(ltfu_prevented),        # prevented from dropping off by MMD/adherence
