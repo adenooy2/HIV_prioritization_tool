@@ -540,6 +540,20 @@ calculate_populations <- function(context) {
   ltfu_new_stable   <- on_art_stable_n   * ANNUAL_LTFU_RATE_STABLE
   ltfu_new_unstable <- on_art_unstable_n * ANNUAL_LTFU_RATE_UNSTABLE
   
+
+  # Reconciliation invariant: cascade groups must sum to PLHIV.
+  # Reconciliation invariant: cascade groups must sum to PLHIV.
+  # Guarded against NULL/NA/zero-length inputs (Custom Country sets plhiv=NULL
+  # at preset build; some country presets have NA cascade values).
+  if (length(plhiv) == 1 && !is.na(plhiv) &&
+      length(diagnosed) == 1 && !is.na(diagnosed) &&
+      length(on_art) == 1 && !is.na(on_art)) {
+    cascade_sum <- (plhiv - diagnosed) + (diagnosed - on_art) + on_art
+    if (abs(cascade_sum - plhiv) > 1) {
+      warning(sprintf("Cascade does not reconcile to PLHIV: sum=%.0f, plhiv=%.0f",
+                      cascade_sum, plhiv))
+    }
+  }
   list(
     total = context$total_population,
     adult_pop = context$total_population * (1 - prop_under14/100),
@@ -553,8 +567,13 @@ calculate_populations <- function(context) {
     on_art_stable = on_art_stable_n ,
     suppressed = suppressed,
     unsuppressed = unsuppressed_on_art,
-    # Prevalent LTFU stock (people already lost before the year begins)
-    ltfu = on_art * hiv_params$prevalent_ltfu_frac,
+    # Year-start cascade decomposition (mutually exclusive, sums to PLHIV):
+    #   undiagnosed + never_linked + ltfu (prevalent) + on_art = plhiv
+    # `frac_diag_not_art_who_are_ltfu` (sheet: prevalent_ltfu_frac) is now the
+    # share of the diagnosed-but-not-on-ART pool who previously initiated ART
+    # and have since lapsed (the complement is people who never linked).
+    ltfu         = (diagnosed - on_art) * hiv_params$prevalent_ltfu_frac,
+    never_linked = (diagnosed - on_art) * (1 - hiv_params$prevalent_ltfu_frac),
     # Incident LTFU flow (people becoming LTFU during the year), by stability status
     ltfu_new_stable   = ltfu_new_stable,
     ltfu_new_unstable = ltfu_new_unstable,
