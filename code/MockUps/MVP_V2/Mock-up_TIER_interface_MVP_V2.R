@@ -1399,6 +1399,54 @@ server <- function(input, output, session) {
     calculate_scenario_difference(outcomes_scenario2(), outcomes_baseline())
   })
   
+  # # ========================================================================
+  # # DEBUG OBSERVER — TEMPORARY
+  # # Prints cascade numbers for baseline + scenarios to the R console every
+  # # time inputs change. Remove this block once 1st-95 movement is confirmed.
+  # # ========================================================================
+  # observe({
+  #   pops <- populations()
+  #   b  <- outcomes_baseline()
+  #   s1 <- outcomes_scenario1()
+  #   s2 <- outcomes_scenario2()
+  #   
+  #   cat("\n=========== CASCADE DEBUG ===========\n")
+  #   cat(sprintf("populations$plhiv      = %s\n", format(round(pops$plhiv), big.mark = ",")))
+  #   cat(sprintf("populations$diagnosed  = %s  (input %% diagnosed: %.2f%%)\n",
+  #               format(round(pops$diagnosed), big.mark = ","),
+  #               100 * pops$diagnosed / pops$plhiv))
+  #   cat("\n                         BASELINE      SCENARIO 1    SCENARIO 2\n")
+  #   cat(sprintf("new_diagnoses       :  %10s    %10s    %10s\n",
+  #               format(b$new_diagnoses,  big.mark=","),
+  #               format(s1$new_diagnoses, big.mark=","),
+  #               format(s2$new_diagnoses, big.mark=",")))
+  #   cat(sprintf("end_diagnosed       :  %10s    %10s    %10s\n",
+  #               format(b$end_diagnosed,  big.mark=","),
+  #               format(s1$end_diagnosed, big.mark=","),
+  #               format(s2$end_diagnosed, big.mark=",")))
+  #   cat(sprintf("end_plhiv           :  %10s    %10s    %10s\n",
+  #               format(b$end_plhiv,  big.mark=","),
+  #               format(s1$end_plhiv, big.mark=","),
+  #               format(s2$end_plhiv, big.mark=",")))
+  #   cat(sprintf("end_new_infections  :  %10s    %10s    %10s\n",
+  #               format(b$end_new_infections,  big.mark=","),
+  #               format(s1$end_new_infections, big.mark=","),
+  #               format(s2$end_new_infections, big.mark=",")))
+  #   cat(sprintf("deaths_undiagnosed  :  %10s    %10s    %10s\n",
+  #               format(b$deaths_undiagnosed,  big.mark=","),
+  #               format(s1$deaths_undiagnosed, big.mark=","),
+  #               format(s2$deaths_undiagnosed, big.mark=",")))
+  #   cat(sprintf("1st 95 (raw %%)      :  %10.4f    %10.4f    %10.4f\n",
+  #               b$end_diagnosed  / b$end_plhiv  * 100,
+  #               s1$end_diagnosed / s1$end_plhiv * 100,
+  #               s2$end_diagnosed / s2$end_plhiv * 100))
+  #   cat(sprintf("1st 95 (round 1dp)  :  %10.1f    %10.1f    %10.1f\n",
+  #               round(b$end_diagnosed  / b$end_plhiv  * 100, 1),
+  #               round(s1$end_diagnosed / s1$end_plhiv * 100, 1),
+  #               round(s2$end_diagnosed / s2$end_plhiv * 100, 1)))
+  #   cat("=====================================\n\n")
+  # })
+  
   # ========================================================================
   # 95-95-95 GOALS DISPLAY
   # ========================================================================
@@ -1501,7 +1549,7 @@ server <- function(input, output, session) {
     # Baseline values
     if ( outcomes$end_plhiv>0 && !is.null(outcomes_base$end_diagnosed) && 
          !is.na(pops$plhiv) && !is.na(outcomes_base$end_diagnosed) && pops$plhiv > 0) {
-      first_95_base <- (outcomes$end_diagnosed / outcomes$end_plhiv) * 100
+      first_95_base <- (outcomes_base$end_diagnosed / outcomes_base$end_plhiv) * 100
     }
     if (!is.null(outcomes_base$end_diagnosed) && !is.null(outcomes_base$end_on_art) &&
         !is.na(outcomes_base$end_diagnosed) && !is.na(outcomes_base$end_on_art) && outcomes_base$end_diagnosed > 0) {

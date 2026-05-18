@@ -540,7 +540,7 @@ calculate_populations <- function(context) {
   ltfu_new_stable   <- on_art_stable_n   * ANNUAL_LTFU_RATE_STABLE
   ltfu_new_unstable <- on_art_unstable_n * ANNUAL_LTFU_RATE_UNSTABLE
   
-
+  
   # Reconciliation invariant: cascade groups must sum to PLHIV.
   # Reconciliation invariant: cascade groups must sum to PLHIV.
   # Guarded against NULL/NA/zero-length inputs (Custom Country sets plhiv=NULL
@@ -1272,6 +1272,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   ltfu_retained_frac <- 0  # grows as: 1 - prod(1 - coverage_i * efficacy_i)
   ltfu_prevented     <- 0  # converted to people after the loop (ltfu_new * ltfu_retained_frac)
   ltfu_reengaged     <- 0  # LTFU people brought back by tracking/tracing
+  # Tracking/tracing is DEFERRED — its true eligible pool is prevalent LTFU +
+  # net incident LTFU (after prevention), which is not yet known here.
+  # Captured during the intervention loop, applied after ltfu_new_effective resolves.
+  deferred_tracking_coverage <- 0  # coverage fraction (0-1) entered by user
+  deferred_tracking_efficacy <- 0  # efficacy parameter from intervention spec
+  deferred_tracking_unit_cost <- 0 # unit cost for cost calculation against full pool
   total_intervention_cost <- 0
   tests_performed <- 0
   
@@ -1532,7 +1538,11 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       # MMD / DSD options (eligible_pop != "ltfu"): prevents people
       #   from becoming LTFU in the first place
       if (intervention$eligible_pop == "ltfu") {
-        ltfu_reengaged <- ltfu_reengaged + number_reached * intervention$efficacy
+        # DEFER: full eligible pool (prevalent + net incident LTFU) not yet known.
+        # Capture inputs; apply after prevention loop resolves ltfu_new_effective.
+        deferred_tracking_coverage <- intervention_value / 100
+        deferred_tracking_efficacy <- intervention$efficacy
+        deferred_tracking_unit_cost <- intervention$unit_cost
       } else {
         # Prevention interventions: COST applies to everyone reached (all on ART),
         # but EFFECT can only act on the at-risk fraction (those who would drop out).
@@ -1564,8 +1574,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         }
       }
       
-      total_intervention_cost <- total_intervention_cost +
-        number_reached * intervention$unit_cost
+      # Cost: prevention interventions charged here against on_art-based reach.
+      # Tracking/tracing is deferred — its cost is charged later against the
+      # full LTFU pool (prevalent + net incident), matching the deferred reach.
+      if (intervention$eligible_pop != "ltfu") {
+        total_intervention_cost <- total_intervention_cost +
+          number_reached * intervention$unit_cost
+      }
       
     } else if ("ahd_screening" %in% intervention$outcomes) {
       total_intervention_cost <- total_intervention_cost +
@@ -1611,7 +1626,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # on-ART population that prevention interventions will retain.
   # Apply to the incident LTFU pool (those actually at risk of dropping out).
   ltfu_retained_frac <- min(ltfu_retained_frac, 1)  # cap at 100%
-  ltfu_prevented     <- populations$ltfu_new * ltfu_retained_frac
   
   # ── LTFU FLOW ─────────────────────────────────────────────────────────────
   # Prevention interventions reduce incident LTFU, split proportionally across
@@ -1646,6 +1660,16 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # Full pool available for re-engagement = prevalent stock + net incident LTFU
   total_ltfu_pool <- populations$ltfu + ltfu_new_effective
+  
+  # ── DEFERRED TRACKING/TRACING APPLICATION ────────────────────────────────
+  # Now that the full eligible pool is known (prevalent stock + net incident
+  # LTFU after prevention), apply tracking/tracing reach and cost against it.
+  # Matches the UI label "% of LTFU patients" — 40% means 40% of everyone
+  # currently disengaged, not just last year's leftovers.
+  tracking_reached <- total_ltfu_pool * deferred_tracking_coverage
+  ltfu_reengaged   <- ltfu_reengaged + tracking_reached * deferred_tracking_efficacy
+  total_intervention_cost <- total_intervention_cost +
+    tracking_reached * deferred_tracking_unit_cost
   
   # ── SPONTANEOUS RE-ENGAGEMENT (computed FIRST) ───────────────────────────
   # Background return to care (silent transfers + self-initiated return) is
@@ -2106,6 +2130,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # ART provision cost (outcome-driven)
   art_provision_cost <- end_on_art * 200
+  print("End in art: ")
+  print(end_on_art)
   
   # Total cost
   total_cost <- total_intervention_cost + art_provision_cost
