@@ -1469,7 +1469,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         art_inititations_testing <- art_inititations_testing + linked
         
         additional_suppressed_testing <- additional_suppressed_testing +
-          linked * ((context$percent_suppressed * 0.9) / 100)
+          linked * hiv_params$testing_art_init_supp
         
         # Full costs: unit cost per test + linkage cost per linked patient
         total_intervention_cost <- total_intervention_cost +
@@ -1738,12 +1738,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # accounting (they re-enter on_art the same way tracking/tracing returnees do).
   ltfu_reengaged <- ltfu_reengaged + spontaneous_reengaged
   # Suppression gain from re-engaged patients (tracking/tracing).
-  # Re-engaged patients return to ART; those who were previously suppressed
-  # are assumed to re-achieve suppression at 80% of the background rate
-  # (lower than the 90% used for new testing initiations, reflecting the
-  # greater disruption of a period out of care). ###UPDATE
+  # Re-engaged patients return to ART; 
   additional_suppressed <- additional_suppressed +
-    ltfu_reengaged * ((context$percent_suppressed * 0.8) / 100)
+    ltfu_reengaged * hiv_params$tracking_reengagement_supp
   
   # ── ART INITIATIONS ───────────────────────────────────────────────────────
   art_inititations_testing <- min(art_inititations_testing,
@@ -1752,7 +1749,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # Additional suppressed from testing
   additional_suppressed_testing <- min(
-    art_initiations * ((context$percent_suppressed * 0.9) / 100),
+    art_initiations * hiv_params$testing_art_init_supp,
     additional_suppressed_testing
   )
   additional_suppressed <- additional_suppressed + additional_suppressed_testing
@@ -2084,9 +2081,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Step 2: Of newly diagnosed HIV+ pregnant women, a proportion link to PMTCT ART,
   # and of those, a proportion achieve viral suppression during pregnancy/breastfeeding.
   # Suppression rate is discounted from the country average — newly initiating women
-  # are less likely to fully suppress quickly. ###UPDATE discount factor from literature.
+  # are less likely to fully suppress quickly.
   pmtct_linkage_rate  <- all_interventions$anc_hiv_testing$linkage_rate %||% 0.85
-  pmtct_supp_rate     <- (context$percent_suppressed / 100) * 0.70  ###UPDATE discount
+  pmtct_supp_rate     <- (context$percent_suppressed / 100) * hiv_params$pmtct_cascade_supp_discount 
   
   pmtct_linked_total  <- min(pmtct_new_diagnoses, populations$pregnant_not_on_art)
   pmtct_linked_art    <- pmtct_linked_total * pmtct_linkage_rate
@@ -2167,8 +2164,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # ART provision cost (outcome-driven)
   art_provision_cost <- end_on_art * 200
-  print("End in art: ")
-  print(end_on_art)
   
   # Total cost
   total_cost <- total_intervention_cost + art_provision_cost
