@@ -19,8 +19,17 @@ library(httr)
 library(readr)
 library(readxl)
 
-# Null-coalescing helper used throughout FOI module
-`%||%` <- function(a, b) if (!is.null(a) && !is.na(a)) a else b
+# Null-coalescing helper used throughout FOI module.
+# Returns `a` if it is non-NULL, non-empty, and not entirely NA; else `b`.
+# Robust to length-0 vectors (numeric(0), logical(0)) and length-N vectors
+# with NAs, which the naive `!is.null(a) && !is.na(a)` form chokes on with
+# "missing value where TRUE/FALSE needed" or length-coercion errors.
+`%||%` <- function(a, b) {
+  if (is.null(a)) return(b)
+  if (length(a) == 0) return(b)
+  if (length(a) == 1 && is.na(a)) return(b)
+  a
+}
 
 # ============================================================================
 # LOAD DATA
@@ -527,9 +536,22 @@ calculate_populations <- function(context) {
   # and infant prophylaxis eligibility — NOT HIV-positive infants; infant
   # infections are produced by the MTCT cascade downstream).
   #
-  # hiv_pos_births_multiplier bridges general-population hiv_prevalence to
-  # prevalence among pregnant women. 
-  hiv_exposed_births <- births * context$hiv_prevalence * hiv_params$hiv_pos_births_multiplier
+  # anc_multiplier bridges general-population hiv_prevalence to prevalence
+  # among pregnant women. Country-specific, sourced from CSV (ANC_multiplier
+  # column), derived as ANC_prevalence / general_adult_prevalence. Defaults to
+  # 1 if not supplied. Applied consistently to hiv_exposed_births AND every
+  # pregnant_* denominator so the EID arm and the maternal cascade run off the
+  # same cohort (one HIV-exposed infant per HIV+ pregnant woman).
+  #
+  # Defensive default: callers may build context without anc_multiplier (e.g.
+  # the UI reactive context constructed from input$ values). NULL × number
+  # gives numeric(0) in R, which silently corrupts every PMTCT calculation
+  # downstream, so we coerce to 1 here.
+  anc_mult <- context$anc_multiplier
+  if (is.null(anc_mult) || length(anc_mult) == 0 || is.na(anc_mult) || anc_mult <= 0) {
+    anc_mult <- 1
+  }
+  hiv_exposed_births <- births * context$hiv_prevalence * anc_mult
   
   # LTFU flow: people dropping off ART during the year, split by stability status.
   # Stable patients: DSD-eligible, lower dropout risk.
@@ -590,7 +612,7 @@ calculate_populations <- function(context) {
     hiv_exposed_infants = hiv_exposed_births,
     pregnant_women      = births,
     # PMTCT cascade sub-populations
-    # Denominator = births × hiv_prevalence × hiv_pos_births_multiplier
+    # Denominator = births × hiv_prevalence × anc_multiplier (= hiv_exposed_births)
     # The multiplier bridges general-population prevalence to prevalence among
     # pregnant women and MUST match hiv_exposed_births for cohort consistency
     # (every HIV-exposed infant corresponds to one pregnant HIV+ woman).
@@ -642,6 +664,20 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
       context <- list(
         total_population = row$total_population,
         hiv_prevalence = row$hiv_prevalence / 100,
+        # ANC-to-adult HIV prevalence ratio (country-specific, from CSV).
+        # Bridges general-population hiv_prevalence to prevalence among pregnant
+        # women — used downstream for hiv_exposed_births and ALL pregnant_*
+        # cascade denominators. Source: country ANC sentinel survey / Spectrum-AIM.
+        # Defaults to 1 if missing or non-positive (avoids NaN propagation).
+        # NOTE: nested if() rather than chained &&, because is.na(NULL) returns
+        # logical(0) and breaks if() with "missing value where TRUE/FALSE needed"
+        # when the ANC_multiplier column is absent from the CSV entirely.
+        anc_multiplier = if (is.null(row$ANC_multiplier)) {
+          1
+        } else {
+          val <- suppressWarnings(as.numeric(row$ANC_multiplier))
+          if (is.na(val) || val <= 0) 1 else val
+        },
         new_infections_per_year = row$new_infections_per_year,
         current_diagnoses = row$current_diagnoses,
         plhiv=row$plhiv,
@@ -740,7 +776,8 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
     aids_deaths_per_year = 1000,
     birth_rate = 24,
     prop_pop_male = 49,
-    prop_pop_under_14 = 40
+    prop_pop_under_14 = 40,
+    anc_multiplier = 1     # Custom country: defaults to 1 (no ANC adjustment)
   )
   
   custom_pops <- calculate_populations(custom_context)

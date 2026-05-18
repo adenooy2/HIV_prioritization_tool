@@ -255,7 +255,8 @@ server <- function(input, output, session) {
       prior_year_tests  = preset$context$prior_year_tests,
       prop_retesting    = preset$context$prop_retesting,
       yield_multipliers = preset$context$yield_multipliers,
-      current_diagnoses = preset$context$current_diagnoses
+      current_diagnoses = preset$context$current_diagnoses,
+      anc_multiplier    = preset$context$anc_multiplier   # ANC/adult HIV prev ratio, from CSV
     ))
   }, ignoreInit = FALSE)
   
@@ -299,7 +300,8 @@ server <- function(input, output, session) {
       prior_year_tests  = if (!is.null(cc)) cc$prior_year_tests  else NULL,
       prop_retesting    = if (!is.null(cc)) cc$prop_retesting    else NULL,
       yield_multipliers = if (!is.null(cc)) cc$yield_multipliers else NULL,
-      current_diagnoses = if (!is.null(cc)) cc$current_diagnoses else NULL
+      current_diagnoses = if (!is.null(cc)) cc$current_diagnoses else NULL,
+      anc_multiplier    = if (!is.null(cc)) cc$anc_multiplier    else NULL
     )
   })
   
