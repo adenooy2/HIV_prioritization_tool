@@ -167,6 +167,13 @@ retest_data=hts_data %>% ungroup() %>% filter(chart=="HIV-positive tests - new d
 
 basic_data=left_join(basic_data,retest_data)
 
+### ANC multipliers
+
+anc_mults=read.csv("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/ANC multiplier.csv")
+colnames(anc_mults)[1]="country"
+
+basic_data=left_join(basic_data,anc_mults %>% select(country,ANC_multiplier))
+
 ######writes data
 write.csv(basic_data,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/basic_hiv_data.csv")
 
