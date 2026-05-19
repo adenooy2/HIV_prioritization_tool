@@ -2270,6 +2270,91 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   }
   
   # ========================================================================
+  # DIAGNOSTIC BLOCK — gated on `ltfu_debug` option
+  # Enable with: options(ltfu_debug = TRUE) before running.
+  # Prints LTFU / re-engagement / cascade flows to console for one run.
+  # ========================================================================
+  if (isTRUE(getOption("ltfu_debug", FALSE))) {
+    cat("\n========== LTFU / RE-ENGAGEMENT DIAGNOSTICS ==========\n")
+    cat(sprintf("Country tag: %s\n",
+                ifelse(is.null(context$country), "(unknown)",
+                       as.character(context$country))))
+    
+    cat("\n--- Year-start populations ---\n")
+    cat(sprintf("  plhiv                   : %12.0f\n", populations$plhiv))
+    cat(sprintf("  diagnosed               : %12.0f\n", populations$diagnosed))
+    cat(sprintf("  on_art                  : %12.0f\n", populations$on_art))
+    cat(sprintf("  on_art_stable           : %12.0f\n", populations$on_art_stable))
+    cat(sprintf("  on_art_unstable         : %12.0f\n",
+                populations$on_art - populations$on_art_stable))
+    cat(sprintf("  suppressed              : %12.0f\n", populations$suppressed))
+    cat(sprintf("  ltfu (prevalent stock)  : %12.0f\n", populations$ltfu))
+    cat(sprintf("  never_linked            : %12.0f\n", populations$never_linked))
+    cat(sprintf("  ltfu_new_stable         : %12.0f\n", populations$ltfu_new_stable))
+    cat(sprintf("  ltfu_new_unstable       : %12.0f\n", populations$ltfu_new_unstable))
+    cat(sprintf("  ltfu_new (gross)        : %12.0f\n", populations$ltfu_new))
+    
+    cat("\n--- LTFU prevention (DSD) ---\n")
+    cat(sprintf("  ltfu_retained_frac      : %12.4f\n", ltfu_retained_frac))
+    cat(sprintf("  ltfu_prevented (total)  : %12.0f\n", ltfu_prevented))
+    cat(sprintf("  ltfu_prevented_stable   : %12.0f\n", ltfu_prevented_stable))
+    cat(sprintf("  ltfu_prevented_unstable : %12.0f\n", ltfu_prevented_unstable))
+    
+    cat("\n--- Net incident LTFU after prevention ---\n")
+    cat(sprintf("  stable_ltfu             : %12.0f\n", stable_ltfu))
+    cat(sprintf("  unstable_ltfu           : %12.0f\n", unstable_ltfu))
+    cat(sprintf("  ltfu_new_effective      : %12.0f\n", ltfu_new_effective))
+    cat(sprintf("  total_ltfu_pool         : %12.0f  (prev_stock + ltfu_new_effective)\n",
+                total_ltfu_pool))
+    
+    cat("\n--- Re-engagement flows ---\n")
+    cat(sprintf("  deferred_tracking_cov   : %12.4f  (fraction)\n",
+                deferred_tracking_coverage))
+    cat(sprintf("  deferred_tracking_eff   : %12.4f\n", deferred_tracking_efficacy))
+    cat(sprintf("  tracking_reached        : %12.0f\n", tracking_reached))
+    cat(sprintf("  spontaneous_reengaged   : %12.0f  (= pool * %.3f)\n",
+                spontaneous_reengaged, ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE))
+    cat(sprintf("  re_engagement_testing   : %12.0f  (after programmatic cap)\n",
+                re_engagement_testing))
+    cat(sprintf("  programmatic_cap        : %12.0f  (= 0.95*pool - spontaneous)\n",
+                programmatic_cap))
+    cat(sprintf("  ltfu_reengaged (final)  : %12.0f  (tracking_after_cap + spontaneous)\n",
+                ltfu_reengaged))
+    
+    cat("\n--- Testing & new diagnoses ---\n")
+    cat(sprintf("  positive_tests          : %12.0f\n", positive_tests))
+    cat(sprintf("  new_diagnoses           : %12.0f\n", new_diagnoses))
+    cat(sprintf("  art_inititations_testing: %12.0f\n", art_inititations_testing))
+    cat(sprintf("  art_initiations (total) : %12.0f\n", art_initiations))
+    
+    cat("\n--- End-of-year cascade (post-mortality) ---\n")
+    cat(sprintf("  end_plhiv               : %12.0f\n", end_plhiv))
+    cat(sprintf("  end_diagnosed           : %12.0f\n", end_diagnosed))
+    cat(sprintf("  end_on_art              : %12.0f\n", end_on_art))
+    cat(sprintf("  end_suppressed          : %12.0f\n", end_suppressed))
+    cat(sprintf("  effective_on_art        : %12.0f  (= on_art - ltfu_new_effective)\n",
+                effective_on_art))
+    
+    cat("\n--- Cascade ratios ---\n")
+    pct_dx_end <- if (end_plhiv > 0) end_diagnosed / end_plhiv * 100 else 0
+    pct_art_end <- if (end_diagnosed > 0) end_on_art / end_diagnosed * 100 else 0
+    pct_sup_end <- if (end_on_art > 0) end_suppressed / end_on_art * 100 else 0
+    cat(sprintf("  1st 95 (diagnosed/PLHIV): %10.2f%%\n", pct_dx_end))
+    cat(sprintf("  2nd 95 (on_art/dx)     : %10.2f%%\n", pct_art_end))
+    cat(sprintf("  3rd 95 (supp/on_art)   : %10.2f%%\n", pct_sup_end))
+    
+    cat("\n--- Deaths breakdown ---\n")
+    cat(sprintf("  deaths_undiagnosed      : %12.0f\n", deaths_undiagnosed))
+    cat(sprintf("  deaths_diagnosed_not_art: %12.0f\n", deaths_diagnosed_not_art))
+    cat(sprintf("  deaths_new_initiations  : %12.0f\n", deaths_new_initiations))
+    cat(sprintf("  deaths_est_treated      : %12.0f\n", deaths_established_treated))
+    cat(sprintf("  deaths_est_suppressed   : %12.0f\n", deaths_established_supp))
+    cat(sprintf("  total_hiv_deaths        : %12.0f\n", total_hiv_deaths))
+    cat(sprintf("  calibration_factor      : %12.4f\n", mortality_calibration_factor))
+    cat("=====================================================\n\n")
+  }
+  
+  # ========================================================================
   # RETURN ALL OUTCOMES
   # ========================================================================
   
