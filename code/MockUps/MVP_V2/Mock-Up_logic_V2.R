@@ -91,7 +91,8 @@ load_hiv_model_params <- function() {
 # Global parameter store — loaded once at app startup
 hiv_params <- load_hiv_model_params()
 
-
+# At the top of Mock-Up_logic_V2.R (just once, near other globals around line 92)
+.last_diag_country <- new.env(parent = emptyenv())
 
 
 # ============================================================================
@@ -512,6 +513,8 @@ calculate_populations <- function(context) {
   suppressed <- on_art * (context$percent_suppressed / 100)
   unsuppressed_on_art <- on_art - suppressed
   hiv_negative <- context$total_population - plhiv
+  
+  
   
   # Safe defaults — prevents NULL propagation if CSV columns are missing/misnamed.
   # prop_pop_male drives uncircumcised_males and all FOI strata; if NULL, vmmc
@@ -1094,6 +1097,7 @@ estimate_new_infections_foi <- function(context,
   
   prev_adj <- compute_prevention_adjustments(scenario_interventions, strata, populations, strata_params)
   
+  
   # VMMC shifts men from uncirc → circ pool
   n_newly_circ <- prev_adj$vmmc_coverage_frac * strata$n_general_male_uncirc
   n_uncirc_eff <- strata$n_general_male_uncirc - n_newly_circ
@@ -1596,16 +1600,27 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         #   that target the full on_art pool. Multiplicative combination prevents
         #   double-counting:
         #     marginal_retained = (1 - ltfu_retained_frac) * coverage_frac * efficacy
-        coverage_frac <- ifelse(
-          populations$on_art > 0,
-          number_reached / populations$on_art,
-          0
-        )
+        # Denominator matches the eligible pool: DSD acts on stable patients
+        # only, so coverage is the fraction of stable on-ART enrolled, not the
+        # fraction of all on-ART. Using on_art here would shrink coverage_frac
+        # by the stable share and, combined with the ltfu_new_stable multiplier
+        # below, would let DSD coverage of stable patients spuriously reduce
+        # unstable LTFU.
         if (intervention$eligible_pop == "on_art_stable") {
+          coverage_frac <- ifelse(
+            populations$on_art_stable > 0,
+            number_reached / populations$on_art_stable,
+            0
+          )
           # Mutually exclusive DSD: additive
           ltfu_retained_frac <- ltfu_retained_frac + coverage_frac * intervention$efficacy
         } else {
           # Overlapping interventions (none currently): multiplicative
+          coverage_frac <- ifelse(
+            populations$on_art > 0,
+            number_reached / populations$on_art,
+            0
+          )
           marginal_retained  <- (1 - ltfu_retained_frac) * coverage_frac * intervention$efficacy
           ltfu_retained_frac <- ltfu_retained_frac + marginal_retained
         }
@@ -1659,24 +1674,19 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   new_diagnoses <- min(new_diagnoses, populations$undiagnosed * 0.95)
   
   # ── LTFU PREVENTION: convert retained fraction to people ─────────────────
-  # ltfu_retained_frac is the multiplicatively-combined fraction of the at-risk
-  # on-ART population that prevention interventions will retain.
-  # Apply to the incident LTFU pool (those actually at risk of dropping out).
+  # ltfu_retained_frac is the combined fraction of the at-risk on-ART population
+  # that prevention interventions retain. Currently only DSD interventions
+  # contribute (all with eligible_pop == "on_art_stable"), so the retained
+  # fraction reflects stable patients only and prevents stable LTFU only.
   ltfu_retained_frac <- min(ltfu_retained_frac, 1)  # cap at 100%
   
-  # ── LTFU FLOW ─────────────────────────────────────────────────────────────
-  # Prevention interventions reduce incident LTFU, split proportionally across
-  # the stable and unstable dropout sub-groups.
-  # If ltfu_new == 0 (no dropout), prevention has nothing to act on.
-  prop_ltfu_stable <- ifelse(
-    populations$ltfu_new > 0,
-    populations$ltfu_new_stable / populations$ltfu_new,
-    0
-  )
-  prop_ltfu_unstable <- 1 - prop_ltfu_stable
-  
-  ltfu_prevented_stable   <- ltfu_prevented * prop_ltfu_stable
-  ltfu_prevented_unstable <- ltfu_prevented * prop_ltfu_unstable
+  # Convert retained fraction to people prevented from becoming LTFU.
+  # Applied to ltfu_new_stable because all current retention interventions
+  # have eligible_pop = "on_art_stable" — they cannot prevent unstable LTFU.
+  # If future interventions target the unstable pool, this will need to split.
+  ltfu_prevented          <- populations$ltfu_new_stable * ltfu_retained_frac
+  ltfu_prevented_stable   <- ltfu_prevented
+  ltfu_prevented_unstable <- 0
   
   # Suppression gain from retention: only the unsuppressed portion of retained
   # unstable patients can generate new suppressions — those already suppressed
@@ -2005,13 +2015,59 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     )
   )
   
+  # NEW — augment baseline_interventions with the same efficacy & behaviour
+  # parameters that get appended to foi_interventions. Without this,
+  # compute_prevention_adjustments() falls back to its internal %||% defaults
+  # during calibration (e.g. eff_condom = 0.80, condom_use_rate_gen = 0.55)
+  # while the FOI calculation uses Excel-sourced values from intervention_params
+  # and hiv_params. The mismatch breaks the baseline round-trip: calibration
+  # assumes one level of baseline protection, FOI applies a different level,
+  # and the recomputed baseline infections diverge from the observed count.
+  baseline_foi <- if (!is.null(baseline_interventions)) {
+    c(baseline_interventions,
+      list(
+        eff_prep_oral        = all_interventions$prep_oral$efficacy        %||% 0.99,
+        eff_prep_len         = all_interventions$prep_lenacapavir$efficacy %||% 1.00,
+        eff_condom           = all_interventions$condoms$efficacy          %||% 0.80,
+        eff_pep              = all_interventions$pep$efficacy              %||% 0.80,
+        acts_per_year_high   = ACTS_PER_YEAR_HIGH,
+        acts_per_year_gen    = ACTS_PER_YEAR_GEN,
+        condom_use_rate_high = CONDOM_USE_RATE_HIGH,
+        condom_use_rate_gen  = CONDOM_USE_RATE_GEN
+      ))
+  } else NULL
+  
   foi_result         <- estimate_new_infections_foi(
     context                = context,
     populations            = populations,
     scenario_interventions = foi_interventions,
     suppression_delta      = suppression_delta,
-    baseline_interventions = baseline_interventions
+    baseline_interventions = baseline_foi
   )
+  
+  
+  # Then your diagnostic block becomes:
+  if (is_baseline) {
+    # Build a fingerprint of the current context
+    fingerprint <- paste(round(context$total_population),
+                         round(context$plhiv),
+                         round(context$new_infections_per_year),
+                         sep = "_")
+    
+    last <- get0("last_fp", envir = .last_diag_country, ifnotfound = "")
+    if (fingerprint != last) {
+      cat("\n=== BASELINE FOI ROUNDTRIP ===\n")
+      cat("input new_infections_per_year:", context$new_infections_per_year, "\n")
+      cat("computed foi_result$new_infections:", foi_result$new_infections, "\n")
+      cat("ratio computed/input:", foi_result$new_infections / context$new_infections_per_year, "\n")
+      cat("rr_high used:", define_strata_params(context)$rr_high, "\n")
+      cat("prop_high_risk used:", define_strata_params(context)$prop_high_risk, "\n")
+      cat("frac_high (calib):", foi_result$diagnostics$frac_infections_high_risk, "\n")
+      cat("==============================\n\n")
+      assign("last_fp", fingerprint, envir = .last_diag_country)
+    }
+  }
+  
   end_new_infections <- foi_result$new_infections
   
   # Add new infections into PLHIV — they enter as undiagnosed
@@ -2020,12 +2076,28 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   infections_averted <- foi_result$infections_averted
   
+  
   # Validate calibration — logs warnings but does not stop execution
   strata_params_val <- define_strata_params(context)
   strata_val        <- partition_into_strata(populations, strata_params_val)
   betas_val         <- calibrate_beta(context, populations, strata_val, strata_params_val)
   cal_check         <- validate_calibration(context, populations, betas_val, strata_val, strata_params_val)
-  if (!cal_check$valid) {
+  # Validate calibration — logs warnings but does not stop execution.
+  # Suppress warnings during Shiny reactive transitions: when switching
+  # country presets, plhiv may update before total_population (or vice
+  # versa), briefly producing plhiv > total_population and negative
+  # hiv_negative / sexually_active_negative. The validation flags raised
+  # on those transient states are noise, not signal — gate on context
+  # self-consistency before emitting.
+  context_is_sane <-
+    !is.null(context$plhiv) && !is.null(context$total_population) &&
+    !is.na(context$plhiv) && !is.na(context$total_population) &&
+    context$plhiv <= context$total_population &&
+    context$total_population > 0 &&
+    !is.null(populations$sexually_active_negative) &&
+    populations$sexually_active_negative > 0
+  
+  if (!cal_check$valid && context_is_sane) {
     warning(paste("FOI calibration flags:", paste(cal_check$flags, collapse = "; ")))
   }
   

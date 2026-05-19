@@ -117,16 +117,22 @@ kp_wide=kp_raw%>%
   spread(Indicator_GId,Data.value)
 
 kp_wide$kp_pop_estimate=rowSums(kp_wide[,c("MSM_POPULATION_SIZE","SEX_WORKERS_POPULATION_SIZE","PWID_POPULATION_SIZE","TG_POPULATION_SIZE")], na.rm=TRUE)
-kp_wide=kp_wide %>% left_join(basic_data %>% select(country,total_population))
-
-kp_wide$high_risk_pop=3*kp_wide$kp_pop_estimate #Assumes each KP indiviudal has a partner as part of teh network
-kp_wide$pop_sexually_active=kp_wide$total_population*0.6 ##UPDATE
+kp_wide=kp_wide %>% left_join(basic_data %>% select(country,total_population,prop_under14))
+kp_wide$adult_pop=kp_wide$total_population*(1-kp_wide$prop_under14/100)
+kp_wide$high_risk_pop=2*kp_wide$kp_pop_estimate #Assumes each KP indiviudal has a partner as part of teh network
+kp_wide$pop_sexually_active=kp_wide$adult_pop*0.85 ##UPDATE
 kp_wide$prop_high_risk=kp_wide$high_risk_pop/kp_wide$pop_sexually_active
 
+#kp_wide$prop_high_risk=0.03 #1% MSM, 1.2% FSW 
 
+
+
+# 
 kp_wide_final=kp_wide %>% ungroup() %>% select(country,prop_high_risk)
-kp_wide_final$rr_high=8
+kp_wide_final$rr_high=11.5 #https://www.thelancet.com/journals/langlo/article/PIIS2214-109X(24)00270-5/fulltext
 basic_data=left_join(basic_data, kp_wide_final)
+
+
 
 ########testing data (avg volume and positiivity)
 test_data=gam_data %>% filter(Indicator_GId %in% c("HIV_TESTS_VOL","HIV_POS_RATE")) %>% filter(Subgroup=="Total") %>% select(Area,Indicator_GId,Time.Period,Data.value) %>% 
