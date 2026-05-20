@@ -4,7 +4,6 @@ options(scipen=999)
 rm(list=ls())
 library(WDI)
 
-#Add columns: circ_prevalence (e.g. 0.20 Ethiopia, 0.45 Uganda, 0.35 Kenya) and prop_high_risk (typically 0.05–0.10). rr_high is optional (default 8).
 
 ##UPDATE DIAGNOSES
 
@@ -23,7 +22,7 @@ est_data_filt=est_data %>%
   ungroup() %>% 
   unique() 
 
-est_data_AHD=est_data_filt %>% filter(label=="LATE_HIV_DIAGNOSIS_All ages CD4 <200") %>% select(Area, prop_ahd=Data.value)
+est_data_AHD=est_data_filt %>% filter(label=="LATE_HIV_DIAGNOSIS_All ages CD4 <200") %>% select(Area,Time.Period, prop_ahd=Data.value)
 
 ##gam DATA
 gam_data=read.csv(paste(data_dir,"GAM_2025_en.csv",sep=""))

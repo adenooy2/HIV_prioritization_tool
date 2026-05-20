@@ -2399,6 +2399,29 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     cat(sprintf("  effective_on_art        : %12.0f  (= on_art - ltfu_new_effective)\n",
                 effective_on_art))
     
+    cat("\n--- Pre-mortality cascade allocation ---\n")
+    cat(sprintf("  end_diagnosed_pre_mort  : %12.0f\n", end_diagnosed_pre_mort))
+    cat(sprintf("  end_on_art_pre_mort     : %12.0f\n", end_on_art_pre_mort))
+    cat(sprintf("  end_suppressed_pre_mort : %12.0f\n", end_suppressed_pre_mort))
+    cat(sprintf("  additional_suppressed   : %12.0f  (sum of all suppression gain flows)\n",
+                additional_suppressed))
+    cat(sprintf("  n_undiagnosed           : %12.0f\n", n_undiagnosed))
+    cat(sprintf("  n_diagnosed_not_art     : %12.0f\n", n_diagnosed_not_art))
+    cat(sprintf("  n_new_initiations       : %12.0f\n", n_new_initiations))
+    cat(sprintf("  n_established_on_art    : %12.0f\n", n_established_on_art))
+    cat(sprintf("  n_established_supp      : %12.0f\n", n_established_supp))
+    cat(sprintf("  n_established_treated   : %12.0f  ← should NOT be 0 if any unsupp est exist\n",
+                n_established_treated))
+    cat(sprintf("  n_new_supp              : %12.0f  (spillover from established)\n", n_new_supp))
+    cat(sprintf("  n_new_treated           : %12.0f\n", n_new_treated))
+    
+    # Sanity check: does suppression total exceed established total?
+    cat(sprintf("\n  CHECK: end_suppressed_pre_mort vs n_established_on_art\n"))
+    cat(sprintf("    %12.0f vs %12.0f  → est_treated forced to %s\n",
+                end_suppressed_pre_mort, n_established_on_art,
+                ifelse(end_suppressed_pre_mort >= n_established_on_art,
+                       "ZERO (bug)", "non-zero (ok)")))
+    
     cat("\n--- Cascade ratios ---\n")
     pct_dx_end <- if (end_plhiv > 0) end_diagnosed / end_plhiv * 100 else 0
     pct_art_end <- if (end_diagnosed > 0) end_on_art / end_diagnosed * 100 else 0
