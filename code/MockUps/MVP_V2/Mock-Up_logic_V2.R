@@ -606,12 +606,14 @@ calculate_populations <- function(context) {
     suppressed = suppressed,
     unsuppressed = unsuppressed_on_art,
     # Year-start cascade decomposition (mutually exclusive, sums to PLHIV):
-    #   undiagnosed + never_linked + ltfu (prevalent) + on_art = plhiv
-    # `frac_diag_not_art_who_are_ltfu` (sheet: prevalent_ltfu_frac) is now the
-    # share of the diagnosed-but-not-on-ART pool who previously initiated ART
-    # and have since lapsed (the complement is people who never linked).
-    ltfu         = (diagnosed - on_art) * hiv_params$prevalent_ltfu_frac,
-    never_linked = (diagnosed - on_art) * (1 - hiv_params$prevalent_ltfu_frac),
+    #   undiagnosed + ltfu (all diagnosed not on ART) + on_art = plhiv
+    # The model formerly split the diagnosed-not-on-ART pool into "lapsed
+    # from ART" (ltfu) and "never linked" via prevalent_ltfu_frac, but the
+    # split was not empirically grounded and produced spurious precision in
+    # the cascade allocation. Now collapsed: all diagnosed-not-on-ART are
+    # eligible for re-engagement via any route, subject to the LTFU recovery
+    # cap (prevalent_ltfu_max_annual_recovery).
+    ltfu         = diagnosed - on_art,
     # Incident LTFU flow (people becoming LTFU during the year), by stability status
     ltfu_new_stable   = ltfu_new_stable,
     ltfu_new_unstable = ltfu_new_unstable,
@@ -1309,12 +1311,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   new_diagnoses <- 0
   re_engagement <- 0
   re_engagement_testing <- 0
-  # New linkage from testing: people previously diagnosed but NEVER linked to
-  # ART who re-test positive and finally link. Distinct from re_engagement_testing
-  # (which is people who started ART, dropped off, and re-test). Both flow into
-  # art_initiations but draw from different pools (never_linked vs ltfu).
-  new_linkage_testing  <- 0
-  retest_no_op         <- 0  # diagnostic only: retest positives that are already on ART
   additional_suppressed <- 0
   additional_suppressed_testing <- 0
   art_initiations <- 0
@@ -1357,25 +1353,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   }
   prop_new_dx <- 1 - prop_reeng
   
-  # Of positive RETESTS (people previously diagnosed who test positive again),
-  # this fraction are already on ART and the retest is a no-op for the cascade
-  # (no cascade movement). The complement is the "active" retest pool that
-  # actually re-engages care. Without this split, all retests were routed to
-  # re-engagement, which over-counted re-engagement and silently inflated
-  # art_initiations. The cost of the test itself still accrues regardless;
-  # only the linkage cost and cascade movement are suppressed for the no-op share.
-  prop_retest_already_on_art <- if (!is.null(hiv_params$prop_retest_already_on_art) &&
-                                    !is.na(hiv_params$prop_retest_already_on_art)) {
-    hiv_params$prop_retest_already_on_art
-  } else {
-    0.5  # fallback if not yet added to general_values sheet
-  }
-  
-  # Of the ACTIVE retest pool (those not already on ART), split between LTFU
-  # patients (previously on ART, dropped off) and never-linked patients
-  # (diagnosed but never started ART). Weighted by their relative pool sizes.
-  prevalent_ltfu_frac <- hiv_params$prevalent_ltfu_frac
-  
+  # Positive retests now flow as a single re-engagement candidate pool.
+  # The annual LTFU recovery cap (prevalent_ltfu_max_annual_recovery) limits
+  # how many can actually re-engage; anything beyond the cap is implicitly a
+  # no-op (cost still accrues via tests_performed, no cascade movement).
+  # Previously the model further split retests into "already-on-ART no-op"
+  # (prop_retest_already_on_art) and "active" sub-pools (LTFU vs never_linked
+  # via prevalent_ltfu_frac), but these splits were not empirically grounded
+  # and produced spurious precision. The cap-based approach is cleaner.
   
   average_linkage_cap <- hiv_params$average_linkage_cap
   
@@ -1490,20 +1475,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       positive_tests <- positive_tests + pos_tests
       tests_performed <- tests_performed + number_reached
       
-      # Split positive tests three ways:
-      #   1. new_dx       : first-time positive → new diagnosis → ART (from undiagnosed)
-      #   2. retest_active: previously diagnosed, NOT currently on ART → re-engage
-      #                     Split further by source pool:
-      #                       a. from LTFU pool (started ART, dropped off)
-      #                       b. from never_linked pool (diagnosed but never on ART)
-      #   3. retest_op    : previously diagnosed and ALREADY on ART → no-op
-      #                     (test happens, cost accrues, but no cascade movement)
-      new_dx       <- pos_tests * prop_new_dx
-      retest_total <- pos_tests * prop_reeng
-      retest_op    <- retest_total * prop_retest_already_on_art
-      retest_active <- retest_total * (1 - prop_retest_already_on_art)
-      re_eng_ltfu          <- retest_active * prevalent_ltfu_frac
-      re_eng_never_linked  <- retest_active * (1 - prevalent_ltfu_frac)
+      # Split positive tests two ways:
+      #   1. new_dx     : first-time positive → new diagnosis → ART (from undiagnosed)
+      #   2. retest_pos : previously diagnosed positive (regardless of ART status)
+      #                   → re-engagement candidate. The LTFU recovery cap downstream
+      #                   determines how many actually re-engage; the rest are
+      #                   implicit no-ops (cost accrues, no cascade movement).
+      new_dx     <- pos_tests * prop_new_dx
+      retest_pos <- pos_tests * prop_reeng
       
       # ANC/PNC HIV testing: general yield path suppressed for cascade metrics.
       # These women are routed into the adult cascade after the loop via the
@@ -1514,24 +1493,21 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       # post-loop PMTCT routing block using the PMTCT-specific diagnosed count.
       if (!(int_key %in% c("anc_hiv_testing", "pnc_hiv_testing"))) {
         new_diagnoses         <- new_diagnoses         + new_dx
-        re_engagement_testing <- re_engagement_testing + re_eng_ltfu
-        new_linkage_testing   <- new_linkage_testing   + re_eng_never_linked
-        retest_no_op          <- retest_no_op          + retest_op
+        re_engagement_testing <- re_engagement_testing + retest_pos
         
         # ART initiations based on linkage rate.
-        # Linkage applies ONLY to the active flows (new diagnoses + true
-        # re-engagement + never-linked re-link). The no-op retests don't
-        # need linking — they're already on ART.
+        # Linkage applies to new diagnoses immediately. For retest positives,
+        # linkage is applied here but the downstream LTFU cap may bind and
+        # reduce the effective re-engagement contribution.
         linkage_rate <- intervention$linkage_rate
-        active_for_linkage <- new_dx + re_eng_ltfu + re_eng_never_linked
-        linked <- active_for_linkage * linkage_rate
+        linked <- (new_dx + retest_pos) * linkage_rate
         art_inititations_testing <- art_inititations_testing + linked
         
         additional_suppressed_testing <- additional_suppressed_testing +
           linked * hiv_params$testing_art_init_supp
         
-        # Full costs: unit cost per test (all tests, including no-op retests)
-        # + linkage cost per linked patient (active flows only).
+        # Full costs: unit cost per test (all tests, including implicit no-ops)
+        # + linkage cost per linked patient.
         total_intervention_cost <- total_intervention_cost +
           (number_reached * intervention$unit_cost + linked * intervention$linkage_cost)
       } else {
@@ -1787,41 +1763,52 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   spontaneous_reengaged <- total_ltfu_pool * ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE
   
   # Programmatic re-engagement (testing + tracking/tracing) competes for the
-  # remainder of the 95% cap, after spontaneous returns are reserved.
-  programmatic_cap <- max(0, total_ltfu_pool * 0.95 - spontaneous_reengaged)
+  # remainder of the annual recovery cap, after spontaneous returns are reserved.
+  # Cap on annual fraction of LTFU pool that can re-engage by any route is
+  # anchored on programmatic re-engagement literature: ~33-47% of prevalent
+  # LTFU return within 1 year (Mali 39%; Guinea 33%; Eshun-Wilson 2022 PLOS Med
+  # meta-analysis pooled 39%). Older "0.95" was operationally unrealistic —
+  # it implied near-complete pool drainage each year, inconsistent with the
+  # observed persistence of prevalent LTFU stocks.
+  ltfu_recovery_cap_frac <- if (!is.null(hiv_params$prevalent_ltfu_max_annual_recovery) &&
+                                !is.na(hiv_params$prevalent_ltfu_max_annual_recovery))
+    hiv_params$prevalent_ltfu_max_annual_recovery
+  else 0.45
+  programmatic_cap <- max(0, total_ltfu_pool * ltfu_recovery_cap_frac - spontaneous_reengaged)
   
   
-  # Testing re-engagement (from LTFU pool) draws from the programmatic share
-  # first; tracking/tracing takes from whatever remains. New linkage from the
-  # never_linked pool is capped separately against populations$never_linked —
-  # it's a distinct pool from LTFU, so doesn't compete for the same cap.
-  re_engagement_testing <- min(re_engagement_testing, programmatic_cap)
-  new_linkage_testing   <- min(new_linkage_testing,
-                               max(0, populations$never_linked * 0.95))
+  # ── PROGRAMMATIC RE-ENGAGEMENT ALLOCATION ────────────────────────────────
+  # Tracking/tracing is allocated FIRST against the programmatic cap because
+  # it is a deliberate, targeted programmatic intervention with intent to
+  # re-engage known LTFU patients. Testing-driven re-engagement (positive
+  # retests) is incidental yield and competes for whatever remains.
+  # Under the previous ordering (testing first), Mozambique's large test
+  # volume crowded tracking out entirely — the inverse priority better
+  # reflects that tracking is the intended re-engagement pathway.
+  ltfu_reengaged        <- min(ltfu_reengaged, programmatic_cap)
+  re_engagement_testing <- min(re_engagement_testing,
+                               max(0, programmatic_cap - ltfu_reengaged))
   re_engagement         <- re_engagement_testing
-  # positive_tests = new_diagnoses + all retest positives (including no-op).
-  # The model's `tests_performed` counter accrues every test; this counter
-  # accrues every positive result.
-  positive_tests        <- new_diagnoses + re_engagement_testing +
-    new_linkage_testing + retest_no_op
   
-  ltfu_reengaged <- min(ltfu_reengaged,
-                        max(0, programmatic_cap - re_engagement_testing))
+  # positive_tests = new_diagnoses + all retest positives. The `tests_performed`
+  # counter accrues every test; this counter accrues every positive result.
+  # Retest positives beyond the LTFU cap become implicit no-ops (the test
+  # happened, the cost accrued, but no cascade movement occurred).
+  positive_tests        <- new_diagnoses + re_engagement_testing
   
   # Spontaneous returns are folded into ltfu_reengaged for downstream cascade
   # accounting (they re-enter on_art the same way tracking/tracing returnees do).
   ltfu_reengaged <- ltfu_reengaged + spontaneous_reengaged
-  # Suppression gain from re-engaged patients (tracking/tracing).
-  # Re-engaged patients return to ART; 
+  # Suppression gain from re-engaged patients (tracking/tracing + spontaneous).
   additional_suppressed <- additional_suppressed +
     ltfu_reengaged * hiv_params$tracking_reengagement_supp
   
   # ── ART INITIATIONS ───────────────────────────────────────────────────────
   # Cap art_inititations_testing at the linkage-cap-implied maximum across
-  # all three active flows (new dx + LTFU re-engagement + never-linked linkage).
+  # active flows (new dx + LTFU re-engagement via testing).
   art_inititations_testing <- min(art_inititations_testing,
                                   average_linkage_cap *
-                                    (new_diagnoses + re_engagement_testing + new_linkage_testing))
+                                    (new_diagnoses + re_engagement_testing))
   art_initiations <- art_inititations_testing + art_initiations
   
   # Additional suppressed from testing
@@ -1833,11 +1820,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # Cannot initiate more on ART than are diagnosed but not yet on ART
   # (accounting for on_art being reduced by net LTFU losses).
-  # Includes new_linkage_testing because that flow draws from never_linked,
-  # which is part of populations$diagnosed but not of populations$on_art.
   effective_on_art <- populations$on_art - ltfu_new_effective
   max_art_initiations <- populations$diagnosed + new_diagnoses - effective_on_art +
-    re_engagement + new_linkage_testing
+    re_engagement
   art_initiations     <- min(art_initiations, max(0, max_art_initiations))
   
   # Cannot suppress more than are currently unsuppressed on ART.
@@ -2425,8 +2410,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     cat(sprintf("  on_art_unstable         : %12.0f\n",
                 populations$on_art - populations$on_art_stable))
     cat(sprintf("  suppressed              : %12.0f\n", populations$suppressed))
-    cat(sprintf("  ltfu (prevalent stock)  : %12.0f\n", populations$ltfu))
-    cat(sprintf("  never_linked            : %12.0f\n", populations$never_linked))
+    cat(sprintf("  ltfu (all dx not on ART): %12.0f\n", populations$ltfu))
     cat(sprintf("  ltfu_new_stable         : %12.0f\n", populations$ltfu_new_stable))
     cat(sprintf("  ltfu_new_unstable       : %12.0f\n", populations$ltfu_new_unstable))
     cat(sprintf("  ltfu_new (gross)        : %12.0f\n", populations$ltfu_new))
@@ -2451,23 +2435,18 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     cat(sprintf("  tracking_reached        : %12.0f\n", tracking_reached))
     cat(sprintf("  spontaneous_reengaged   : %12.0f  (= pool * %.3f)\n",
                 spontaneous_reengaged, ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE))
-    cat(sprintf("  re_engagement_testing   : %12.0f  (after programmatic cap)\n",
+    cat(sprintf("  programmatic_cap        : %12.0f  (= %.2f*pool - spontaneous)\n",
+                programmatic_cap, ltfu_recovery_cap_frac))
+    cat(sprintf("  re_engagement_testing   : %12.0f  (after programmatic cap; testing 2nd)\n",
                 re_engagement_testing))
-    cat(sprintf("  programmatic_cap        : %12.0f  (= 0.95*pool - spontaneous)\n",
-                programmatic_cap))
-    cat(sprintf("  ltfu_reengaged (final)  : %12.0f  (tracking_after_cap + spontaneous)\n",
+    cat(sprintf("  ltfu_reengaged (final)  : %12.0f  (tracking_first + spontaneous)\n",
                 ltfu_reengaged))
     
     cat("\n--- Testing & new diagnoses ---\n")
-    cat(sprintf("  positive_tests          : %12.0f  (all positives, incl. no-op retests)\n", positive_tests))
+    cat(sprintf("  positive_tests          : %12.0f  (new + retest positives reaching cap)\n", positive_tests))
     cat(sprintf("  new_diagnoses           : %12.0f  (first-time positives → ART)\n", new_diagnoses))
-    cat(sprintf("  re_engagement_testing   : %12.0f  (LTFU returners via retest, after cap)\n",
+    cat(sprintf("  re_engagement_testing   : %12.0f  (retest positives within LTFU cap)\n",
                 re_engagement_testing))
-    cat(sprintf("  new_linkage_testing     : %12.0f  (never_linked returners via retest, after cap)\n",
-                new_linkage_testing))
-    cat(sprintf("  retest_no_op            : %12.0f  (already on ART, no cascade movement)\n",
-                retest_no_op))
-    cat(sprintf("  prop_retest_already_on_art: %10.4f\n", prop_retest_already_on_art))
     cat(sprintf("  art_inititations_testing: %12.0f\n", art_inititations_testing))
     cat(sprintf("  art_initiations (total) : %12.0f\n", art_initiations))
     
@@ -2538,8 +2517,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
                                   round((positive_tests / tests_performed) * 100, 2), 0),
     new_diagnoses = round(new_diagnoses),
     re_engagement = round(re_engagement),
-    new_linkage_testing = round(new_linkage_testing),  # never_linked → ART via retest
-    retest_no_op  = round(retest_no_op),               # already on ART retests (cost only)
     
     # Treatment outcomes
     art_initiations = round(art_initiations),
