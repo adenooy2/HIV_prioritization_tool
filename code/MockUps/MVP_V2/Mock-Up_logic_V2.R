@@ -611,8 +611,8 @@ calculate_populations <- function(context) {
     # from ART" (ltfu) and "never linked" via prevalent_ltfu_frac, but the
     # split was not empirically grounded and produced spurious precision in
     # the cascade allocation. Now collapsed: all diagnosed-not-on-ART are
-    # eligible for re-engagement via any route, subject to the LTFU recovery
-    # cap (prevalent_ltfu_max_annual_recovery).
+    # eligible for re-engagement via any route, subject to the testing
+    # re-engagement cap (testing_reengagement_cap_frac).
     ltfu         = diagnosed - on_art,
     # Incident LTFU flow (people becoming LTFU during the year), by stability status
     ltfu_new_stable   = ltfu_new_stable,
@@ -1354,13 +1354,15 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   prop_new_dx <- 1 - prop_reeng
   
   # Positive retests now flow as a single re-engagement candidate pool.
-  # The annual LTFU recovery cap (prevalent_ltfu_max_annual_recovery) limits
-  # how many can actually re-engage; anything beyond the cap is implicitly a
-  # no-op (cost still accrues via tests_performed, no cascade movement).
-  # Previously the model further split retests into "already-on-ART no-op"
-  # (prop_retest_already_on_art) and "active" sub-pools (LTFU vs never_linked
-  # via prevalent_ltfu_frac), but these splits were not empirically grounded
-  # and produced spurious precision. The cap-based approach is cleaner.
+  # The testing re-engagement cap (testing_reengagement_cap_frac) limits how
+  # many can actually re-engage via testing; anything beyond the cap is
+  # implicitly a no-op (cost still accrues via tests_performed, no cascade
+  # movement). Tracking and spontaneous re-engagement flow without an
+  # additional cap — they are bounded by their own intervention parameters
+  # and the natural spontaneous rate, respectively. Previously the model
+  # further split retests into "already-on-ART no-op" (prop_retest_already_on_art)
+  # and "active" sub-pools (LTFU vs never_linked via prevalent_ltfu_frac),
+  # but these splits were not empirically grounded.
   
   average_linkage_cap <- hiv_params$average_linkage_cap
   
@@ -1762,38 +1764,37 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # result that less testing → more people re-engaged.
   spontaneous_reengaged <- total_ltfu_pool * ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE
   
-  # Programmatic re-engagement (testing + tracking/tracing) competes for the
-  # remainder of the annual recovery cap, after spontaneous returns are reserved.
-  # Cap on annual fraction of LTFU pool that can re-engage by any route is
-  # anchored on programmatic re-engagement literature: ~33-47% of prevalent
-  # LTFU return within 1 year (Mali 39%; Guinea 33%; Eshun-Wilson 2022 PLOS Med
-  # meta-analysis pooled 39%). Older "0.95" was operationally unrealistic —
-  # it implied near-complete pool drainage each year, inconsistent with the
-  # observed persistence of prevalent LTFU stocks.
-  ltfu_recovery_cap_frac <- if (!is.null(hiv_params$prevalent_ltfu_max_annual_recovery) &&
-                                !is.na(hiv_params$prevalent_ltfu_max_annual_recovery))
-    hiv_params$prevalent_ltfu_max_annual_recovery
+  # ── TESTING-DRIVEN RE-ENGAGEMENT CAP ─────────────────────────────────────
+  # Testing volumes can mechanically generate more "positive retest" flow than
+  # the LTFU pool can plausibly contain (e.g. Mozambique's 12M+ tests/year
+  # produce ~285k positive retests against a 230k LTFU pool — physically
+  # impossible to re-engage 124% of the pool via testing alone). This cap
+  # bounds testing-driven re-engagement to a defensible fraction of the LTFU
+  # pool annually.
+  #
+  # Note: this caps TESTING only. Tracking/tracing is bounded by its own
+  # intervention parameters (coverage × efficacy, neither of which can exceed
+  # the pool by construction). Spontaneous is bounded by its own rate (~10% of
+  # pool). Combined total re-engagement is therefore implicitly limited to
+  # spontaneous_rate + tracking_max + testing_cap ≈ 0.10 + ~0.10 + 0.45 = 0.65
+  # of pool annually under maximum-intervention scenarios, with 30-45% being
+  # the typical observed range (Mali 39%, Guinea 33%, Eshun-Wilson 2022 PLOS
+  # Med meta-analysis 39% pooled).
+  testing_reengagement_cap_frac <- if (!is.null(hiv_params$testing_reengagement_cap_frac) &&
+                                       !is.na(hiv_params$testing_reengagement_cap_frac))
+    hiv_params$testing_reengagement_cap_frac
   else 0.45
-  programmatic_cap <- max(0, total_ltfu_pool * ltfu_recovery_cap_frac - spontaneous_reengaged)
+  testing_reengagement_cap <- max(0, total_ltfu_pool * testing_reengagement_cap_frac)
   
-  
-  # ── PROGRAMMATIC RE-ENGAGEMENT ALLOCATION ────────────────────────────────
-  # Tracking/tracing is allocated FIRST against the programmatic cap because
-  # it is a deliberate, targeted programmatic intervention with intent to
-  # re-engage known LTFU patients. Testing-driven re-engagement (positive
-  # retests) is incidental yield and competes for whatever remains.
-  # Under the previous ordering (testing first), Mozambique's large test
-  # volume crowded tracking out entirely — the inverse priority better
-  # reflects that tracking is the intended re-engagement pathway.
-  ltfu_reengaged        <- min(ltfu_reengaged, programmatic_cap)
-  re_engagement_testing <- min(re_engagement_testing,
-                               max(0, programmatic_cap - ltfu_reengaged))
+  # Apply cap to testing-driven re-engagement only. Tracking and spontaneous
+  # flow freely — they are bounded structurally by their own formulas.
+  re_engagement_testing <- min(re_engagement_testing, testing_reengagement_cap)
   re_engagement         <- re_engagement_testing
   
-  # positive_tests = new_diagnoses + all retest positives. The `tests_performed`
-  # counter accrues every test; this counter accrues every positive result.
-  # Retest positives beyond the LTFU cap become implicit no-ops (the test
-  # happened, the cost accrued, but no cascade movement occurred).
+  # positive_tests = new_diagnoses + retest positives that contributed to the
+  # cascade. Retest positives beyond the testing cap become implicit no-ops
+  # (the test happened, the cost accrued via tests_performed, but no cascade
+  # movement occurred).
   positive_tests        <- new_diagnoses + re_engagement_testing
   
   # Spontaneous returns are folded into ltfu_reengaged for downstream cascade
@@ -2433,13 +2434,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
                 deferred_tracking_coverage))
     cat(sprintf("  deferred_tracking_eff   : %12.4f\n", deferred_tracking_efficacy))
     cat(sprintf("  tracking_reached        : %12.0f\n", tracking_reached))
-    cat(sprintf("  spontaneous_reengaged   : %12.0f  (= pool * %.3f)\n",
+    cat(sprintf("  spontaneous_reengaged   : %12.0f  (= pool * %.3f, uncapped)\n",
                 spontaneous_reengaged, ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE))
-    cat(sprintf("  programmatic_cap        : %12.0f  (= %.2f*pool - spontaneous)\n",
-                programmatic_cap, ltfu_recovery_cap_frac))
-    cat(sprintf("  re_engagement_testing   : %12.0f  (after programmatic cap; testing 2nd)\n",
+    cat(sprintf("  testing_reeng_cap       : %12.0f  (= %.2f * pool, testing only)\n",
+                testing_reengagement_cap, testing_reengagement_cap_frac))
+    cat(sprintf("  re_engagement_testing   : %12.0f  (testing flow after cap)\n",
                 re_engagement_testing))
-    cat(sprintf("  ltfu_reengaged (final)  : %12.0f  (tracking_first + spontaneous)\n",
+    cat(sprintf("  ltfu_reengaged (final)  : %12.0f  (tracking + spontaneous, uncapped)\n",
                 ltfu_reengaged))
     
     cat("\n--- Testing & new diagnoses ---\n")
