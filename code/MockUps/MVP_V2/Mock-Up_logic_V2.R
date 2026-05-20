@@ -104,7 +104,20 @@ MORTALITY_RATES <- list(
   treated               = hiv_params$mortality_treated, # established on ART, not virally suppressed
   suppressed            = hiv_params$mortality_suppressed, # established on ART, virally suppressed
   ahd_untreated         = hiv_params$mortality_ahd_untreated,  # AHD (CD4<200) among undiagnosed / diagnosed not on ART
-  ahd_treated           = hiv_params$mortality_ahd,  # AHD (CD4<200) among those on ART (new init or established)
+  # AHD on-ART mortality split by ART duration. Year-1 AHD mortality is
+  # dramatically higher than long-term AHD mortality (per Thembisa 5.0
+  # Table 3.1: ~0.14 in year 1, ~0.02 for months 7+ cohort-weighted).
+  # A single "ahd_treated" value cannot capture both; previously a 0.05
+  # compromise was used, which overstated established and understated new.
+  # Falls back to mortality_ahd if the new keys aren't yet in the CSV.
+  ahd_new               = if (!is.null(hiv_params$mortality_ahd_new) &&
+                              !is.na(hiv_params$mortality_ahd_new))
+    hiv_params$mortality_ahd_new
+  else hiv_params$mortality_ahd,
+  ahd_established       = if (!is.null(hiv_params$mortality_ahd_established) &&
+                              !is.na(hiv_params$mortality_ahd_established))
+    hiv_params$mortality_ahd_established
+  else hiv_params$mortality_ahd,
   prop_ahd = list(
     undiagnosed        = hiv_params$prop_ahd_undiagnosed,
     diagnosed_not_art  = hiv_params$prop_ahd_diagnosed_not_art,
@@ -1992,13 +2005,17 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   eff_base_rate_untreated <- MORTALITY_RATES$untreated_undiagnosed
   eff_ahd_rate_untreated  <- MORTALITY_RATES$ahd_untreated
   
-  # New initiations: use treated AHD rate; AHD package reduces it; base rate unchanged
+  # New initiations: year-1 AHD rate (much higher than established AHD);
+  # AHD package reduces it; base rate unchanged
   eff_base_rate_new_init <- MORTALITY_RATES$new_art_initiations
-  eff_ahd_rate_new_init  <- MORTALITY_RATES$ahd_treated *
+  eff_ahd_rate_new_init  <- MORTALITY_RATES$ahd_new *
     (1 - ahd_pkg_eff_reduction)
   
-  # Established on ART: use treated AHD rate; AHD package reduces it; base rates unchanged
-  eff_ahd_rate_established <- MORTALITY_RATES$ahd_treated *
+  # Established on ART: long-term AHD rate (cohort-weighted, much lower than
+  # year-1); AHD package reduces it (though established patients are less
+  # likely to receive the AHD package — it targets new initiates). Base
+  # rates unchanged.
+  eff_ahd_rate_established <- MORTALITY_RATES$ahd_established *
     (1 - ahd_pkg_eff_reduction)
   
   # ========================================================================
@@ -2060,9 +2077,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Deaths averted = difference between unadjusted (no interventions) and adjusted deaths
   # Only on-treatment groups are affected by interventions
   unadjusted_deaths_on_treatment <-
-    calc_deaths(n_new_initiations,     MORTALITY_RATES$new_art_initiations, MORTALITY_RATES$ahd_treated, prop_ahd$new_initiations) +
-    calc_deaths(n_established_treated, MORTALITY_RATES$treated,             MORTALITY_RATES$ahd_treated, prop_ahd$established_treated) +
-    calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed,          MORTALITY_RATES$ahd_treated, prop_ahd$established_supp)
+    calc_deaths(n_new_initiations,     MORTALITY_RATES$new_art_initiations, MORTALITY_RATES$ahd_new,         prop_ahd$new_initiations) +
+    calc_deaths(n_established_treated, MORTALITY_RATES$treated,             MORTALITY_RATES$ahd_established, prop_ahd$established_treated) +
+    calc_deaths(n_established_supp,    MORTALITY_RATES$suppressed,          MORTALITY_RATES$ahd_established, prop_ahd$established_supp)
   unadjusted_deaths_on_treatment <- unadjusted_deaths_on_treatment * mortality_calibration_factor
   
   adjusted_deaths_on_treatment <- deaths_new_initiations + deaths_established_treated + deaths_established_supp
