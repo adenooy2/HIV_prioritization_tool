@@ -1899,27 +1899,90 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
                                  populations$plhiv)
   end_on_art_pre_mort     <- min(max(effective_on_art + art_initiations + ltfu_reengaged, 0),
                                  end_diagnosed_pre_mort)
-  end_suppressed_pre_mort <- min(max(populations$suppressed - stable_ltfu + additional_suppressed, 0),
-                                 end_on_art_pre_mort)
   
   # ========================================================================
   # FIVE CASCADE GROUPS (mutually exclusive, before mortality)
+  #
+  # Suppression allocation: each on-ART subgroup gets its own suppression
+  # rate applied at the group level, rather than the previous approach which
+  # filled n_established_supp first and let new initiates absorb spillover.
+  # The old approach caused n_established_treated → 0 whenever the suppression
+  # gain flows exceeded n_established_on_art, which made parameters like
+  # mortality_treated and prop_ahd_established_treated effectively unused.
+  #
+  # Base allocation: each group's suppression share derived from its own rate.
+  # Intervention boosters (EAC, retention spillover, AHD package, ANC/PNC VL
+  # testing) then shift people from "treated" to "supp" within the appropriate
+  # group. additional_suppressed remains exposed as the total intervention-
+  # attributed shift, for scenario reporting and the existing baseline_delta.
   # ========================================================================
   
   n_undiagnosed        <- max(0, populations$plhiv - end_diagnosed_pre_mort)
   n_diagnosed_not_art  <- max(0, end_diagnosed_pre_mort - end_on_art_pre_mort)
   n_new_initiations    <- min(art_initiations, end_on_art_pre_mort)
   n_established_on_art <- max(0, end_on_art_pre_mort - n_new_initiations)
-  # Suppression split: established patients first, then new initiates absorb any remainder.
-  # Previously all suppression was attributed to established patients, causing end_suppressed
-  # to be capped at n_established_on_art even when new initiates also achieved suppression —
-  # producing a disconnect where infections changed (via suppression_delta) but
-  # end_suppressed did not (overflow was silently discarded).
-  n_established_supp   <- min(end_suppressed_pre_mort, n_established_on_art)
-  n_established_treated<- max(0, n_established_on_art - n_established_supp)
-  # Suppressed new initiates: suppression that could not fit in the established bucket
-  n_new_supp           <- max(0, min(end_suppressed_pre_mort - n_established_supp, n_new_initiations))
-  n_new_treated        <- max(0, n_new_initiations - n_new_supp)
+  
+  # --- Base suppression allocation per group ---
+  # Established patients: suppress at the country's reported 3rd-95 rate
+  # (these are people on ART >1 year; the input pct_suppressed is the
+  # steady-state suppression rate for the established population).
+  pct_supp_frac <- context$percent_suppressed / 100
+  n_est_supp_base    <- n_established_on_art * pct_supp_frac
+  n_est_treated_base <- n_established_on_art - n_est_supp_base
+  
+  # New initiates: suppress at testing_art_init_supp (typically ~0.9 by year-end).
+  # This is the 12-month suppression rate for new starts, which is generally
+  # lower than the country's overall 3rd-95 since some new starts haven't
+  # achieved suppression yet.
+  testing_init_supp_frac <- hiv_params$testing_art_init_supp
+  n_new_supp_base    <- n_new_initiations * testing_init_supp_frac
+  n_new_treated_base <- n_new_initiations - n_new_supp_base
+  
+  # --- Intervention-attributed suppression shifts ---
+  # additional_suppressed accumulates contributions from EAC, retention
+  # spillover, ANC/PNC VL testing, PMTCT cascade, and the re-engagement
+  # suppression bonus. These represent people moved from "treated" to "supp"
+  # ABOVE the baseline rates. Most boosters act on established patients
+  # (EAC, retention, ANC/PNC VL), so they shift within the established group.
+  #
+  # However, the additional_suppressed pool ALREADY double-counts:
+  #   - testing → linked × testing_art_init_supp (now in n_new_supp_base)
+  #   - re-engagement × tracking_reengagement_supp (re-engagers are in
+  #     n_established_on_art via ltfu_reengaged; their suppression at 0.9 vs
+  #     country avg pct_supp_frac is a slight adjustment)
+  # So we need to net these out before applying as a "shift". The cleanest
+  # accounting: re-derive an "intervention shift" from the components that
+  # truly represent boosters above baseline.
+  
+  # Subtract the components already captured in the base allocation:
+  #   - new initiates 90% suppression already in n_new_supp_base
+  #   - re-engagers' suppression at country avg already in n_est_supp_base
+  # What's left in additional_suppressed = intervention boosters
+  baseline_new_init_supp     <- art_inititations_testing * testing_init_supp_frac
+  baseline_reengagement_supp <- ltfu_reengaged * pct_supp_frac
+  intervention_supp_shift    <- additional_suppressed -
+    baseline_new_init_supp - baseline_reengagement_supp
+  # If re-engagers suppress at a different rate than country avg (e.g.
+  # tracking_reengagement_supp = 0.9 vs pct_supp = 0.913), include that delta.
+  reengagement_supp_delta <- ltfu_reengaged *
+    (hiv_params$tracking_reengagement_supp - pct_supp_frac)
+  intervention_supp_shift <- intervention_supp_shift + reengagement_supp_delta
+  intervention_supp_shift <- max(0, intervention_supp_shift)
+  
+  # Apply the shift: most boosters target established patients
+  # (EAC, retention, ANC/PNC VL all act on the on-ART unsuppressed pool).
+  # Cap at the available unsuppressed-established pool to avoid over-shifting.
+  intervention_shift_to_est <- min(intervention_supp_shift, n_est_treated_base)
+  intervention_shift_to_new <- max(0, intervention_supp_shift - intervention_shift_to_est)
+  intervention_shift_to_new <- min(intervention_shift_to_new, n_new_treated_base)
+  
+  n_established_supp    <- n_est_supp_base + intervention_shift_to_est
+  n_established_treated <- n_est_treated_base - intervention_shift_to_est
+  n_new_supp            <- n_new_supp_base + intervention_shift_to_new
+  n_new_treated         <- n_new_treated_base - intervention_shift_to_new
+  
+  # Derive end_suppressed_pre_mort from the per-group allocation
+  end_suppressed_pre_mort <- n_established_supp + n_new_supp
   
   # ========================================================================
   # EFFECTIVE AHD MORTALITY RATES (intervention-adjusted where applicable)
@@ -2402,25 +2465,30 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     cat("\n--- Pre-mortality cascade allocation ---\n")
     cat(sprintf("  end_diagnosed_pre_mort  : %12.0f\n", end_diagnosed_pre_mort))
     cat(sprintf("  end_on_art_pre_mort     : %12.0f\n", end_on_art_pre_mort))
-    cat(sprintf("  end_suppressed_pre_mort : %12.0f\n", end_suppressed_pre_mort))
+    cat(sprintf("  end_suppressed_pre_mort : %12.0f  (derived from per-group allocation)\n",
+                end_suppressed_pre_mort))
     cat(sprintf("  additional_suppressed   : %12.0f  (sum of all suppression gain flows)\n",
                 additional_suppressed))
+    cat(sprintf("  intervention_supp_shift : %12.0f  (additional shift above per-group base)\n",
+                intervention_supp_shift))
+    cat(sprintf("    shift_to_est          : %12.0f\n", intervention_shift_to_est))
+    cat(sprintf("    shift_to_new          : %12.0f\n", intervention_shift_to_new))
+    cat("\n  Base allocation (per-group rates):\n")
+    cat(sprintf("    n_est_supp_base       : %12.0f  (= %d × pct_supp %.3f)\n",
+                n_est_supp_base, round(n_established_on_art), pct_supp_frac))
+    cat(sprintf("    n_est_treated_base    : %12.0f\n", n_est_treated_base))
+    cat(sprintf("    n_new_supp_base       : %12.0f  (= %d × testing_init_supp %.3f)\n",
+                n_new_supp_base, round(n_new_initiations), testing_init_supp_frac))
+    cat(sprintf("    n_new_treated_base    : %12.0f\n", n_new_treated_base))
+    cat("\n  Final allocation (base + intervention shift):\n")
     cat(sprintf("  n_undiagnosed           : %12.0f\n", n_undiagnosed))
     cat(sprintf("  n_diagnosed_not_art     : %12.0f\n", n_diagnosed_not_art))
     cat(sprintf("  n_new_initiations       : %12.0f\n", n_new_initiations))
     cat(sprintf("  n_established_on_art    : %12.0f\n", n_established_on_art))
     cat(sprintf("  n_established_supp      : %12.0f\n", n_established_supp))
-    cat(sprintf("  n_established_treated   : %12.0f  ← should NOT be 0 if any unsupp est exist\n",
-                n_established_treated))
-    cat(sprintf("  n_new_supp              : %12.0f  (spillover from established)\n", n_new_supp))
+    cat(sprintf("  n_established_treated   : %12.0f\n", n_established_treated))
+    cat(sprintf("  n_new_supp              : %12.0f\n", n_new_supp))
     cat(sprintf("  n_new_treated           : %12.0f\n", n_new_treated))
-    
-    # Sanity check: does suppression total exceed established total?
-    cat(sprintf("\n  CHECK: end_suppressed_pre_mort vs n_established_on_art\n"))
-    cat(sprintf("    %12.0f vs %12.0f  → est_treated forced to %s\n",
-                end_suppressed_pre_mort, n_established_on_art,
-                ifelse(end_suppressed_pre_mort >= n_established_on_art,
-                       "ZERO (bug)", "non-zero (ok)")))
     
     cat("\n--- Cascade ratios ---\n")
     pct_dx_end <- if (end_plhiv > 0) end_diagnosed / end_plhiv * 100 else 0
