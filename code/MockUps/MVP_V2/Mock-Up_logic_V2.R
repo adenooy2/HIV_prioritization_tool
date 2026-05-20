@@ -1173,11 +1173,22 @@ estimate_new_infections_foi <- function(context,
 validate_calibration <- function(context, populations, betas, strata, strata_params) {
   flags <- character(0)
   
+  # Upper bounds widened (May 2026) to accommodate the range of β values
+  # produced by legitimate high-burden / low-suppression / peak-incidence
+  # epidemic settings in SSA. Derivation:
+  #   β ≈ stratum_incidence / (n_unsuppressed / total_pop)
+  # Empirical incidence references (sub-Saharan Africa):
+  #   - FSW: median 4.3/100py, peaks to 15+ (Joshi 2023, Sauti Tanzania 8.6)
+  #   - MSM: 1.0–15.4/100py (Joshi 2021 review)
+  #   - General female: 0.2–4.9/100py (SSA cohorts; high-burden peaks)
+  #   - General male: ~0.7× female (median F:M IRR 1.47)
+  # Upper bounds chosen so a worst-case epidemic (~25% prevalence, ~3% pressure,
+  # KP incidence ~15%/yr, female incidence ~3%/yr) does not falsely flag.
   bounds <- list(
-    beta_high = list(lower = 0.05, upper = 3.00, label = "High-risk (KP)"),
-    beta_gen_female    = list(lower = 0.005, upper = 0.50, label = "General (female)"),
-    beta_gen_male_unc  = list(lower = 0.003, upper = 0.40, label = "General (uncircumcised male)"),
-    beta_gen_male_circ = list(lower = 0.001, upper = 0.20, label = "General (circumcised male)")
+    beta_high          = list(lower = 0.05,  upper = 5.00, label = "High-risk (KP)"),
+    beta_gen_female    = list(lower = 0.005, upper = 1.50, label = "General (female)"),
+    beta_gen_male_unc  = list(lower = 0.003, upper = 1.20, label = "General (uncircumcised male)"),
+    beta_gen_male_circ = list(lower = 0.001, upper = 0.60, label = "General (circumcised male)")
   )
   
   beta_values <- list(
@@ -1684,11 +1695,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Linkage rate: uses anc_hiv_testing linkage rate for all PMTCT women,
   # consistent with the MTCT cascade step 2. ###UPDATE if ANC/PNC linkage
   # rates diverge substantially and warrant separate tracking.
-  # Suppression discount: 70% of country average — newly initiating pregnant
-  # women are less likely to suppress quickly. ###UPDATE from literature.
+  # Suppression discount: suppression rate of newly diagnosed pregnant women relatove to general pop
   # ========================================================================
   pmtct_cascade_linkage_rate <- all_interventions$anc_hiv_testing$linkage_rate %||% 0.85
-  pmtct_cascade_supp_rate    <- (context$percent_suppressed / 100) * 0.70
+  pmtct_cascade_supp_rate    <- (context$percent_suppressed / 100) * hiv_params$pmtct_cascade_supp_discount
   pmtct_cascade_linked_art   <- pmtct_new_diagnoses * pmtct_cascade_linkage_rate
   pmtct_cascade_linked_supp  <- pmtct_cascade_linked_art * pmtct_cascade_supp_rate
   
@@ -1705,7 +1715,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # ========================================================================
   
   # Cannot diagnose more people than 95% are undiagnosed
-  new_diagnoses <- min(new_diagnoses, populations$undiagnosed * 0.95)
+  new_diagnoses <- min(new_diagnoses, populations$undiagnosed * hiv_params$new_diagnoses_cap_prop)
   
   # ── LTFU PREVENTION: convert retained fraction to people ─────────────────
   # ltfu_retained_frac is the combined fraction of the at-risk on-ART population
