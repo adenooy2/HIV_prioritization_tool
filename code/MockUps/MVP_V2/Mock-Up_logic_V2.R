@@ -1559,7 +1559,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       # Efficacy drawn from intervention CSV. Actual infection reduction calculated
       # in the MTCT cascade block below.
       infant_prophy_cov_frac <- min(1, infant_prophy_cov_frac +
-                                      (number_reached / max(populations$hiv_exposed_infants, 1)) * intervention$efficacy)
+                                      (number_reached / max(populations$hiv_exposed_infants, 1)) )
       
       total_intervention_cost <- total_intervention_cost +
         number_reached * intervention$unit_cost

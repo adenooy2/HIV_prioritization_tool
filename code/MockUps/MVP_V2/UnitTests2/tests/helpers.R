@@ -35,7 +35,7 @@ suppressPackageStartupMessages({
 # Path is taken from an environment variable so the suite can be run from
 # anywhere; defaults to the uploads path used during development.
 LOGIC_PATH <- Sys.getenv("HIV_LOGIC_PATH",
-                        unset = "/mnt/user-data/uploads/Mock-Up_logic_V2.R")
+                         unset = "/mnt/user-data/uploads/Mock-Up_logic_V2.R")
 
 if (!file.exists(LOGIC_PATH)) {
   stop(sprintf(

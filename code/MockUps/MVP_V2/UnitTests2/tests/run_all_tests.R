@@ -7,7 +7,7 @@
 #   From the tests/ directory:
 #       Rscript run_all_tests.R
 #   Or interactively:
-#       setwd("tests"); source("run_all_tests.R")
+#       source("run_all_tests.R")     # working directory is set below
 #
 # OUTPUT:
 #   testthat's default reporter shows per-test results inline plus a final
@@ -16,17 +16,36 @@
 #
 # REQUIREMENTS:
 #   - testthat installed
-#   - Internet access (test_helpers.R sources Mock-Up_logic_V2.R, which hits
+#   - Internet access (helpers.R sources Mock-Up_logic_V2.R, which hits
 #     SharePoint at load time)
-#   - HIV_LOGIC_PATH environment variable can override the default logic file
-#     location (defaults to /mnt/user-data/uploads/Mock-Up_logic_V2.R)
+#
+# CURRENT THEMATIC FILES:
+#   test_01_populations.R     - calculate_populations
+#   test_02_strata_foi.R      - FOI module (strata, calibration, scenarios)
+#   test_03_testing.R         - testing intervention block
+#   test_04_prevention.R      - PEP allocation, stacking, cost loop special cases
+#   test_05_retention_ltfu.R  - DSD additive, tracking deferred, spontaneous
+#   test_06_mtct_infant.R     - MTCT cascade, PMTCT linkage, EID, infant mortality
+#   test_07_mortality.R       - 5-group deaths, AHD package, calibration toggle
+#   test_08_cascade_end.R     - End-of-year cascade reconciliation
+#   test_09_costs.R           - Cost branches not covered upstream (EAC, CD4, AHD, ART, ANC)
+#   test_10_scenario_diff.R   - Scenario-vs-baseline difference function
+#   test_11_integration.R     - End-to-end: real simulator output -> diff function
 #
 # ADDING A NEW THEMATIC FILE:
 #   Save as test_XX_<theme>.R in this directory; test_dir() picks it up
 #   automatically by filename pattern.
 # ============================================================================
-Sys.setenv(HIV_LOGIC_PATH = "/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/MVP_V2/Mock-Up_logic_V2.R")  # adjust to your actual path
+
+# ---------------------------------------------------------------------------
+# Local environment setup
+# ---------------------------------------------------------------------------
+# Paths are hard-coded to Adriaan's local checkout. If running on a different
+# machine, edit both paths or set HIV_LOGIC_PATH externally and comment out
+# the Sys.setenv() line.
+Sys.setenv(HIV_LOGIC_PATH = "/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/MVP_V2/Mock-Up_logic_V2.R")
 setwd("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/MVP_V2/UnitTests2/tests/")
+
 suppressPackageStartupMessages(library(testthat))
 
 # test_dir runs every file matching ^test.*\.R$ in the given directory using
