@@ -253,15 +253,6 @@ build_intervention_groups <- function(intervention_params){
           unit_cost = subset(intervention_params, intervention_key == "condoms")$unit_cost,
           outcomes = c("adult_infections")
         ),
-        pep = list(
-          name = "PEP",
-          type = "absolute",
-          unit_label = "people",
-          efficacy = subset(intervention_params, intervention_key == "pep")$efficacy,
-          eligible_pop = "recent_exposure",
-          unit_cost = subset(intervention_params, intervention_key == "pep")$unit_cost,
-          outcomes = c("adult_infections")
-        ),
         infant_prophylaxis = list(
           name = "Infant prophylaxis",
           type = "coverage",
@@ -657,7 +648,7 @@ calculate_populations <- function(context) {
 # ============================================================================
 default_baseline_interventions <- list(
   prep_oral = 5000, prep_lenacapavir = 0, vmmc = 30000,
-  condoms = 200000, pep = 2000, infant_prophylaxis = 70,
+  condoms = 200000, infant_prophylaxis = 70,
   test_facility_general = 25000,
   test_network = 3000, test_index = 2000, test_community = 20000,
   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
@@ -725,7 +716,7 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
       
       default_baseline_interventions <- list(
         prep_oral = 0.01*pops$total, prep_lenacapavir = 0, vmmc = 0.01*pops$uncircumcised_males,
-        condoms = 0.6*pops$total, pep = 0.2*pops$recent_exposure, infant_prophylaxis = 70,
+        condoms = 0.6*pops$total, infant_prophylaxis = 70,
         test_facility_general = round(0.134*pops$adult_pop, -4), 
         test_network = round(0.0024*pops$adult_pop, -4), 
         test_index = round(0.0024*pops$adult_pop, -4), 
@@ -805,7 +796,6 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
     prep_lenacapavir = 0, 
     vmmc = 0.01*custom_pops$uncircumcised_males,
     condoms = 0.6*custom_pops$total, 
-    pep = 0.2*custom_pops$recent_exposure, 
     infant_prophylaxis = 70,
     test_facility_general = 0.05*custom_pops$adult_pop, 
     test_network = 0.005*custom_pops$adult_pop, 
@@ -1001,7 +991,6 @@ compute_prevention_adjustments <- function(scenario_interventions, strata, popul
   eff_prep_oral <- scenario_interventions$eff_prep_oral %||% 0.99
   eff_prep_len  <- scenario_interventions$eff_prep_len  %||% 1.00
   eff_condom    <- scenario_interventions$eff_condom    %||% 0.80
-  eff_pep       <- scenario_interventions$eff_pep       %||% 0.80
   
   # Behavioural condom parameters
   # acts_per_year: converts condoms distributed → people with consistent annual coverage
@@ -1043,32 +1032,23 @@ compute_prevention_adjustments <- function(scenario_interventions, strata, popul
     (1 - condom_cov_high    * eff_condom)
   protection_high <- 1 - residual_high
   
-  # ---- General female: condoms + PEP ----
-  condom_cov_gen_f <- condom_cov_gen
-  pep_cov_gen_f    <- clip((scenario_interventions$pep %||% 0) * 0.5 / max(strata$n_general_female, 1))
-  
-  residual_gen_female   <- (1 - condom_cov_gen_f * eff_condom) *
-    (1 - pep_cov_gen_f   * eff_pep)
+  # ---- General female: condoms ----
+  condom_cov_gen_f      <- condom_cov_gen
+  residual_gen_female   <- (1 - condom_cov_gen_f * eff_condom)
   protection_gen_female <- 1 - residual_gen_female
   
-  # ---- General uncircumcised male: condoms + PEP ----
-  condom_cov_gen_mu <- condom_cov_gen
-  pep_cov_gen_mu    <- clip((scenario_interventions$pep %||% 0) * 0.5 / max(strata$n_general_male_uncirc, 1))
-  
-  residual_gen_male_unc   <- (1 - condom_cov_gen_mu * eff_condom) *
-    (1 - pep_cov_gen_mu   * eff_pep)
+  # ---- General uncircumcised male: condoms ----
+  condom_cov_gen_mu       <- condom_cov_gen
+  residual_gen_male_unc   <- (1 - condom_cov_gen_mu * eff_condom)
   protection_gen_male_unc <- 1 - residual_gen_male_unc
   
-  # ---- General circumcised male: condoms + PEP ----
+  # ---- General circumcised male: condoms ----
   # Circumcised men also use condoms; this stacks ON TOP of their lower β_circ
   # (which encodes biological circumcision protection only).
   # Without this, men transferred from the uncirc pool by VMMC lose their
   # condom coverage and can appear to gain MORE infections — fixed here.
-  condom_cov_gen_mc <- condom_cov_gen
-  pep_cov_gen_mc    <- clip((scenario_interventions$pep %||% 0) * 0.5 / max(strata$n_general_male_circ, 1))
-  
-  residual_gen_male_circ   <- (1 - condom_cov_gen_mc * eff_condom) *
-    (1 - pep_cov_gen_mc    * eff_pep)
+  condom_cov_gen_mc        <- condom_cov_gen
+  residual_gen_male_circ   <- (1 - condom_cov_gen_mc * eff_condom)
   protection_gen_male_circ <- 1 - residual_gen_male_circ
   
   # ---- VMMC: converts uncirc men → circ pool (not a coverage multiplier) ----
@@ -1134,7 +1114,7 @@ estimate_new_infections_foi <- function(context,
     (1 - prev_adj$protection_gen_male_unc)
   
   # Circumcised men: lower β encodes biological circumcision protection;
-  # condom/PEP coverage applied on top via protection_gen_male_circ
+  # condom coverage applied on top via protection_gen_male_circ
   infections_gen_male_circ <- betas$beta_gen_male_circ *
     infectious_pressure_scenario *
     n_circ_eff *
@@ -2140,7 +2120,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       eff_prep_oral = all_interventions$prep_oral$efficacy       %||% 0.99,
       eff_prep_len  = all_interventions$prep_lenacapavir$efficacy %||% 1.00,
       eff_condom    = all_interventions$condoms$efficacy          %||% 0.80,
-      eff_pep       = all_interventions$pep$efficacy              %||% 0.80,
       acts_per_year_high     = ACTS_PER_YEAR_HIGH,    
       acts_per_year_gen      = ACTS_PER_YEAR_GEN,     
       condom_use_rate_high   = CONDOM_USE_RATE_HIGH,    
@@ -2162,7 +2141,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         eff_prep_oral        = all_interventions$prep_oral$efficacy        %||% 0.99,
         eff_prep_len         = all_interventions$prep_lenacapavir$efficacy %||% 1.00,
         eff_condom           = all_interventions$condoms$efficacy          %||% 0.80,
-        eff_pep              = all_interventions$pep$efficacy              %||% 0.80,
         acts_per_year_high   = ACTS_PER_YEAR_HIGH,
         acts_per_year_gen    = ACTS_PER_YEAR_GEN,
         condom_use_rate_high = CONDOM_USE_RATE_HIGH,

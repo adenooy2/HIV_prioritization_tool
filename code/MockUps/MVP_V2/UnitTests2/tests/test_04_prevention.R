@@ -4,9 +4,6 @@
 # Tests for the prevention cost loop and prevention-stratum interactions that
 # weren't fully covered in test_02_strata_foi.R:
 #
-#   - PEP allocation: each general sub-stratum receives `pep × 0.5 / n_substratum`.
-#     With three sub-strata that adds up to 150% of supply allocated — noted in
-#     test 4.5 but locking current behaviour.
 #   - PrEP + condom stacking in the high-risk stratum (multiplicative residual)
 #   - VMMC + condom interaction: men shifted to circ pool retain condom coverage
 #     (line 1062-1066 fix to a previous bug)
@@ -47,60 +44,6 @@ zero_interventions <- function() {
   setNames(as.list(rep(0, length(default_baseline_interventions))),
            names(default_baseline_interventions))
 }
-
-# ---------------------------------------------------------------------------
-# 4.1 PEP-only protection (general female)
-# ---------------------------------------------------------------------------
-# WHAT: With PEP = 10,000, n_general_female = 162,450 (from test 2.2 derivation
-#       at SAFR = 0.60; here SAFR = 0.85 so it scales). Let me re-derive at SAFR=0.85.
-#       hiv_negative = 950,000; sexually_active_negative = 950,000 × 0.6 × 0.85 = 484,500
-#       n_high_risk = 484,500 × 0.05 = 24,225
-#       n_general   = 484,500 × 0.95 = 460,275
-#       n_general_female = 460,275 × 0.50 = 230,137.5
-#       n_general_male_uncirc = 460,275 × 0.50 × 0.70 = 161,096.25
-#       n_general_male_circ   = 460,275 × 0.50 × 0.30 =  69,041.25
-#
-#       pep_cov_gen_f = clip(10,000 × 0.5 / 230,137.5) = clip(0.021726) ≈ 0.02173
-#       eff_pep = 0.80 (default).
-#       Only PEP (no condoms):
-#         residual_gen_female = (1 - 0 × 0.80) × (1 - 0.02173 × 0.80)
-#                             = 1.0 × 0.98262
-#                             = 0.98262
-#         protection_gen_female = 1 - 0.98262 = 0.01738
-# WHY: Locks the PEP allocation formula for general_female. Note the 0.5×
-#      factor and that PEP supply is divided by the stratum size (so larger
-#      strata get lower per-person coverage).
-# ---------------------------------------------------------------------------
-test_that("PEP-only allocation in general female matches formula", {
-  s   <- prev_setup()
-  interv <- make_fixture_interventions(pep = 10000)
-  adj <- compute_prevention_adjustments(interv, s$strata, s$pops, s$sp)
-
-  expected <- 1 - (1 - (10000 * 0.5 / 230137.5) * 0.80)
-  expect_close(adj$protection_gen_female, expected, tolerance = 1e-6)
-  # Sanity: ~1.7% protection
-  expect_close(adj$protection_gen_female, 0.01738, tolerance = 1e-4)
-})
-
-# ---------------------------------------------------------------------------
-# 4.2 PEP-only in high-risk stratum = 0 (high-risk gets no PEP allocation)
-# ---------------------------------------------------------------------------
-# WHAT: Lines 1037-1044: protection_high stack includes prep_oral, prep_len,
-#       and condoms — but NOT PEP. So PEP scaling alone leaves the high-risk
-#       stratum unchanged.
-# WHY: PEP intervention is conceptually for occupational/sexual exposure in
-#      the general population. The model's allocation rule explicitly excludes
-#      the high-risk stratum from receiving PEP. Worth pinning down because
-#      it's a non-obvious modelling choice.
-# HOW: PEP = 100,000 (large value); protection_high should still be 0.
-# ---------------------------------------------------------------------------
-test_that("PEP-only does not affect high-risk stratum protection", {
-  s   <- prev_setup()
-  interv <- make_fixture_interventions(pep = 100000)
-  adj <- compute_prevention_adjustments(interv, s$strata, s$pops, s$sp)
-
-  expect_close(adj$protection_high, 0)
-})
 
 # ---------------------------------------------------------------------------
 # 4.3 PrEP + condom stacking in high-risk (multiplicative)
@@ -149,13 +92,13 @@ test_that("PrEP + condom stack multiplicatively in high-risk stratum", {
 # 4.4 vmmc_coverage_frac alone does NOT change protection_gen_male_circ
 # ---------------------------------------------------------------------------
 # WHAT: VMMC shifts men between strata but doesn't itself appear in any
-#       protection_* term. The condom/PEP terms for circ_male are independent
+#       protection_* term. The condom terms for circ_male are independent
 #       of vmmc_coverage_frac.
 # WHY: Verifies the structural separation between coverage-frac (used for
 #      stratum-shift in main FOI) and protection (used for residual within
 #      stratum). A bug that conflates them would over-credit VMMC by both
 #      shifting and protecting the same men.
-# HOW: vmmc = 50,000; condoms = 0; pep = 0.
+# HOW: vmmc = 50,000; condoms = 0.
 #      vmmc_coverage_frac > 0; all protection_* = 0.
 # ---------------------------------------------------------------------------
 test_that("VMMC alone leaves stratum protection_* at 0", {
@@ -167,70 +110,6 @@ test_that("VMMC alone leaves stratum protection_* at 0", {
   expect_close(adj$protection_gen_male_circ, 0)
   expect_close(adj$protection_gen_male_unc,  0)
   expect_close(adj$protection_high,          0)
-})
-
-# ---------------------------------------------------------------------------
-# 4.5 PEP supply allocation behaviour: sum across general sub-strata > supply
-# ---------------------------------------------------------------------------
-# WHAT: Each of the 3 general sub-strata (female, male_uncirc, male_circ)
-#       receives `pep × 0.5 / n_substratum`. Multiplying through by stratum
-#       sizes: total people protected by PEP across general strata =
-#       n_gen_female × pep_cov_gen_f + n_gen_male_unc × pep_cov_gen_mu +
-#       n_gen_male_circ × pep_cov_gen_mc = pep × 0.5 × 3 = 1.5 × pep.
-#       i.e. ~150% of supply gets "allocated" across the three sub-strata.
-# WHY: Lock current behaviour. This is worth a separate discussion — it may
-#      be an unintended over-allocation, or intentional if the 0.5 factor
-#      represents per-act probability of needing PEP rather than per-person.
-#      Either way the test fails if the formula changes, which forces a
-#      conversation.
-# HOW: pep = 10,000. With clip() preventing >100% coverage, the actual
-#      allocation is min(pep × 0.5 / n_substratum, 1) × n_substratum.
-#      For 10,000 PEP against ~70k circ males:
-#        pep_cov_gen_mc = clip(10,000 × 0.5 / 69,041.25) = 0.07242
-#        people protected in circ stratum = 5,000
-#      Similarly 5,000 in uncirc and 5,000 in female. Sum = 15,000.
-#      Note: this is "people protected by PEP coverage frac", NOT "doses
-#      distributed" — but verifies the structural 1.5× allocation effect.
-# ---------------------------------------------------------------------------
-test_that("PEP allocation across 3 general sub-strata sums to 1.5x supply", {
-  s   <- prev_setup()
-  pep_supply <- 10000
-  interv <- make_fixture_interventions(pep = pep_supply, eff_pep = 1.0)  # eff=1 simplifies
-  adj <- compute_prevention_adjustments(interv, s$strata, s$pops, s$sp)
-
-  # Back out pep_cov per stratum from protection (with eff_pep = 1.0 and condom = 0):
-  #   protection_gen_X = 1 - (1 - 0)(1 - pep_cov_X × 1.0) = pep_cov_X
-  # So protection_X × n_X = people protected in stratum X.
-  protected_female   <- adj$protection_gen_female    * s$strata$n_general_female
-  protected_male_unc <- adj$protection_gen_male_unc  * s$strata$n_general_male_uncirc
-  protected_male_circ<- adj$protection_gen_male_circ * s$strata$n_general_male_circ
-
-  total_protected <- protected_female + protected_male_unc + protected_male_circ
-
-  # Expected = 0.5 × pep × 3 = 1.5 × supply = 15,000
-  expect_close(total_protected, 1.5 * pep_supply, tolerance = 1)
-})
-
-# ---------------------------------------------------------------------------
-# 4.6 PEP coverage clips at 1.0 (cannot exceed 100%)
-# ---------------------------------------------------------------------------
-# WHAT: clip() caps pep_cov_X at 1. So if pep_supply × 0.5 > n_substratum,
-#       coverage saturates and over-supply is wasted (in the model's
-#       accounting; intervention cost still accrues).
-# WHY: Edge-case test for very large PEP allocations relative to small strata.
-# HOW: Build a small-population fixture so n_general_female × 2 < pep × 0.5.
-#      Use the default fixture but pep = 10,000,000.
-#      pep × 0.5 = 5M; n_general_female = 230,138. Cov saturates at 1.0.
-#      With eff_pep = 1.0, protection_gen_female = 1.0.
-# ---------------------------------------------------------------------------
-test_that("PEP coverage clips at 1.0", {
-  s <- prev_setup()
-  interv <- make_fixture_interventions(pep = 1e7, eff_pep = 1.0)
-  adj <- compute_prevention_adjustments(interv, s$strata, s$pops, s$sp)
-
-  expect_close(adj$protection_gen_female,    1.0)
-  expect_close(adj$protection_gen_male_unc,  1.0)
-  expect_close(adj$protection_gen_male_circ, 1.0)
 })
 
 # ---------------------------------------------------------------------------

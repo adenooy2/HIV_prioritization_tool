@@ -145,7 +145,6 @@ test_that("FOI roundtrip with matching baseline & scenario reproduces observed",
   shared_interv <- make_fixture_interventions(
     prep_oral = 5000,
     condoms   = 100000,
-    pep       = 1000,
     vmmc      = 1000
   )
 
@@ -211,7 +210,7 @@ test_that("compute_prevention_adjustments isolates PrEP-only correctly", {
 #       condom_cov_high = 1,795,500 × 0.75 / 17,955,000 = 0.075
 #       condom_cov_gen  = 1,795,500 × 0.55 / 17,955,000 = 0.055
 #
-#       With ONLY condoms scaled (PrEP = PEP = VMMC = 0):
+#       With ONLY condoms scaled (PrEP = VMMC = 0):
 #         protection_high       = condom_cov_high × eff_condom = 0.075 × 0.80 = 0.06
 #         protection_gen_female = condom_cov_gen  × eff_condom = 0.055 × 0.80 = 0.044
 # ---------------------------------------------------------------------------
