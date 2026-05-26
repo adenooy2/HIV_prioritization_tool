@@ -55,8 +55,8 @@ LIVE_MORT_C <- list(
   treated = 0.0051, suppressed = 0.0051,
   ahd_new = 0.144, ahd_established = 0.028, ahd_untreated = 0.254,
   prop_ahd = list(undiagnosed = 0.154, diagnosed_not_art = 0.209,
-                   new_initiations = 0.209, established_treated = 0.295,
-                   established_supp = 0.043)
+                  new_initiations = 0.209, established_treated = 0.295,
+                  established_supp = 0.043)
 )
 
 zero_interventions <- function() {
@@ -136,7 +136,7 @@ base_ctx <- function() {
 test_that("EAC cost uses eac_reach (layered VL × unsuppressed × EAC coverage)", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
-
+  
   # vl_monitoring_routine lives in treatment_monitoring group;
   # adherence_counseling lives in retention_support group.
   ig_new <- intervention_groups
@@ -146,16 +146,16 @@ test_that("EAC cost uses eac_reach (layered VL × unsuppressed × EAC coverage)"
   ig_new$retention_support$interventions$adherence_counseling$unit_cost     <- 25
   with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring,
                                 retention_support    = ig_new$retention_support))
-
+  
   pops <- calculate_populations(base_ctx())
   interv <- zero_interventions()
   interv$vl_monitoring_routine <- 100
   interv$adherence_counseling  <- 100
-
+  
   result <- calculate_scenario_outcomes(
     base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # 36,000 × 8 (VL) + 3,600 × 25 (EAC) = 288,000 + 90,000 = 378,000
   expect_close(result$total_intervention_cost, 378000)
 })
@@ -181,22 +181,22 @@ test_that("EAC cost uses eac_reach (layered VL × unsuppressed × EAC coverage)"
 test_that("PMTCT linkage cost = pmtct_linked × anc_hiv_testing$linkage_cost", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$anc_hiv_testing$efficacy     <- 1.0
   ig_new$testing$interventions$anc_hiv_testing$unit_cost    <- 0
   ig_new$testing$interventions$anc_hiv_testing$linkage_rate <- 1.0
   ig_new$testing$interventions$anc_hiv_testing$linkage_cost <- 50
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   pops <- calculate_populations(base_ctx())
   interv <- zero_interventions()
   interv$anc_hiv_testing <- 100
-
+  
   result <- calculate_scenario_outcomes(
     base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # 125 × 50 = 6,250
   expect_close(result$total_intervention_cost, 6250)
 })
@@ -211,25 +211,32 @@ test_that("PMTCT linkage cost = pmtct_linked × anc_hiv_testing$linkage_cost", {
 # WHY: Inactive (zero) art_initiations should leave cd4 cost at 0 even with
 #      cd4 coverage > 0.
 #
-# HOW: Force art_initiations: 10,000 tests at 5% yield with 100% linkage
-#      and prop_new_dx ~ 0.41. Expected art_init capped by average_linkage_cap.
-#        positive = 10,000 × 0.05 × 1.0 = 500
-#        new_dx   = 500 × 0.41 = 205
-#        retest_pos = 500 × 0.59 = 295
-#        linked   = 500 × 1.0 = 500
-#        art_init_testing = min(500, 0.93 × (205 + 295)) = min(500, 465) = 465
-#        Then cascade cap line 1824: min(465, max(0, 45000 + 205 - 34070 + 295))
-#                                  = min(465, ~11,430) = 465.
-#        art_initiations = 465.
+# HOW: Force art_initiations: 10,000 tests at 5% yield with 100% linkage.
+#      Fixture context sets prop_retesting = 0.30, so prop_new_dx = 0.70.
+#        positive    = 10,000 × 0.05 × 1.0 = 500
+#        new_dx      = 500 × 0.70 = 350
+#        retest_pos  = 500 × 0.30 = 150
+#      Linkage: under post-cap weighted-average approach (no average_linkage_cap),
+#      L_avg = 1.0 (single intervention at linkage_rate = 1.0).
+#        new_diagnoses           = 350 (new_diagnoses_cap_prop = 0.95 of
+#                                       undiagnosed ≈ 0.95 × 5,000 = 4,750; cap
+#                                       does not bind at 350)
+#        re_engagement_testing   = 150 (testing_reengagement_cap = 0.45 ×
+#                                       total_ltfu_pool ≈ 0.45 × 9,000 ≈ 4,050;
+#                                       cap does not bind at 150)
+#        art_init_testing        = 1.0 × (350 + 150) = 500
+#      Then cascade ceiling line ~1858: min(500, max(0, 45000 + 350 - 34070 + 150))
+#                                     = min(500, ~11,430) = 500.
+#        art_initiations = 500.
 #      With cd4_testing = 100, unit_cost = 12:
-#        n_cd4_tested = 465 × 1.0 = 465
-#        cd4_cost     = 465 × 12 = 5,580.
-#      Other costs: test unit/linkage = 0 (set below). Expected total = 5,580.
+#        n_cd4_tested = 500 × 1.0 = 500
+#        cd4_cost     = 500 × 12 = 6,000.
+#      Other costs: test unit/linkage = 0 (set below). Expected total = 6,000.
 # ---------------------------------------------------------------------------
 test_that("CD4 testing cost = n_cd4_tested × cd4 unit_cost", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 0
@@ -238,18 +245,18 @@ test_that("CD4 testing cost = n_cd4_tested × cd4 unit_cost", {
   ig_new$advanced_disease$interventions$cd4_testing$unit_cost     <- 12
   with_intervention_groups(list(testing = ig_new$testing,
                                 advanced_disease = ig_new$advanced_disease))
-
+  
   pops <- calculate_populations(base_ctx())
   interv <- zero_interventions()
   interv$test_facility_general <- 10000
   interv$cd4_testing           <- 100
-
+  
   result <- calculate_scenario_outcomes(
     base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
-  # 465 × 12 = 5,580
-  expect_lte(abs(result$total_intervention_cost - 5580), 5)
+  
+  # 500 × 12 = 6,000
+  expect_lte(abs(result$total_intervention_cost - 6000), 5)
 })
 
 # ---------------------------------------------------------------------------
@@ -259,20 +266,20 @@ test_that("CD4 testing cost = n_cd4_tested × cd4 unit_cost", {
 #       art_initiations > 0 AND ahd_pkg_value > 0.
 #
 # HOW: Same setup as 9.3. Add ahd_package = 100, ahd_package$unit_cost = 80.
-#        art_initiations    = 465
+#        art_initiations    = 500    (see 9.3 derivation)
 #        prop_ahd_new_init  = 0.209
-#        n_ahd_pool         = 465 × 0.209 = 97.185
-#        n_cd4_tested       = 465 (100% CD4 coverage)
-#        n_ahd_diagnosed    = min(465 × 0.4, 97.185) = min(186, 97.185) = 97.185
-#        n_ahd_pkg_reached  = min(97.185 × 1.0, 97.185) = 97.185
-#        ahd_pkg_cost       = 97.185 × 80 = 7,774.8 -> 7,775
-#      Plus CD4 cost from 9.3 = 5,580.
-#      Total = 5,580 + 7,775 ≈ 13,355.
+#        n_ahd_pool         = 500 × 0.209 = 104.5
+#        n_cd4_tested       = 500 (100% CD4 coverage)
+#        n_ahd_diagnosed    = min(500 × 0.4, 104.5) = min(200, 104.5) = 104.5
+#        n_ahd_pkg_reached  = min(104.5 × 1.0, 104.5) = 104.5
+#        ahd_pkg_cost       = 104.5 × 80 = 8,360
+#      Plus CD4 cost from 9.3 = 6,000.
+#      Total = 6,000 + 8,360 = 14,360.
 # ---------------------------------------------------------------------------
 test_that("AHD package cost = n_ahd_pkg_reached × unit_cost", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 0
@@ -283,20 +290,20 @@ test_that("AHD package cost = n_ahd_pkg_reached × unit_cost", {
   ig_new$advanced_disease$interventions$ahd_package$efficacy      <- 0.50
   with_intervention_groups(list(testing = ig_new$testing,
                                 advanced_disease = ig_new$advanced_disease))
-
+  
   pops <- calculate_populations(base_ctx())
   interv <- zero_interventions()
   interv$test_facility_general <- 10000
   interv$cd4_testing           <- 100
   interv$ahd_package           <- 100
-
+  
   result <- calculate_scenario_outcomes(
     base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
-  # Expected: CD4 (5,580) + AHD pkg (97.185 × 80 = 7,774.8) ≈ 13,355
-  # Tolerance ±5 for cascade arithmetic rounding
-  expect_lte(abs(result$total_intervention_cost - 13355), 10)
+  
+  # Expected: CD4 (6,000) + AHD pkg (104.5 × 80 = 8,360) = 14,360
+  # Tolerance ±10 for cascade arithmetic rounding
+  expect_lte(abs(result$total_intervention_cost - 14360), 10)
 })
 
 # ---------------------------------------------------------------------------
@@ -317,22 +324,22 @@ test_that("AHD package cost = n_ahd_pkg_reached × unit_cost", {
 test_that("ANC HIV testing cost = unit × reached + linkage × linked", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$anc_hiv_testing$efficacy     <- 1.0
   ig_new$testing$interventions$anc_hiv_testing$unit_cost    <- 3
   ig_new$testing$interventions$anc_hiv_testing$linkage_rate <- 1.0
   ig_new$testing$interventions$anc_hiv_testing$linkage_cost <- 50
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   pops <- calculate_populations(base_ctx())
   interv <- zero_interventions()
   interv$anc_hiv_testing <- 100
-
+  
   result <- calculate_scenario_outcomes(
     base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # 23,875 × 3 + 125 × 50 = 71,625 + 6,250 = 77,875
   expect_close(result$total_intervention_cost, 77875)
 })
@@ -352,21 +359,21 @@ test_that("ANC HIV testing cost = unit × reached + linkage × linked", {
 test_that("multi-intervention total cost = sum of single-intervention costs", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$prevention$interventions$prep_oral$unit_cost <- 80
   ig_new$prevention$interventions$prep_oral$efficacy  <- 0.99
   ig_new$prevention$interventions$condoms$unit_cost   <- 0.10
   ig_new$prevention$interventions$condoms$efficacy    <- 0.80
   with_intervention_groups(list(prevention = ig_new$prevention))
-
+  
   pops <- calculate_populations(base_ctx())
-
+  
   interv_prep <- zero_interventions(); interv_prep$prep_oral <- 5000
   interv_cond <- zero_interventions(); interv_cond$condoms   <- 1e6
   interv_both <- zero_interventions()
   interv_both$prep_oral <- 5000; interv_both$condoms <- 1e6
-
+  
   r_prep <- calculate_scenario_outcomes(base_ctx(), interv_prep, pops,
                                         is_baseline = TRUE,
                                         baseline_interventions = interv_prep)
@@ -376,7 +383,7 @@ test_that("multi-intervention total cost = sum of single-intervention costs", {
   r_both <- calculate_scenario_outcomes(base_ctx(), interv_both, pops,
                                         is_baseline = TRUE,
                                         baseline_interventions = interv_both)
-
+  
   expect_close(r_both$total_intervention_cost,
                r_prep$total_intervention_cost + r_cond$total_intervention_cost,
                tolerance = 2)
@@ -404,14 +411,14 @@ test_that("multi-intervention total cost = sum of single-intervention costs", {
 test_that("art_provision_cost = end_on_art × 200 (within rounding)", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
-
+  
   pops <- calculate_populations(base_ctx())
   interv <- zero_interventions()
-
+  
   result <- calculate_scenario_outcomes(
     base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Allow ±200 because end_on_art and art_provision_cost round independently
   expect_lte(abs(result$art_provision_cost - result$end_on_art * 200), 200)
   # Specific value check: within ±200 of 33,843 × 200 = 6,768,600
@@ -428,23 +435,23 @@ test_that("art_provision_cost = end_on_art × 200 (within rounding)", {
 test_that("total_cost = total_intervention_cost + art_provision_cost (within rounding)", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$prevention$interventions$prep_oral$unit_cost <- 80
   with_intervention_groups(list(prevention = ig_new$prevention))
-
+  
   pops <- calculate_populations(base_ctx())
   interv <- zero_interventions()
   interv$prep_oral <- 5000
-
+  
   result <- calculate_scenario_outcomes(
     base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # All three values are independently rounded in the return list, so the
   # identity holds only to within a few dollars.
   expect_lte(abs(result$total_cost -
-                 (result$total_intervention_cost + result$art_provision_cost)),
+                   (result$total_intervention_cost + result$art_provision_cost)),
              2)
 })
 
@@ -460,14 +467,14 @@ test_that("total_cost = total_intervention_cost + art_provision_cost (within rou
 test_that("zero interventions produces zero total_intervention_cost", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
-
+  
   pops <- calculate_populations(base_ctx())
   interv <- zero_interventions()  # all zeros
-
+  
   result <- calculate_scenario_outcomes(
     base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   expect_close(result$total_intervention_cost, 0)
   # And total_cost equals just art_provision_cost
   expect_close(result$total_cost, result$art_provision_cost)
@@ -491,20 +498,20 @@ test_that("zero interventions produces zero total_intervention_cost", {
 test_that("PNC VL testing cost = number_reached × unit_cost", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$retention_support$interventions$pnc_vl_testing$unit_cost <- 7
   ig_new$retention_support$interventions$pnc_vl_testing$efficacy  <- 1.0
   with_intervention_groups(list(retention_support = ig_new$retention_support))
-
+  
   pops <- calculate_populations(base_ctx())
   interv <- zero_interventions()
   interv$pnc_vl_testing <- 100
-
+  
   result <- calculate_scenario_outcomes(
     base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # 900 × 7 = 6,300
   expect_close(result$total_intervention_cost, 6300)
 })

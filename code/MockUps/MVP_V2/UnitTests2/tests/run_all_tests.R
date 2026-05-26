@@ -40,7 +40,7 @@
 # ---------------------------------------------------------------------------
 # Local environment setup
 # ---------------------------------------------------------------------------
-# Paths are hard-coded to Adriaan's local checkout. If running on a different
+# Paths are hard-codedlocal. If running on a different
 # machine, edit both paths or set HIV_LOGIC_PATH externally and comment out
 # the Sys.setenv() line.
 Sys.setenv(HIV_LOGIC_PATH = "/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/MVP_V2/Mock-Up_logic_V2.R")

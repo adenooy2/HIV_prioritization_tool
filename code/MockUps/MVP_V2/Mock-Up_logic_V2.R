@@ -1307,6 +1307,31 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   additional_suppressed_testing <- 0
   art_initiations <- 0
   art_inititations_testing <- 0
+  # Per-component linkage accumulators (testing modalities only).
+  # Split into new-diagnosis and retest-positive components because each is
+  # capped independently downstream (new_diagnoses_cap_prop vs
+  # testing_reengagement_cap). Post-loop, each component is scaled by its
+  # cap's shrinkage ratio (1 if cap doesn't bind), preserving per-modality
+  # cost attribution in the uncapped case and applying proportional scaling
+  # under capping.
+  #
+  #   *_linked_uncapped       = Σ_i (volume_i × linkage_rate_i)
+  #   *_linkage_cost_uncapped = Σ_i (volume_i × linkage_rate_i × linkage_cost_i)
+  #   *_supp_uncapped         = Σ_i (volume_i × linkage_rate_i × supp_rate_i)
+  #
+  # The supp accumulator carries the per-source suppression rate (general
+  # testing uses testing_art_init_supp; PMTCT uses pmtct_cascade_supp_rate)
+  # so the post-loop application doesn't have to know which source any
+  # given linked patient came from.
+  #
+  # Under capping, the same shrinkage ratio scales linked count, cost, and
+  # suppression together, preserving the per-modality mix.
+  new_dx_linked_uncapped             <- 0
+  new_dx_linkage_cost_uncapped       <- 0
+  new_dx_supp_uncapped               <- 0
+  retest_pos_linked_uncapped         <- 0
+  retest_pos_linkage_cost_uncapped   <- 0
+  retest_pos_supp_uncapped           <- 0
   # PMTCT / infant cascade trackers
   pmtct_new_diagnoses    <- 0   # HIV+ pregnant women newly diagnosed via ANC/PNC -> PMTCT ART
   infant_prophy_cov_frac <- 0   # efficacy-weighted infant prophylaxis coverage (0-1)
@@ -1356,7 +1381,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # and "active" sub-pools (LTFU vs never_linked via prevalent_ltfu_frac),
   # but these splits were not empirically grounded.
   
-  average_linkage_cap <- hiv_params$average_linkage_cap
+  # `average_linkage_cap` removed: per-intervention linkage_rate values are
+  # now the authoritative source for linkage. The volume-weighted average is
+  # computed in the post-loop block (search for `L_avg`). Parameter validation
+  # (linkage_rate <= 1) should be enforced at the parameter-loading stage.
   
   # Flatten intervention structure
   all_interventions <- list()
@@ -1489,21 +1517,39 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         new_diagnoses         <- new_diagnoses         + new_dx
         re_engagement_testing <- re_engagement_testing + retest_pos
         
-        # ART initiations based on linkage rate.
-        # Linkage applies to new diagnoses immediately. For retest positives,
-        # linkage is applied here but the downstream LTFU cap may bind and
-        # reduce the effective re-engagement contribution.
+        # Linkage accounting (proportional-scaling approach).
+        # Accumulate per-component (new-dx vs retest-pos) linked counts,
+        # linkage costs, and suppression contributions. Each component is
+        # scaled post-loop by its own cap's shrinkage ratio:
+        #   shrinkage_new      = new_diagnoses        / new_diagnoses_uncapped
+        #   shrinkage_reengage = re_engagement_testing / re_engagement_testing_uncapped
+        # When neither cap binds (the common case), both shrinkages = 1.0 and
+        # the formula collapses to the original per-modality semantic:
+        #   linked_total = Σ_i (new_dx_i + retest_pos_i) × linkage_rate_i
+        #   cost_total   = Σ_i (new_dx_i + retest_pos_i) × linkage_rate_i × linkage_cost_i
+        # When a cap binds, the corresponding component is scaled down,
+        # preserving the per-modality mix.
+        #
+        # Replaces the previous in-loop `linked` and `art_inititations_testing`
+        # accumulation, and the `average_linkage_cap` post-loop patch.
         linkage_rate <- intervention$linkage_rate
-        linked <- (new_dx + retest_pos) * linkage_rate
-        art_inititations_testing <- art_inititations_testing + linked
+        new_dx_linked_uncapped       <- new_dx_linked_uncapped +
+          new_dx     * linkage_rate
+        new_dx_linkage_cost_uncapped <- new_dx_linkage_cost_uncapped +
+          new_dx     * linkage_rate * intervention$linkage_cost
+        new_dx_supp_uncapped         <- new_dx_supp_uncapped +
+          new_dx     * linkage_rate * hiv_params$testing_art_init_supp
+        retest_pos_linked_uncapped       <- retest_pos_linked_uncapped +
+          retest_pos * linkage_rate
+        retest_pos_linkage_cost_uncapped <- retest_pos_linkage_cost_uncapped +
+          retest_pos * linkage_rate * intervention$linkage_cost
+        retest_pos_supp_uncapped         <- retest_pos_supp_uncapped +
+          retest_pos * linkage_rate * hiv_params$testing_art_init_supp
         
-        additional_suppressed_testing <- additional_suppressed_testing +
-          linked * hiv_params$testing_art_init_supp
-        
-        # Full costs: unit cost per test (all tests, including implicit no-ops)
-        # + linkage cost per linked patient.
+        # Unit cost charged here (per test administered, including implicit
+        # no-ops). Linkage cost is charged post-loop after caps are applied.
         total_intervention_cost <- total_intervention_cost +
-          (number_reached * intervention$unit_cost + linked * intervention$linkage_cost)
+          number_reached * intervention$unit_cost
       } else {
         # ANC/PNC: unit cost per test only; linkage cost charged in post-loop block
         total_intervention_cost <- total_intervention_cost +
@@ -1682,20 +1728,34 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   pmtct_cascade_supp_rate    <- (context$percent_suppressed / 100) * hiv_params$pmtct_cascade_supp_discount
   pmtct_cascade_linked_art   <- pmtct_new_diagnoses * pmtct_cascade_linkage_rate
   pmtct_cascade_linked_supp  <- pmtct_cascade_linked_art * pmtct_cascade_supp_rate
+  pmtct_cascade_linkage_cost <- all_interventions$anc_hiv_testing$linkage_cost %||% 0
   
-  new_diagnoses                 <- new_diagnoses                 + pmtct_new_diagnoses
-  art_inititations_testing      <- art_inititations_testing      + pmtct_cascade_linked_art
-  additional_suppressed_testing <- additional_suppressed_testing + pmtct_cascade_linked_supp
-  
-  # Linkage cost for PMTCT-linked women (unit cost already charged in loop above)
-  total_intervention_cost <- total_intervention_cost +
-    pmtct_cascade_linked_art * (all_interventions$anc_hiv_testing$linkage_cost %||% 0)
+  # PMTCT-diagnosed women are routed through the SAME new-diagnosis pool as
+  # general testing (so the new_diagnoses cap applies to both together).
+  # Feed PMTCT contributions into the new-dx component accumulators so that
+  # if the new_diagnoses cap binds, PMTCT linked count, linkage cost, and
+  # suppression all scale by the same shrinkage_new factor as general testing.
+  # The PMTCT-specific suppression rate (pmtct_cascade_supp_rate) and linkage
+  # cost (anc_hiv_testing$linkage_cost) are baked into the supp/cost
+  # accumulators here, mirroring the in-loop pattern for general modalities.
+  new_diagnoses                <- new_diagnoses + pmtct_new_diagnoses
+  new_dx_linked_uncapped       <- new_dx_linked_uncapped       + pmtct_cascade_linked_art
+  new_dx_linkage_cost_uncapped <- new_dx_linkage_cost_uncapped +
+    pmtct_cascade_linked_art * pmtct_cascade_linkage_cost
+  new_dx_supp_uncapped         <- new_dx_supp_uncapped         + pmtct_cascade_linked_supp
+  # Note: art_inititations_testing, additional_suppressed_testing, and PMTCT
+  # linkage cost are no longer added here. They are computed post-cap in the
+  # ART INITIATIONS block below, after proportional scaling by shrinkage_new.
   
   # ========================================================================
   # APPLY CONSTRAINTS - CAP AT REALISTIC MAXIMUMS
   # ========================================================================
   
-  # Cannot diagnose more people than 95% are undiagnosed
+  # Cannot diagnose more people than 95% are undiagnosed.
+  # Capture pre-cap value to compute shrinkage_new in the ART initiations
+  # block below, so per-modality linked counts and costs scale proportionally
+  # if the cap binds.
+  new_diagnoses_uncapped <- new_diagnoses
   new_diagnoses <- min(new_diagnoses, populations$undiagnosed * hiv_params$new_diagnoses_cap_prop)
   
   # ── LTFU PREVENTION: convert retained fraction to people ─────────────────
@@ -1779,6 +1839,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # Apply cap to testing-driven re-engagement only. Tracking and spontaneous
   # flow freely — they are bounded structurally by their own formulas.
+  # Capture pre-cap value to compute shrinkage_reengage in the ART initiations
+  # block below, so per-modality linked counts and costs scale proportionally
+  # if the cap binds.
+  re_engagement_testing_uncapped <- re_engagement_testing
   re_engagement_testing <- min(re_engagement_testing, testing_reengagement_cap)
   re_engagement         <- re_engagement_testing
   
@@ -1795,19 +1859,51 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   additional_suppressed <- additional_suppressed +
     ltfu_reengaged * hiv_params$tracking_reengagement_supp
   
-  # ── ART INITIATIONS ───────────────────────────────────────────────────────
-  # Cap art_inititations_testing at the linkage-cap-implied maximum across
-  # active flows (new dx + LTFU re-engagement via testing).
-  art_inititations_testing <- min(art_inititations_testing,
-                                  average_linkage_cap *
-                                    (new_diagnoses + re_engagement_testing))
-  art_initiations <- art_inititations_testing + art_initiations
+  # ── ART INITIATIONS (proportional-scaling under caps) ────────────────────
+  # Compute per-component shrinkage ratios from the two upstream caps:
+  #   shrinkage_new      = new_diagnoses        / new_diagnoses_uncapped
+  #   shrinkage_reengage = re_engagement_testing / re_engagement_testing_uncapped
+  # Both are 1.0 when their respective caps don't bind (the common case),
+  # so the formula reduces to the per-modality semantic:
+  #   art_init_testing = Σ_i (new_dx_i + retest_pos_i) × linkage_rate_i
+  #   linkage_cost     = Σ_i (new_dx_i + retest_pos_i) × linkage_rate_i × linkage_cost_i
+  # When a cap binds, the corresponding component is scaled down,
+  # preserving the per-modality mix (assumes proportional capping across
+  # modalities — see source-comment note).
+  #
+  # PMTCT contributions were folded into new_dx_*_uncapped above so they
+  # share shrinkage_new with general new diagnoses.
+  #
+  # `average_linkage_cap` is no longer used: per-intervention linkage_rate
+  # values are the authoritative source, and the cascade-identity ceiling
+  # (max_art_initiations, below) remains the structural backstop. Parameter
+  # validation (linkage_rate <= 1) should be enforced at parameter load.
+  shrinkage_new <- if (new_diagnoses_uncapped > 0) {
+    new_diagnoses / new_diagnoses_uncapped
+  } else 0
+  shrinkage_reengage <- if (re_engagement_testing_uncapped > 0) {
+    re_engagement_testing / re_engagement_testing_uncapped
+  } else 0
   
-  # Additional suppressed from testing
-  additional_suppressed_testing <- min(
-    art_initiations * hiv_params$testing_art_init_supp,
-    additional_suppressed_testing
-  )
+  # Linked count (post-cap): scaled per component
+  art_inititations_testing <- shrinkage_new      * new_dx_linked_uncapped +
+    shrinkage_reengage * retest_pos_linked_uncapped
+  art_initiations          <- art_inititations_testing + art_initiations
+  
+  # Linkage cost (post-cap): scaled per component, same shrinkage as the
+  # corresponding linked count, so cost per linked patient is preserved
+  # per-modality in the uncapped case and proportionally scaled under capping.
+  total_intervention_cost <- total_intervention_cost +
+    shrinkage_new      * new_dx_linkage_cost_uncapped +
+    shrinkage_reengage * retest_pos_linkage_cost_uncapped
+  
+  # Additional suppressed from testing (post-cap): scaled per component. The
+  # supp_uncapped accumulators carry per-source suppression rates baked in
+  # (general: testing_art_init_supp; PMTCT: pmtct_cascade_supp_rate), so a
+  # single sum gives the correct combined suppression contribution.
+  additional_suppressed_testing <-
+    shrinkage_new      * new_dx_supp_uncapped +
+    shrinkage_reengage * retest_pos_supp_uncapped
   additional_suppressed <- additional_suppressed + additional_suppressed_testing
   
   # Cannot initiate more on ART than are diagnosed but not yet on ART

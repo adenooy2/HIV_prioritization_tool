@@ -188,17 +188,17 @@ override_mortality_globals <- function(envir = parent.frame()) {
 test_that("per-group deaths match calc_deaths formula at baseline", {
   with_hiv_params(LIVE_PARAMS_MORT)
   override_mortality_globals()
-
+  
   ctx <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
                               yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   expect_lte(abs(result$deaths_undiagnosed         - 246), 1)
   expect_lte(abs(result$deaths_diagnosed_not_art   - 684), 1)
   expect_close(result$deaths_new_initiations,       0)
@@ -220,24 +220,24 @@ test_that("per-group deaths match calc_deaths formula at baseline", {
 test_that("total_hiv_deaths sums the 5 components at baseline", {
   with_hiv_params(LIVE_PARAMS_MORT)
   override_mortality_globals()
-
+  
   ctx <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
                               yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Sum of components = 246.34 + 683.95 + 0 + 40.39 + 186.59 = 1,157.27
   component_sum <- result$deaths_undiagnosed +
-                   result$deaths_diagnosed_not_art +
-                   result$deaths_new_initiations +
-                   result$deaths_established_treated +
-                   result$deaths_established_suppressed
-
+    result$deaths_diagnosed_not_art +
+    result$deaths_new_initiations +
+    result$deaths_established_treated +
+    result$deaths_established_suppressed
+  
   # total_hiv_deaths_before_interventions exposed in return
   expect_lte(abs(result$total_hiv_deaths_before_interventions - component_sum), 4)
   expect_lte(abs(component_sum - 1157), 4)
@@ -255,18 +255,18 @@ test_that("total_hiv_deaths sums the 5 components at baseline", {
 test_that("mortality_calibration_factor = 1.0 when toggle is FALSE", {
   with_hiv_params(LIVE_PARAMS_MORT)
   override_mortality_globals()   # sets USE_MORTALITY_CALIBRATION = FALSE
-
+  
   ctx <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
                               yield_multipliers = list(),
                               aids_deaths_per_year = 2500)
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   expect_close(result$mortality_calibration_factor, 1.0)
 })
 
@@ -289,18 +289,18 @@ test_that("mortality_calibration_factor responds to USE_MORTALITY_CALIBRATION = 
   assign("USE_MORTALITY_CALIBRATION", TRUE, envir = .GlobalEnv)
   # Note: override_mortality_globals's on.exit will restore USE to its original
   # FALSE state at end of test.
-
+  
   ctx <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
                               yield_multipliers = list(),
                               aids_deaths_per_year = 2500)
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Adult-only pre-calibration deaths ≈ 1,157. Target 2,500. Factor should be > 1.
   # Total modelled deaths (incl. infants) is the actual denominator.
   expect_gt(result$mortality_calibration_factor, 1)
@@ -329,26 +329,26 @@ test_that("calibration anchors adult deaths to aids_deaths_per_year target", {
   with_hiv_params(LIVE_PARAMS_MORT)
   override_mortality_globals()
   assign("USE_MORTALITY_CALIBRATION", TRUE, envir = .GlobalEnv)
-
+  
   # birth_rate = 0 -> hiv_exposed_births = 0 -> no infant infections / deaths
   ctx <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
                               yield_multipliers = list(),
                               aids_deaths_per_year = 2500,
                               birth_rate = 0)
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   adult_deaths_sum <- result$deaths_undiagnosed +
-                      result$deaths_diagnosed_not_art +
-                      result$deaths_new_initiations +
-                      result$deaths_established_treated +
-                      result$deaths_established_suppressed
-
+    result$deaths_diagnosed_not_art +
+    result$deaths_new_initiations +
+    result$deaths_established_treated +
+    result$deaths_established_suppressed
+  
   expect_within_pct(adult_deaths_sum, 2500, pct = 1)
   # Factor should be ~ 2,500 / 1,157.27 ≈ 2.160
   expect_within_pct(result$mortality_calibration_factor, 2500 / 1157.27, pct = 2)
@@ -374,46 +374,48 @@ test_that("calibration anchors adult deaths to aids_deaths_per_year target", {
 #         retest_pos = 50 × 0.59 = 29.5
 #         linked     = (20.5 + 29.5) × 1.0 = 50 -> art_initiations += 50
 #
-#       At line 1809-1811, art_inititations_testing capped at:
-#         average_linkage_cap × (new_diagnoses + re_engagement_testing)
-#         = 0.93 × (20.5 + 29.5) = 0.93 × 50 = 46.5
-#       So art_initiations finalises at min(50, 46.5) = 46.5.
+#       At line 1817 onwards (post-cap-removal), art_inititations_testing is
+#       computed as L_avg × (new_diagnoses + re_engagement_testing), where
+#       L_avg = 1.0 (single intervention at linkage_rate = 1.0). Caps on
+#       new_diagnoses (cap = 0.95 × undiagnosed) and re_engagement_testing
+#       (cap = 0.45 × total_ltfu_pool) do not bind at these small volumes.
+#         art_inititations_testing = 1.0 × (20.5 + 29.5) = 50.
 #
-#       Then at line 1824-1826, art_initiations <- min(art_initiations,
+#       Then at line ~1858, art_initiations <- min(art_initiations,
 #         max(0, diagnosed + new_diagnoses - effective_on_art + re_engagement))
-#       = min(46.5, max(0, 45000 + 20.5 - 34,070.4 + 29.5)) = min(46.5, 10,979.6) = 46.5
+#       = min(50, max(0, 45000 + 20.5 - 34,070.4 + 29.5)) = min(50, 10,979.6) = 50
 #
-#       n_new_initiations = 46.5
-#       deaths_new_initiations = 46.5 × ((1 - 0.209) × 0.006 + 0.209 × 0.144)
-#                              = 46.5 × (0.791 × 0.006 + 0.209 × 0.144)
-#                              = 46.5 × (0.004746 + 0.030096)
-#                              = 46.5 × 0.034842
-#                              = 1.62
+#       n_new_initiations = 50
+#       deaths_new_initiations = 50 × ((1 - 0.209) × 0.006 + 0.209 × 0.144)
+#                              = 50 × (0.791 × 0.006 + 0.209 × 0.144)
+#                              = 50 × (0.004746 + 0.030096)
+#                              = 50 × 0.034842
+#                              = 1.74 -> round to 2
 # ---------------------------------------------------------------------------
 test_that("eff_ahd_rate_new_init = ahd_new when no AHD package", {
   with_hiv_params(LIVE_PARAMS_MORT)
   override_mortality_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 0
   ig_new$testing$interventions$test_facility_general$linkage_rate <- 1.0
   ig_new$testing$interventions$test_facility_general$linkage_cost <- 0
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   ctx  <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
                                yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 1000
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
-  # Expected art_initiations ≈ 46.5 (linkage cap binds)
-  # Expected deaths_new_initiations ≈ 1.62 -> round to 2
+  
+  # Expected art_initiations = 50 (no cap binds; linkage_rate = 1.0)
+  # Expected deaths_new_initiations ≈ 1.74 -> rounds to 2
   # Tolerance ±1 because of round() in return list
   expect_lte(abs(result$deaths_new_initiations - 2), 1)
 })
@@ -439,17 +441,17 @@ test_that("eff_ahd_rate_new_init = ahd_new when no AHD package", {
 #
 # WHY:  Verify the AHD package effect is correctly gated and applied to BOTH
 #       new and established AHD groups.
-# HOW:  Same testing fixture as 7.6 to get art_initiations ≈ 46.5.
+# HOW:  Same testing fixture as 7.6 to get art_initiations = 50.
 #       Add cd4_testing = 100, ahd_package = 100, ahd_package$efficacy = 0.50.
-#       deaths_new_initiations = 46.5 × ((1 - 0.209) × 0.006 + 0.209 × 0.072)
-#                              = 46.5 × (0.004746 + 0.015048)
-#                              = 46.5 × 0.019794
-#                              = 0.92 -> 1 (round)
+#       deaths_new_initiations = 50 × ((1 - 0.209) × 0.006 + 0.209 × 0.072)
+#                              = 50 × (0.004746 + 0.015048)
+#                              = 50 × 0.019794
+#                              = 0.99 -> 1 (round)
 # ---------------------------------------------------------------------------
 test_that("AHD package halves AHD mortality contribution when fully applied", {
   with_hiv_params(LIVE_PARAMS_MORT)
   override_mortality_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 0
@@ -460,20 +462,20 @@ test_that("AHD package halves AHD mortality contribution when fully applied", {
   ig_new$advanced_disease$interventions$ahd_package$unit_cost     <- 0
   with_intervention_groups(list(testing = ig_new$testing,
                                 advanced_disease = ig_new$advanced_disease))
-
+  
   ctx  <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
                                yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 1000
   interv$cd4_testing  <- 100
   interv$ahd_package  <- 100
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Expected ≈ 1 (down from ≈2 without AHD package, see test 7.6)
   expect_lte(abs(result$deaths_new_initiations - 1), 1)
 })
@@ -500,7 +502,7 @@ test_that("AHD package halves AHD mortality contribution when fully applied", {
 test_that("AHD package also reduces established AHD mortality", {
   with_hiv_params(LIVE_PARAMS_MORT)
   override_mortality_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 0
@@ -511,20 +513,20 @@ test_that("AHD package also reduces established AHD mortality", {
   ig_new$advanced_disease$interventions$ahd_package$unit_cost     <- 0
   with_intervention_groups(list(testing = ig_new$testing,
                                 advanced_disease = ig_new$advanced_disease))
-
+  
   ctx  <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
                                yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 1000
   interv$cd4_testing  <- 100
   interv$ahd_package  <- 100
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Expected deaths_established_treated ≈ 26 (down from ~40 with no package)
   expect_lte(abs(result$deaths_established_treated - 26), 2)
 })
@@ -560,7 +562,7 @@ test_that("AHD package also reduces established AHD mortality", {
 test_that("deaths_averted reflects on-treatment delta from AHD package", {
   with_hiv_params(LIVE_PARAMS_MORT)
   override_mortality_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 0
@@ -571,20 +573,20 @@ test_that("deaths_averted reflects on-treatment delta from AHD package", {
   ig_new$advanced_disease$interventions$ahd_package$unit_cost     <- 0
   with_intervention_groups(list(testing = ig_new$testing,
                                 advanced_disease = ig_new$advanced_disease))
-
+  
   ctx  <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
                                yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 1000
   interv$cd4_testing  <- 100
   interv$ahd_package  <- 100
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # On-treatment delta should be roughly 34 (derivation above).
   # Loose tolerance ±10 because of rounding through several layered terms,
   # plus a small infant_deaths_averted contribution that may also accrue.
@@ -608,7 +610,7 @@ test_that("deaths_averted reflects on-treatment delta from AHD package", {
 test_that("AHD package has no effect when CD4 coverage = 0", {
   with_hiv_params(LIVE_PARAMS_MORT)
   override_mortality_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 0
@@ -618,20 +620,20 @@ test_that("AHD package has no effect when CD4 coverage = 0", {
   ig_new$advanced_disease$interventions$ahd_package$unit_cost     <- 0
   with_intervention_groups(list(testing = ig_new$testing,
                                 advanced_disease = ig_new$advanced_disease))
-
+  
   ctx  <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
                                yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 1000
   interv$cd4_testing  <- 0     # NO CD4 coverage
   interv$ahd_package  <- 100   # but full AHD package coverage
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Without CD4 detection, AHD package contributes 0 reduction.
   # deaths_new_initiations should match the no-package case (~2).
   expect_lte(abs(result$deaths_new_initiations - 2), 1)

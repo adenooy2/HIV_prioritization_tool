@@ -46,6 +46,22 @@ zero_interventions <- function() {
 }
 
 # ---------------------------------------------------------------------------
+# Live-param fixture for cost-cap tests (4.8a/b/c, 4.9)
+# ---------------------------------------------------------------------------
+# Only sexually_active_frac is needed for the asserted values (the caps depend
+# on adult_pop and uncircumcised_males_all from the fixture context, not on
+# SAFR). Kept minimal and consistent with the rest of test_04, which only
+# overrides SAFR via prev_setup().
+LIVE_PARAMS_PREVENTION_04 <- list(sexually_active_frac = SAFR)
+
+# Local copy of test_09_costs.R::base_ctx — each test file runs in its own
+# testthat context, so helpers defined in other test files are not in scope.
+base_ctx <- function() {
+  make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
+                       yield_multipliers = list())
+}
+
+# ---------------------------------------------------------------------------
 # 4.3 PrEP + condom stacking in high-risk (multiplicative)
 # ---------------------------------------------------------------------------
 # WHAT: protection_high = 1 - (1 - prep_oral_cov × eff) × (1 - prep_len_cov × eff_len) ×
