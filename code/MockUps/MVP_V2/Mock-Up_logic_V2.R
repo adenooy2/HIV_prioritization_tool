@@ -773,58 +773,58 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
     }
   }
   
-  # Add Custom Country option
-  custom_context <- list(
-    total_population = 1000000,
-    hiv_prevalence = 0.05,
-    plhiv = NULL,
-    percent_diagnosed = 80,
-    percent_on_art = 75,
-    percent_suppressed = 85,
-    new_infections_per_year = 5000,
-    aids_deaths_per_year = 1000,
-    birth_rate = 24,
-    prop_pop_male = 49,
-    prop_pop_under_14 = 40,
-    anc_multiplier = 1     # Custom country: defaults to 1 (no ANC adjustment)
-  )
-  
-  custom_pops <- calculate_populations(custom_context)
-  
-  custom_baseline <- list(
-    prep_oral = 0.01*custom_pops$total, 
-    prep_lenacapavir = 0, 
-    vmmc = 0.01*custom_pops$uncircumcised_males,
-    condoms = 0.6*custom_pops$total, 
-    infant_prophylaxis = 70,
-    test_facility_general = 0.05*custom_pops$adult_pop, 
-    test_network = 0.005*custom_pops$adult_pop, 
-    test_index = 0.005*custom_pops$adult_pop, 
-    test_community = 0.04*custom_pops$adult_pop,
-    test_kpsti = 0.02*custom_pops$adult_pop, 
-    hivst_facility = 0.02*custom_pops$adult_pop, 
-    hivst_community = 0.01*custom_pops$adult_pop,
-    eid = 75, 
-    anc_hiv_testing = 88, 
-    pnc_hiv_testing = 70,
-    vl_monitoring_routine = 60, 
-    mmd_3month = 40, 
-    mmd_6month = 20, 
-    mmd_12month = 5,
-    adherence_counseling = 55, 
-    tracking_tracing = 40, 
-    anc_vl_testing = 68,
-    pnc_vl_testing = 0,
-    cd4_testing = 92, 
-    ahd_package = 88
-  )
-  
-  presets[["Custom Country"]] <- list(
-    description = "Enter your own parameters",
-    context = custom_context,
-    baseline = custom_baseline
-  )
-  
+  # # Add Custom Country option
+  # custom_context <- list(
+  #   total_population = 1000000,
+  #   hiv_prevalence = 0.05,
+  #   plhiv = NULL,
+  #   percent_diagnosed = 80,
+  #   percent_on_art = 75,
+  #   percent_suppressed = 85,
+  #   new_infections_per_year = 5000,
+  #   aids_deaths_per_year = 1000,
+  #   birth_rate = 24,
+  #   prop_pop_male = 49,
+  #   prop_pop_under_14 = 40,
+  #   anc_multiplier = 1     # Custom country: defaults to 1 (no ANC adjustment)
+  # )
+  # 
+  # custom_pops <- calculate_populations(custom_context)
+  # 
+  # custom_baseline <- list(
+  #   prep_oral = 0.01*custom_pops$total, 
+  #   prep_lenacapavir = 0, 
+  #   vmmc = 0.01*custom_pops$uncircumcised_males,
+  #   condoms = 0.6*custom_pops$total, 
+  #   infant_prophylaxis = 70,
+  #   test_facility_general = 0.05*custom_pops$adult_pop, 
+  #   test_network = 0.005*custom_pops$adult_pop, 
+  #   test_index = 0.005*custom_pops$adult_pop, 
+  #   test_community = 0.04*custom_pops$adult_pop,
+  #   test_kpsti = 0.02*custom_pops$adult_pop, 
+  #   hivst_facility = 0.02*custom_pops$adult_pop, 
+  #   hivst_community = 0.01*custom_pops$adult_pop,
+  #   eid = 75, 
+  #   anc_hiv_testing = 88, 
+  #   pnc_hiv_testing = 70,
+  #   vl_monitoring_routine = 60, 
+  #   mmd_3month = 40, 
+  #   mmd_6month = 20, 
+  #   mmd_12month = 5,
+  #   adherence_counseling = 55, 
+  #   tracking_tracing = 40, 
+  #   anc_vl_testing = 68,
+  #   pnc_vl_testing = 0,
+  #   cd4_testing = 92, 
+  #   ahd_package = 88
+  # )
+  # 
+  # presets[["Custom Country"]] <- list(
+  #   description = "Enter your own parameters",
+  #   context = custom_context,
+  #   baseline = custom_baseline
+  # )
+  # 
   return(presets)
 }
 
@@ -2227,11 +2227,20 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     number_reached <- min(number_reached, eligible)
     
     if ("adult_infections" %in% intervention$outcomes) {
-      # Cost only — FOI accounts for protective effect
-      units_costed <- if (int_key == "condoms")
+      # Cost only — FOI accounts for protective effect.
+      # PrEP cost is decoupled from FOI: PrEP can be distributed beyond the
+      # high-risk pool (it costs money), but only the high-risk-capped
+      # coverage feeds infection impact (handled in compute_prevention_adjustments
+      # via the clip() on prep_*_cov_high). Cap PrEP cost at adult_pop —
+      # matches the UI cap (oral + lenacapavir combined cannot exceed
+      # adult_pop). Children don't receive adult PrEP.
+      units_costed <- if (int_key == "condoms") {
         (intervention_value %||% 0)
-      else
+      } else if (int_key %in% c("prep_oral", "prep_lenacapavir")) {
+        min(intervention_value, populations$adult_pop %||% 0)
+      } else {
         number_reached
+      }
       total_intervention_cost <- total_intervention_cost +
         units_costed * intervention$unit_cost
     }

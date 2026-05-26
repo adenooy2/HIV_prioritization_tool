@@ -156,45 +156,103 @@ test_that("condoms cost uses raw intervention_value, not number_reached", {
 })
 
 # ---------------------------------------------------------------------------
-# 4.8 PrEP cost uses number_reached (capped at eligible_pop)
+# 4.8 PrEP cost capped at adult_pop (NOT high_risk_negative)
 # ---------------------------------------------------------------------------
-# WHAT: For prep_oral (eligible_pop = "high_risk_negative"), cost =
-#       min(intervention_value, eligible) × unit_cost.
-# WHY: Contrast with condoms — only condoms gets the raw-value special case.
-# HOW: high_risk_negative (populations level, uses hiv_negative not sexually_active_negative):
-#      = 950,000 × 0.05 = 47,500.
-#      Set prep_oral = 100,000 (above eligible). Expected reached = 47,500.
-#      Override unit_cost = 80. Expected cost = 47,500 × 80 = 3,800,000.
+# WHAT: For prep_oral and prep_lenacapavir, cost =
+#       min(intervention_value, adult_pop) × unit_cost.
+#       This is DIFFERENT from infection impact, which still uses
+#       high_risk_negative via the clip() in compute_prevention_adjustments.
+#       Programs can distribute PrEP to anyone in the adult population, but
+#       doses beyond the high-risk pool have no marginal FOI effect.
+# WHY:  Decouples cost from effect so we can model real programs where
+#       PrEP is offered to general-population adult walk-ins (real cost,
+#       but those people would not have been infected anyway). Matches the
+#       UI cap that prevents oral + lenacapavir summing above adult_pop.
+# HOW:  high_risk_negative = 47,500 ; adult_pop = 600,000.
+#       Set prep_oral = 100,000. 100,000 < adult_pop (600k), so the full
+#       100,000 is costed. Expected cost = 100,000 × 80 = 8,000,000.
 # ---------------------------------------------------------------------------
-test_that("PrEP cost uses number_reached, capped at eligible_pop", {
-  with_hiv_params(list(sexually_active_frac = SAFR,
-                       prop_retest_default = 0.59,
-                       testing_reengagement_cap_frac = 0.45,
-                       testing_art_init_supp = 0.9,
-                       new_diagnoses_cap_prop = 0.95,
-                       average_linkage_cap = 0.93,
-                       pmtct_cascade_supp_discount = 0.9))
-
+test_that("PrEP cost uses intervention_value capped at adult_pop", {
+  with_hiv_params(LIVE_PARAMS_PREVENTION_04)
+  
   ig_new <- intervention_groups
   ig_new$prevention$interventions$prep_oral$unit_cost <- 80
   ig_new$prevention$interventions$prep_oral$efficacy  <- 0.99
   with_intervention_groups(list(prevention = ig_new$prevention))
-
-  ctx  <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
-                               yield_multipliers = list())
+  
+  ctx  <- base_ctx()
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
-  interv$prep_oral <- 1e5   # well above high_risk_negative (47,500)
-
+  interv$prep_oral <- 1e5   # above high_risk_negative (47,500), below adult_pop (600,000)
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
-  # Expected: 47,500 × 80 = 3,800,000
-  expect_close(result$total_intervention_cost, 3.8e6)
+  
+  # Expected: 100,000 × 80 = 8,000,000 (full input costed because < adult_pop)
+  expect_close(result$total_intervention_cost, 8e6)
 })
 
+# ---------------------------------------------------------------------------
+# 4.8b PrEP cost capped at adult_pop when input exceeds it
+# ---------------------------------------------------------------------------
+# WHAT: Push prep_oral above adult_pop to verify the cap binds.
+# HOW:  adult_pop = 600,000. Set prep_oral = 1,000,000.
+#       Expected reached for costing = 600,000.
+#       Expected cost = 600,000 × 80 = 48,000,000.
+# ---------------------------------------------------------------------------
+test_that("PrEP cost capped at adult_pop when input exceeds it", {
+  with_hiv_params(LIVE_PARAMS_PREVENTION_04)
+  
+  ig_new <- intervention_groups
+  ig_new$prevention$interventions$prep_oral$unit_cost <- 80
+  ig_new$prevention$interventions$prep_oral$efficacy  <- 0.99
+  with_intervention_groups(list(prevention = ig_new$prevention))
+  
+  ctx  <- base_ctx()
+  pops <- calculate_populations(ctx)
+  
+  interv <- zero_interventions()
+  interv$prep_oral <- 1e6   # above adult_pop (600,000)
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # Expected: 600,000 × 80 = 48,000,000
+  expect_close(result$total_intervention_cost, 4.8e7)
+})
+
+# ---------------------------------------------------------------------------
+# 4.8c prep_lenacapavir uses same cap as prep_oral
+# ---------------------------------------------------------------------------
+# WHAT: Same behaviour for prep_lenacapavir — cost capped at adult_pop.
+# HOW:  Set prep_lenacapavir = 100,000, unit_cost = 100.
+#       100,000 < adult_pop (600,000), so the full input is costed.
+#       Expected: 100,000 × 100 = 10,000,000.
+# ---------------------------------------------------------------------------
+test_that("prep_lenacapavir cost capped at adult_pop (same rule as prep_oral)", {
+  with_hiv_params(LIVE_PARAMS_PREVENTION_04)
+  
+  ig_new <- intervention_groups
+  ig_new$prevention$interventions$prep_lenacapavir$unit_cost <- 100
+  ig_new$prevention$interventions$prep_lenacapavir$efficacy  <- 1.00
+  with_intervention_groups(list(prevention = ig_new$prevention))
+  
+  ctx  <- base_ctx()
+  pops <- calculate_populations(ctx)
+  
+  interv <- zero_interventions()
+  interv$prep_lenacapavir <- 1e5
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # Expected: 100,000 × 100 = 10,000,000
+  expect_close(result$total_intervention_cost, 1e7)
+})
 # ---------------------------------------------------------------------------
 # 4.9 VMMC cost uses number_reached (capped at uncircumcised_males)
 # ---------------------------------------------------------------------------
