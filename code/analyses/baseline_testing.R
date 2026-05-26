@@ -5,7 +5,7 @@ library(stringr)
 grouped_mods=read_excel("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/pepfar_modalities.xlsx")
 
 #AMFAR?PEPFAR https://data.pepfar.gov/datasets
-data <- read_delim("Downloads/Enhanced_Geographical_Analysis.zip", 
+data <- read_delim("/Users/adenooy/Downloads/Enhanced_Geographical_Analysis.zip", 
                                              delim = "\t", escape_double = FALSE, 
                                              trim_ws = TRUE)
 
@@ -127,6 +127,9 @@ multiplier_summary_final$yield_mult_hivst_facility=multiplier_summary_final$yiel
 
 ##Available baseline data
 baseline_data=read_excel("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/country_baselines/Updated/country_baselines_summarised.xlsx")
+
+#baseline_data$country[baseline_data$country=="Mozambique"]="Moz"
+
 
 baseline_data=left_join(multiplier_summary_final,baseline_data)
 #######baseline testing numbers
@@ -280,7 +283,7 @@ baseline_data$pnc_hiv_testing[is.na(baseline_data$pnc_hiv_testing)==TRUE]=40
 baseline_data$anc_vl_testing[is.na(baseline_data$anc_vl_testing)==TRUE]=70
 baseline_data$pnc_vl_testing[is.na(baseline_data$pnc_vl_testing)==TRUE]=80
 
-baseline_data$pep[is.na(baseline_data$pep)==TRUE]=100000
+#baseline_data$pep[is.na(baseline_data$pep)==TRUE]=100000
 baseline_data$infant_prophylaxis[is.na(baseline_data$infant_prophylaxis)==TRUE]=90
 
 baseline_data$vl_monitoring_routine[is.na(baseline_data$vl_monitoring_routine)==TRUE]=70
