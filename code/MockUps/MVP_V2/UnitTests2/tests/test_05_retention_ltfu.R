@@ -75,24 +75,29 @@ retention_context <- function(...) {
 override_ltfu_rates <- function(stable = 0.044, unstable = 0.14,
                                 spontaneous = 0,
                                 retention_supp = 0.41,
+                                art_cost = 200,
                                 envir = parent.frame()) {
   snap <- list(
     s   = ANNUAL_LTFU_RATE_STABLE,
     u   = ANNUAL_LTFU_RATE_UNSTABLE,
     sp  = ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE,
-    rs  = RETENTION_SUPPRESSION_RATE
+    rs  = RETENTION_SUPPRESSION_RATE,
+    art = ART_COST_STANDARD
   )
   assign("ANNUAL_LTFU_RATE_STABLE",          stable,        envir = .GlobalEnv)
   assign("ANNUAL_LTFU_RATE_UNSTABLE",        unstable,      envir = .GlobalEnv)
   assign("ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE", spontaneous, envir = .GlobalEnv)
   assign("RETENTION_SUPPRESSION_RATE",       retention_supp, envir = .GlobalEnv)
+  assign("ART_COST_STANDARD",                art_cost,      envir = .GlobalEnv)
   do.call("on.exit",
           list(substitute({
             assign("ANNUAL_LTFU_RATE_STABLE",                SNAP_S,  envir = .GlobalEnv)
             assign("ANNUAL_LTFU_RATE_UNSTABLE",              SNAP_U,  envir = .GlobalEnv)
             assign("ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE",   SNAP_SP, envir = .GlobalEnv)
             assign("RETENTION_SUPPRESSION_RATE",             SNAP_RS, envir = .GlobalEnv)
-          }, list(SNAP_S = snap$s, SNAP_U = snap$u, SNAP_SP = snap$sp, SNAP_RS = snap$rs)),
+            assign("ART_COST_STANDARD",                      SNAP_ART, envir = .GlobalEnv)
+          }, list(SNAP_S = snap$s, SNAP_U = snap$u, SNAP_SP = snap$sp,
+                  SNAP_RS = snap$rs, SNAP_ART = snap$art)),
           add = TRUE),
           envir = envir)
   invisible(NULL)
@@ -280,16 +285,22 @@ test_that("DSD interventions do not reduce unstable LTFU", {
 # ---------------------------------------------------------------------------
 # 5.6 DSD cost applies to ALL stable clients reached (not just retained)
 # ---------------------------------------------------------------------------
-# WHAT: total_intervention_cost gets number_reached × unit_cost (line 1667-68),
+# WHAT: DSD costs flow into art_provision_cost (NOT total_intervention_cost),
+#       as a (typically negative) adjustment to end_on_art × ART_COST_STANDARD.
+#       For DSD interventions, the adjustment is number_reached × unit_cost,
 #       where number_reached is the full coverage × eligible (here 50% × 32,400
 #       = 16,200), regardless of retained frac.
 # WHY:  Captures that you pay for delivering DSD to all enrolled stable
-#       clients, not just those who would otherwise have been LTFU.
-# HOW:  Override mmd_3month$unit_cost = 12 (arbitrary). Coverage 50% of 32,400.
-#         expected cost = 16,200 × 12 = 194,400
-#       With NO testing interventions, all other costs = 0.
+#       clients, not just those who would otherwise have been LTFU. And that
+#       this adjusts ART provision cost rather than adding intervention cost.
+# HOW:  Override mmd_3month$unit_cost = 12 (positive; tests the formula
+#       mechanism — sign convention is tested separately in 5.6b).
+#       Coverage 50% of 32,400 stable patients.
+#       Identity 1: total_intervention_cost ≈ 0 (no testing, no tracking).
+#       Identity 2: art_provision_cost == end_on_art × 200 + 16,200 × 12
+#                                     == end_on_art × 200 + 194,400
 # ---------------------------------------------------------------------------
-test_that("DSD cost = coverage × eligible × unit_cost (full reach)", {
+test_that("DSD cost flows to art_provision_cost as end_on_art × 200 + dsd_adj", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
 
@@ -307,8 +318,86 @@ test_that("DSD cost = coverage × eligible × unit_cost (full reach)", {
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
 
-  # 32,400 × 0.50 = 16,200; × 12 = 194,400
-  expect_close(result$total_intervention_cost, 194400)
+  # No testing / tracking interventions enabled -> intervention cost ≈ 0
+  expect_close(result$total_intervention_cost, 0)
+  # DSD cost lands in art_provision_cost. 32,400 × 0.50 = 16,200; × 12 = 194,400.
+  # end_on_art × 200 is the gross; DSD adds 194,400 on top (positive unit_cost).
+  # Allow ±200 for the dual-rounding gap documented in test 9.7.
+  expected_art_cost <- result$end_on_art * 200 + 194400
+  expect_lte(abs(result$art_provision_cost - expected_art_cost), 200)
+})
+
+# ---------------------------------------------------------------------------
+# 5.6b DSD with negative unit_cost reduces art_provision_cost (production
+#      convention)
+# ---------------------------------------------------------------------------
+# WHAT: In production, DSD unit_cost in intervention_params is NEGATIVE — DSD
+#       enrolment reduces ART provision cost relative to facility standard care.
+#       Same formula as 5.6 with a flipped sign.
+# WHY:  Locks the sign convention. If someone refactors and accidentally takes
+#       abs() or clamps unit_cost >= 0, this test catches it.
+# HOW:  mmd_3month$unit_cost = -12. Coverage 50% × 32,400 = 16,200.
+#       dsd_cost_adjustment = 16,200 × (-12) = -194,400.
+#       art_provision_cost = end_on_art × 200 - 194,400 (assuming no floor hit).
+# ---------------------------------------------------------------------------
+test_that("DSD with negative unit_cost reduces art_provision_cost", {
+  with_hiv_params(LIVE_PARAMS_RETENTION)
+  override_ltfu_rates()
+
+  ig_new <- override_retention("mmd_3month", efficacy = 0.10, unit_cost = -12)
+  with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
+
+  ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
+                            yield_multipliers = list())
+  pops <- calculate_populations(ctx)
+
+  interv <- zero_interventions()
+  interv$mmd_3month <- 50
+
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+
+  expect_close(result$total_intervention_cost, 0)
+  # end_on_art ≈ 36,000 so end_on_art × 200 ≈ 7,200,000 >> 194,400 -> floor not hit.
+  expected_art_cost <- result$end_on_art * 200 - 194400
+  expect_gt(expected_art_cost, 0)  # sanity: floor should not trigger
+  expect_lte(abs(result$art_provision_cost - expected_art_cost), 200)
+})
+
+# ---------------------------------------------------------------------------
+# 5.6c art_provision_cost is floored at 0 when DSD savings exceed gross cost
+# ---------------------------------------------------------------------------
+# WHAT: art_provision_cost = max(0, end_on_art × ART_COST_STANDARD + dsd_adj).
+#       Negative result triggers a warning and floor.
+# WHY:  Catches config errors where DSD unit costs are entered with
+#       implausibly large magnitudes.
+# HOW:  Force unit_cost = -1e6 so 16,200 × (-1e6) = -1.62e10 vastly exceeds
+#       end_on_art × 200 ≈ 7.2e6. Expect:
+#         art_provision_cost == 0
+#         A warning is emitted.
+# ---------------------------------------------------------------------------
+test_that("art_provision_cost floored at 0 with warning when DSD savings exceed gross", {
+  with_hiv_params(LIVE_PARAMS_RETENTION)
+  override_ltfu_rates()
+
+  ig_new <- override_retention("mmd_3month", efficacy = 0.10, unit_cost = -1e6)
+  with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
+
+  ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
+                            yield_multipliers = list())
+  pops <- calculate_populations(ctx)
+
+  interv <- zero_interventions()
+  interv$mmd_3month <- 50
+
+  expect_warning(
+    result <- calculate_scenario_outcomes(
+      ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+    ),
+    "art_provision_cost floored to 0"
+  )
+  expect_equal(result$art_provision_cost, 0)
 })
 
 # ---------------------------------------------------------------------------

@@ -167,6 +167,7 @@ ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE =hiv_params$spontaneous_reengagement_rate
 # to suppress.
 RETENTION_SUPPRESSION_RATE <- hiv_params$retention_suppression_rate
 
+ART_COST_STANDARD <- hiv_params$art_cost_standard %||% 200
 # ============================================================================
 # MTCT RATES BY MATERNAL ART/SUPPRESSION STATUS
 # Covers transmission risk across pregnancy, delivery, and breastfeeding period.
@@ -1352,6 +1353,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   deferred_tracking_efficacy <- 0  # efficacy parameter from intervention spec
   deferred_tracking_unit_cost <- 0 # unit cost for cost calculation against full pool
   total_intervention_cost <- 0
+  dsd_cost_adjustment <- 0
   tests_performed <- 0
   
   # Base test yield: use country prior-year average from CSV if available;
@@ -1701,7 +1703,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       # Cost: prevention interventions charged here against on_art-based reach.
       # Tracking/tracing is deferred — its cost is charged later against the
       # full LTFU pool (prevalent + net incident), matching the deferred reach.
-      if (intervention$eligible_pop != "ltfu") {
+      if (intervention$eligible_pop == "on_art_stable") {
+        dsd_cost_adjustment <- dsd_cost_adjustment +
+          number_reached * intervention$unit_cost
+      } else if (intervention$eligible_pop != "ltfu") {
         total_intervention_cost <- total_intervention_cost +
           number_reached * intervention$unit_cost
       }
@@ -2451,9 +2456,17 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # CALCULATE COSTS
   # ========================================================================
   
-  # ART provision cost (outcome-driven)
-  art_provision_cost <- end_on_art * 200
-  
+  art_provision_cost <- end_on_art * ART_COST_STANDARD + dsd_cost_adjustment
+  if (art_provision_cost < 0) {
+    warning(sprintf(
+      paste0("art_provision_cost floored to 0: DSD savings (%.0f) exceeded ",
+             "standard ART provision cost (%.0f × %.0f = %.0f). ",
+             "Check DSD unit costs in intervention_params."),
+      -dsd_cost_adjustment, end_on_art, ART_COST_STANDARD,
+      end_on_art * ART_COST_STANDARD
+    ))
+    art_provision_cost <- 0
+  }
   # Total cost
   total_cost <- total_intervention_cost + art_provision_cost
   

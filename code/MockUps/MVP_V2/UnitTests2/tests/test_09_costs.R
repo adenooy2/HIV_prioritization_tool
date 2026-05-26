@@ -71,7 +71,8 @@ override_cost_globals <- function(envir = parent.frame()) {
                rs = RETENTION_SUPPRESSION_RATE,
                cd4 = CD4_AHD_TARGETING_YIELD, use = USE_MORTALITY_CALIBRATION,
                mort = MORTALITY_RATES, mtct = MTCT_RATES,
-               infant = INFANT_MORTALITY_RATES)
+               infant = INFANT_MORTALITY_RATES,
+               art = ART_COST_STANDARD)
   assign("ANNUAL_LTFU_RATE_STABLE",              0.044, envir = .GlobalEnv)
   assign("ANNUAL_LTFU_RATE_UNSTABLE",            0.14,  envir = .GlobalEnv)
   assign("ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE", 0,     envir = .GlobalEnv)
@@ -81,6 +82,7 @@ override_cost_globals <- function(envir = parent.frame()) {
   assign("MORTALITY_RATES",                      LIVE_MORT_C,         envir = .GlobalEnv)
   assign("MTCT_RATES",                           LIVE_MTCT_RATES_C,   envir = .GlobalEnv)
   assign("INFANT_MORTALITY_RATES",               LIVE_INFANT_MORT_C,  envir = .GlobalEnv)
+  assign("ART_COST_STANDARD",                    200,   envir = .GlobalEnv)
   do.call("on.exit",
           list(substitute({
             assign("ANNUAL_LTFU_RATE_STABLE",              SNAP_S,    envir = .GlobalEnv)
@@ -92,10 +94,11 @@ override_cost_globals <- function(envir = parent.frame()) {
             assign("MORTALITY_RATES",                      SNAP_MORT, envir = .GlobalEnv)
             assign("MTCT_RATES",                           SNAP_MTCT, envir = .GlobalEnv)
             assign("INFANT_MORTALITY_RATES",               SNAP_INF,  envir = .GlobalEnv)
+            assign("ART_COST_STANDARD",                    SNAP_ART,  envir = .GlobalEnv)
           }, list(SNAP_S = snap$s, SNAP_U = snap$u, SNAP_SP = snap$sp,
                   SNAP_RS = snap$rs, SNAP_CD4 = snap$cd4, SNAP_USE = snap$use,
                   SNAP_MORT = snap$mort, SNAP_MTCT = snap$mtct,
-                  SNAP_INF = snap$infant)),
+                  SNAP_INF = snap$infant, SNAP_ART = snap$art)),
           add = TRUE), envir = envir)
   invisible(NULL)
 }
@@ -390,25 +393,25 @@ test_that("multi-intervention total cost = sum of single-intervention costs", {
 })
 
 # ---------------------------------------------------------------------------
-# 9.7 art_provision_cost = end_on_art × 200
+# 9.7 art_provision_cost = end_on_art × ART_COST_STANDARD + dsd_cost_adjustment
 # ---------------------------------------------------------------------------
-# WHAT: Line 2360: art_provision_cost <- end_on_art * 200.
-#       Flat $200 per person on ART at year-end.
+# WHAT: art_provision_cost <- end_on_art * ART_COST_STANDARD + dsd_cost_adjustment,
+#       floored at 0. With no DSD interventions active, dsd_cost_adjustment = 0,
+#       so art_provision_cost = end_on_art × ART_COST_STANDARD (= 200 in test).
 #
 # WHY: This is the single largest cost component in most scenarios. A typo
 #      changing 200 to e.g. 20 would silently understate cost by 10×.
+#      DSD-active cases are covered separately in tests 5.6, 5.6b, 5.6c.
 #
-# HOW: Standard fixture. end_on_art ≈ 33,843 (from test 8.2).
+# HOW: Standard fixture, NO interventions. end_on_art ≈ 33,843 (from test 8.2).
 #      Expected art_provision_cost ≈ 33,843 × 200 = 6,768,600.
 #
 # NOTE: The returned end_on_art and art_provision_cost are BOTH rounded
-#       in the result list (lines 2555 and 2575), but rounded SEPARATELY
-#       from their unrounded internal values. So result$end_on_art × 200
-#       can differ from result$art_provision_cost by up to ±200 (one round()
-#       unit on end_on_art = ±0.5 person × $200 = ±$100, doubled for the
-#       difference between two independent roundings).
+#       in the result list, but rounded SEPARATELY from their unrounded
+#       internal values. So result$end_on_art × 200 can differ from
+#       result$art_provision_cost by up to ±200.
 # ---------------------------------------------------------------------------
-test_that("art_provision_cost = end_on_art × 200 (within rounding)", {
+test_that("art_provision_cost = end_on_art × ART_COST_STANDARD with no DSD (within rounding)", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
   
@@ -420,7 +423,7 @@ test_that("art_provision_cost = end_on_art × 200 (within rounding)", {
   )
   
   # Allow ±200 because end_on_art and art_provision_cost round independently
-  expect_lte(abs(result$art_provision_cost - result$end_on_art * 200), 200)
+  expect_lte(abs(result$art_provision_cost - result$end_on_art * ART_COST_STANDARD), 200)
   # Specific value check: within ±200 of 33,843 × 200 = 6,768,600
   expect_lte(abs(result$art_provision_cost - 33843 * 200), 200)
 })
