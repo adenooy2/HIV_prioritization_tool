@@ -240,7 +240,7 @@ build_intervention_groups <- function(intervention_params){
           type = "absolute",
           unit_label = "annual people",
           efficacy = subset(intervention_params, intervention_key == "vmmc")$efficacy,
-          eligible_pop = "uncircumcised_males",
+          eligible_pop = "uncircumcised_males_all",
           unit_cost = subset(intervention_params, intervention_key == "vmmc")$unit_cost,
           outcomes = c("adult_infections")
         ),
@@ -616,6 +616,7 @@ calculate_populations <- function(context) {
     circ_male                = hiv_negative * (prop_male_pct/100) * circ_prev,
     # kept for VMMC eligible_pop reference in cost loop
     uncircumcised_males      = hiv_negative * (prop_male_pct/100) * (1 - circ_prev),
+    uncircumcised_males_all  = context$total_population * (prop_male_pct/100) * (1 - circ_prev),  # HIV+ AND HIV- — used by VMMC cost cap
     sexually_active_negative = hiv_negative * (1 - prop_under14/100) * hiv_params$sexually_active_frac,
     recent_exposure = hiv_negative * hiv_params$recent_exposure_frac,
     hiv_exposed_infants = hiv_exposed_births,

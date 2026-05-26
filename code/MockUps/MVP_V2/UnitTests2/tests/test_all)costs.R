@@ -395,17 +395,22 @@ test_that("prep_lenacapavir cost capped at adult_pop (same rule as prep_oral)", 
 })
 
 # ---------------------------------------------------------------------------
-# 4.9 VMMC cost uses number_reached (capped at uncircumcised_males)
+# 4.9 VMMC cost capped at all uncircumcised males (HIV+ and HIV-)
 # ---------------------------------------------------------------------------
-# WHAT: VMMC eligible_pop = "uncircumcised_males". Volume above this is
-#       capped before costing.
-# WHY:  VMMC supply >> pool is realistic for late-stage VMMC programmes; cost
-#       must not balloon past pool exhaustion.
-# HOW:  populations$uncircumcised_males = hiv_negative × 0.50 × (1 - 0.30)
-#       = 332,500 (includes KP males — uses full hiv_negative, not sex active).
-#       Set vmmc = 1,000,000; unit_cost = 50. Expected: 332,500 × 50 = 16,625,000.
+# WHAT: VMMC eligible_pop = "uncircumcised_males_all" (HIV+ and HIV-).
+#       Volume above this is capped before costing. The FOI side still
+#       uses n_general_male_uncirc (HIV-negative only) — real programs
+#       circumcise men regardless of HIV status, but only HIV-neg cases
+#       generate infection-prevention benefit.
+# WHY:  Matches the UI cap and real-program behaviour. The previous
+#       behaviour (cap at HIV-neg only) silently truncated costs for any
+#       VMMC volume between hiv_neg_uncirc and total_uncirc.
+# HOW:  populations$uncircumcised_males_all
+#         = total_population × (prop_pop_male/100) × (1 - circ_prevalence/100)
+#         = 1,000,000 × 0.50 × 0.70 = 350,000
+#       Set vmmc = 1,000,000; unit_cost = 50. Expected: 350,000 × 50 = 17,500,000.
 # ---------------------------------------------------------------------------
-test_that("VMMC cost capped at uncircumcised_males pool size", {
+test_that("VMMC cost capped at uncircumcised_males_all (HIV+ and HIV-)", {
   with_hiv_params(LIVE_PARAMS_PREVENTION_04)
   
   ig_new <- intervention_groups
@@ -417,16 +422,15 @@ test_that("VMMC cost capped at uncircumcised_males pool size", {
   pops <- calculate_populations(ctx)
   
   interv <- zero_interventions()
-  interv$vmmc <- 1e6  # well above uncircumcised_males (332,500)
+  interv$vmmc <- 1e6  # well above uncircumcised_males_all (350,000)
   
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
   
-  # Expected: 332,500 × 50 = 16,625,000
-  expect_close(result$total_intervention_cost, 1.6625e7)
+  # Expected: 350,000 × 50 = 17,500,000
+  expect_close(result$total_intervention_cost, 1.75e7)
 })
-
 
 # ============================================================================
 # Retention costs — moved from test_05 (5.6, 5.8)

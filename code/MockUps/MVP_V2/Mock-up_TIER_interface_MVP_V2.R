@@ -428,6 +428,37 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$baseline_prep_lenacapavir)
   
+  # Baseline VMMC Validation
+  observe({
+    ctx <- context()
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_male) ||
+        is.null(ctx$circ_prevalence)) return()
+    
+    # Cap = all uncircumcised males (HIV+ and HIV-).
+    # prop_pop_male and circ_prevalence are stored as PERCENTAGES (e.g. 50, 30)
+    # — divide by 100. hiv_prevalence is stored as a PROPORTION (no /100).
+    uncirc_males_all <- ctx$total_population *
+      (ctx$prop_pop_male / 100) *
+      (1 - ctx$circ_prevalence / 100)
+    
+    isolate({
+      vmmc_val <- input$baseline_vmmc
+      
+      if (!is.null(vmmc_val) && !is.na(vmmc_val)) {
+        if (vmmc_val > uncirc_males_all) {
+          updateNumericInput(session, "baseline_vmmc",
+                             value = round(uncirc_males_all),
+                             max = round(uncirc_males_all))
+          showNotification(
+            paste0("Baseline: VMMC capped at ", format(round(uncirc_males_all), big.mark = ","),
+                   " (total uncircumcised males in population)"),
+            type = "warning",
+            duration = 4
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$baseline_vmmc)
   # Baseline DSD Validation - 3 month
   observe({
     isolate({
@@ -644,6 +675,39 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$scenario1_prep_lenacapavir)
   
+  # Scen 1 VMMC Validation
+  observe({
+    ctx <- context()
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_male) ||
+        is.null(ctx$circ_prevalence)) return()
+    
+    # Cap = all uncircumcised males (HIV+ and HIV-).
+    # prop_pop_male and circ_prevalence are stored as PERCENTAGES (e.g. 50, 30)
+    # — divide by 100. hiv_prevalence is stored as a PROPORTION (no /100).
+    uncirc_males_all <- ctx$total_population *
+      (ctx$prop_pop_male / 100) *
+      (1 - ctx$circ_prevalence / 100)
+    
+    isolate({
+      vmmc_val <- input$scenario1_vmmc
+      
+      if (!is.null(vmmc_val) && !is.na(vmmc_val)) {
+        if (vmmc_val > uncirc_males_all) {
+          updateNumericInput(session, "scenario2_vmmc",
+                             value = round(uncirc_males_all),
+                             max = round(uncirc_males_all))
+          showNotification(
+            paste0("Scenario 1: VMMC capped at ", format(round(uncirc_males_all), big.mark = ","),
+                   " (total uncircumcised males in population)"),
+            type = "warning",
+            duration = 4
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario1_vmmc)
+  
+  
   # Scenario 1 DSD Validation
   observe({
     isolate({
@@ -851,6 +915,38 @@ server <- function(input, output, session) {
       }
     })
   }) %>% bindEvent(input$scenario2_prep_lenacapavir)
+  
+  # Scen 2 VMMC Validation
+  observe({
+    ctx <- context()
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_male) ||
+        is.null(ctx$circ_prevalence)) return()
+    
+    # Cap = all uncircumcised males (HIV+ and HIV-).
+    # prop_pop_male and circ_prevalence are stored as PERCENTAGES (e.g. 50, 30)
+    # — divide by 100. hiv_prevalence is stored as a PROPORTION (no /100).
+    uncirc_males_all <- ctx$total_population *
+      (ctx$prop_pop_male / 100) *
+      (1 - ctx$circ_prevalence / 100)
+    
+    isolate({
+      vmmc_val <- input$scenario2_vmmc
+      
+      if (!is.null(vmmc_val) && !is.na(vmmc_val)) {
+        if (vmmc_val > uncirc_males_all) {
+          updateNumericInput(session, "scenario2_vmmc",
+                             value = round(uncirc_males_all),
+                             max = round(uncirc_males_all))
+          showNotification(
+            paste0("Scenario 2: VMMC capped at ", format(round(uncirc_males_all), big.mark = ","),
+                   " (total uncircumcised males in population)"),
+            type = "warning",
+            duration = 4
+          )
+        }
+      }
+    })
+  }) %>% bindEvent(input$scenario2_vmmc)
   
   # Scenario 2 DSD Validation
   observe({
