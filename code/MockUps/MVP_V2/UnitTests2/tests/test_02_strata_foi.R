@@ -43,7 +43,7 @@ SAFR <- 0.60   # sexually_active_frac value used for derivations in this file
 test_that("define_strata_params reflects context values with correct unit conversion", {
   ctx <- make_fixture_context()
   sp  <- define_strata_params(ctx)
-
+  
   expect_close(sp$prop_high_risk,    0.05)
   expect_close(sp$prop_general,      0.95)
   expect_close(sp$rr_high,           4)
@@ -78,7 +78,7 @@ test_that("partition_into_strata splits sexually_active_negative correctly", {
   pops    <- calculate_populations(ctx)
   sp      <- define_strata_params(ctx)
   strata  <- partition_into_strata(pops, sp)
-
+  
   expect_close(strata$hiv_neg_active,        342000)
   expect_close(strata$n_high_risk,           17100)
   expect_close(strata$n_general,             324900)
@@ -91,7 +91,7 @@ test_that("partition_into_strata splits sexually_active_negative correctly", {
                  strata$n_general_male_circ +
                  strata$n_general_female,
                strata$hiv_neg_active)
-
+  
   expect_close(strata$n_unsuppressed, 17600)
 })
 
@@ -113,7 +113,7 @@ test_that("FOI roundtrip (no baseline_prev_adj) reproduces observed infections",
   ctx      <- make_fixture_context()
   pops     <- calculate_populations(ctx)
   interv   <- make_fixture_interventions()  # all zeros
-
+  
   result <- estimate_new_infections_foi(
     context                = ctx,
     populations            = pops,
@@ -121,7 +121,7 @@ test_that("FOI roundtrip (no baseline_prev_adj) reproduces observed infections",
     suppression_delta      = 0,
     baseline_interventions = NULL   # implicit-prevention β path
   )
-
+  
   expect_within_pct(result$new_infections, 5000, pct = 1)
 })
 
@@ -140,14 +140,14 @@ test_that("FOI roundtrip with matching baseline & scenario reproduces observed",
   with_hiv_params(list(sexually_active_frac = SAFR))
   ctx    <- make_fixture_context()
   pops   <- calculate_populations(ctx)
-
+  
   # Modest baseline prevention coverage
   shared_interv <- make_fixture_interventions(
     prep_oral = 5000,
     condoms   = 100000,
     vmmc      = 1000
   )
-
+  
   result <- estimate_new_infections_foi(
     context                = ctx,
     populations            = pops,
@@ -155,40 +155,51 @@ test_that("FOI roundtrip with matching baseline & scenario reproduces observed",
     suppression_delta      = 0,
     baseline_interventions = shared_interv   # symmetric
   )
-
+  
   expect_within_pct(result$new_infections, 5000, pct = 1)
 })
 
 # ---------------------------------------------------------------------------
-# 2.5 compute_prevention_adjustments: PrEP-only stack
+# 2.5 compute_prevention_adjustments: PrEP-only stack with k-fold allocation
 # ---------------------------------------------------------------------------
-# WHAT: With only PrEP (oral) scaled up in the high-risk stratum, protection_high
-#       = 1 - (1 - prep_oral_cov_high × eff_prep_oral) × (1 × 1) × (1 × 1)
-#       = prep_oral_cov_high × eff_prep_oral
-# WHY:  This isolates the multiplicative stacking formula to a single term so
-#       we can pin down the math exactly.
-# HOW:  Override sexually_active_frac = 0.60.
-#         n_high_risk = 17,100 (from test 2.2).
-#       Give PrEP oral = 1,710 -> cov = 0.10.
+# WHAT: PrEP is now allocated across high-risk AND general strata with a
+#       k-fold per-capita advantage to high-risk (default k = 3, configurable
+#       via hiv_params$prep_high_risk_fold). With only prep_oral > 0:
+#         protection_high     = c_H × eff_prep_oral
+#         protection_gen_X    = c_G × eff_prep_oral
+#       where c_H = k * c_G and c_H * H + c_G * G = total_units (Case A,
+#       no saturation).
+# WHY:  Isolates the new allocation math to a single intervention so we can
+#       pin down both high-risk AND general per-capita coverages.
+# HOW:  SAFR = 0.60. From test 2.2: n_high_risk (H) = 17,100;
+#         sexually_active_negative = 342,000; n_general (G) = 324,900.
+#       k = 3 (default). Threshold for no-saturation: H + G/k
+#         = 17,100 + 324,900/3 = 125,400.
+#       prep_oral = 1,710. Since 1,710 < 125,400, Case A applies:
+#         c_G = 1,710 / (3 * 17,100 + 324,900) = 1,710 / 376,200 = 0.004545454...
+#         c_H = 3 * c_G                                          = 0.013636363...
 #       eff_prep_oral = 0.99.
-#         expected protection_high = 0.10 × 0.99 = 0.099
-#       All other strata get zero prevention, condom_cov_gen = 0 since condoms = 0,
-#       so their protection = 0.
+#         protection_high     = 0.013636363 * 0.99 = 0.013500
+#         protection_gen_X    = 0.004545454 * 0.99 = 0.004500
+#       All gen strata receive the same c_G uniformly (matches condom logic),
+#       so protection_gen_female, _male_unc, _male_circ are equal.
+#       condoms = 0 ⇒ condom term = 1 across all strata.
+#       vmmc = 0 ⇒ vmmc_coverage_frac = 0.
 # ---------------------------------------------------------------------------
-test_that("compute_prevention_adjustments isolates PrEP-only correctly", {
+test_that("compute_prevention_adjustments isolates PrEP-only correctly (k-fold)", {
   with_hiv_params(list(sexually_active_frac = SAFR))
   ctx     <- make_fixture_context()
   pops    <- calculate_populations(ctx)
   sp      <- define_strata_params(ctx)
   strata  <- partition_into_strata(pops, sp)
-
+  
   interv  <- make_fixture_interventions(prep_oral = 1710)
   adj     <- compute_prevention_adjustments(interv, strata, pops, sp)
-
-  expect_close(adj$protection_high,          0.099, tolerance = 1e-9)
-  expect_close(adj$protection_gen_female,    0)
-  expect_close(adj$protection_gen_male_unc,  0)
-  expect_close(adj$protection_gen_male_circ, 0)
+  
+  expect_close(adj$protection_high,          0.013500, tolerance = 1e-6)
+  expect_close(adj$protection_gen_female,    0.004500, tolerance = 1e-6)
+  expect_close(adj$protection_gen_male_unc,  0.004500, tolerance = 1e-6)
+  expect_close(adj$protection_gen_male_circ, 0.004500, tolerance = 1e-6)
   expect_close(adj$vmmc_coverage_frac,       0)
 })
 
@@ -220,10 +231,10 @@ test_that("condom allocation is demand-weighted (acts-based), not headcount-base
   pops    <- calculate_populations(ctx)
   sp      <- define_strata_params(ctx)
   strata  <- partition_into_strata(pops, sp)
-
+  
   interv  <- make_fixture_interventions(condoms = 1795500)
   adj     <- compute_prevention_adjustments(interv, strata, pops, sp)
-
+  
   # Verify the protection levels reflect different per-person coverages
   expect_close(adj$protection_high,       0.06,  tolerance = 1e-9)
   expect_close(adj$protection_gen_female, 0.044, tolerance = 1e-9)
@@ -249,12 +260,12 @@ test_that("VMMC coverage fraction uses the general uncirc-male pool as denominat
   pops    <- calculate_populations(ctx)
   sp      <- define_strata_params(ctx)
   strata  <- partition_into_strata(pops, sp)
-
+  
   # 10% coverage
   interv  <- make_fixture_interventions(vmmc = 11371.5)
   adj     <- compute_prevention_adjustments(interv, strata, pops, sp)
   expect_close(adj$vmmc_coverage_frac, 0.10, tolerance = 1e-6)
-
+  
   # Cap test: scale beyond pool size
   interv2 <- make_fixture_interventions(vmmc = 200000)
   adj2    <- compute_prevention_adjustments(interv2, strata, pops, sp)
@@ -276,28 +287,28 @@ test_that("scaling PrEP up monotonically reduces infections", {
   with_hiv_params(list(sexually_active_frac = SAFR))
   ctx    <- make_fixture_context()
   pops   <- calculate_populations(ctx)
-
+  
   # Same baseline so calibration is constant across runs
   baseline <- make_fixture_interventions()
-
+  
   inf_low <- estimate_new_infections_foi(
     ctx, pops,
     scenario_interventions = make_fixture_interventions(prep_oral = 0),
     baseline_interventions = baseline
   )$new_infections
-
+  
   inf_mid <- estimate_new_infections_foi(
     ctx, pops,
     scenario_interventions = make_fixture_interventions(prep_oral = 5000),
     baseline_interventions = baseline
   )$new_infections
-
+  
   inf_high <- estimate_new_infections_foi(
     ctx, pops,
     scenario_interventions = make_fixture_interventions(prep_oral = 20000),
     baseline_interventions = baseline
   )$new_infections
-
+  
   expect_gt(inf_low,  inf_mid)
   expect_gt(inf_mid,  inf_high)
 })
@@ -324,17 +335,17 @@ test_that("positive suppression_delta reduces infections proportionally", {
   ctx     <- make_fixture_context()
   pops    <- calculate_populations(ctx)
   interv  <- make_fixture_interventions()
-
+  
   inf_base <- estimate_new_infections_foi(
     ctx, pops, interv, suppression_delta = 0
   )$new_infections
-
+  
   inf_supp <- estimate_new_infections_foi(
     ctx, pops, interv, suppression_delta = 1000
   )$new_infections
-
+  
   expect_lt(inf_supp, inf_base)
-
+  
   # Derived ratio:
   expected_ratio <- (17600 - 1000) / 17600   # ≈ 0.9432
   observed_ratio <- inf_supp / inf_base
@@ -354,13 +365,13 @@ test_that("zero observed infections produces zero modelled infections", {
   with_hiv_params(list(sexually_active_frac = SAFR))
   ctx <- make_fixture_context(new_infections_per_year = 0)
   pops <- calculate_populations(ctx)
-
+  
   result <- estimate_new_infections_foi(
     ctx, pops,
     scenario_interventions = make_fixture_interventions(),
     suppression_delta = 0
   )
-
+  
   expect_close(result$new_infections, 0)
 })
 
@@ -378,10 +389,10 @@ test_that("by_stratum infections sum to total (within rounding)", {
   ctx     <- make_fixture_context()
   pops    <- calculate_populations(ctx)
   interv  <- make_fixture_interventions()
-
+  
   res <- estimate_new_infections_foi(ctx, pops, interv,
                                      baseline_interventions = interv)
-
+  
   sum_strata <- with(res$by_stratum,
                      high_risk + gen_female + gen_male_uncirc + gen_male_circ)
   expect_lte(abs(sum_strata - res$new_infections), 4)
