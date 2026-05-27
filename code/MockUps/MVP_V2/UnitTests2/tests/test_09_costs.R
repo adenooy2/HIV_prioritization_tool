@@ -516,3 +516,192 @@ test_that("PNC VL testing cost = number_reached × unit_cost", {
   # 900 × 7 = 6,300
   expect_close(result$total_intervention_cost, 6300)
 })
+
+
+# ---------------------------------------------------------------------------
+# 9.11 Full multi-intervention baseline scenario: derived total cost
+# ---------------------------------------------------------------------------
+# WHAT: Activates a deliberately-chosen "baseline" mix of 9 interventions
+#       spanning every cost branch we can derive cleanly by hand:
+#         - prep_oral (capped at adult_pop)
+#         - condoms   (raw intervention_value, not number_reached)
+#         - vmmc      (capped at uncircumcised_males_all)
+#         - test_facility_general + test_community
+#             (unit cost on tests performed; linkage cost on positives)
+#         - mmd_3month (DSD -> dsd_cost_adjustment, NOT total_intervention_cost)
+#         - tracking_tracing (deferred -> applied to full LTFU pool)
+#         - cd4_testing + ahd_package (cascade-gated mortality interventions)
+#       Then pins:
+#         (a) total_intervention_cost = 518,174 (sum of 8 lines, derived below)
+#         (b) art_provision_cost - end_on_art * ART_COST_STANDARD ~ 162,000
+#             (the DSD adjustment from mmd_3month, within +/- 200 for rounding)
+#         (c) total_cost = total_intervention_cost + art_provision_cost
+#             (the bookkeeping identity, within +/- 2 for rounding)
+#
+# WHY: Tests 9.1-9.10 pin each cost branch in isolation. Test 9.6 checks
+#      PrEP+condom additivity. This test goes further: it activates 9 branches
+#      simultaneously, of which several depend on each other (CD4 gates AHD;
+#      DSD reduces LTFU which changes total_ltfu_pool which sets tracking
+#      reach; testing volumes feed art_initiations which sets the CD4 base).
+#      A bug that double-counts a line, mis-routes DSD into the wrong bucket,
+#      or breaks the shrinkage scaling on testing linkage cost would not show
+#      up in any individual-branch test but would break (a) here.
+#
+# WHY NOT use default_baseline_interventions verbatim: those values include
+#      ANC HIV testing + EID + infant prophy (PMTCT cascade -- complex caps
+#      and yield-based costing) and VL monitoring + EAC (layered coverage
+#      product). Each adds derivable but multi-line arithmetic that obscures
+#      the test and is already covered by tests 6.8, 9.1, 9.5. The chosen
+#      subset omits those branches to keep the hand-derivation auditable here.
+#
+# HOW (full hand-derivation):
+#   Fixture populations (from base_ctx, helpers.R):
+#     adult_pop = 1e6 * 0.60                            = 600,000
+#     on_art                                            =  36,000
+#     on_art_stable = 36,000 * 0.90                     =  32,400
+#     uncircumcised_males_all = 1e6 * 0.50 * 0.70       = 350,000
+#     undiagnosed                                       =   5,000
+#     ltfu                                              =   9,000
+#     ltfu_new_stable   = 32,400 * 0.044                = 1,425.6
+#     ltfu_new_unstable =  3,600 * 0.14                 =   504.0
+#
+#   Step 1 -- DSD prevention of stable LTFU (mmd_3month at 50%, eff 0.5):
+#     ltfu_retained_frac = (16,200 / 32,400) * 0.5      = 0.25
+#     ltfu_prevented = 1,425.6 * 0.25                   = 356.4
+#     stable_ltfu remaining = 1,425.6 - 356.4           = 1,069.2
+#     ltfu_new_effective = 1,069.2 + 504.0              = 1,573.2
+#     total_ltfu_pool = 9,000 + 1,573.2                 = 10,573.2
+#
+#   Step 2 -- Testing arithmetic (base_test_yield = 0.05, dilution = 1.0,
+#            prop_retesting = 0.30 -> prop_new_dx = 0.70):
+#     facility:  pos = 10,000 * 0.05           = 500  (new_dx=350, retest=150)
+#     community: pos =  5,000 * 0.05           = 250  (new_dx=175, retest= 75)
+#     new_diagnoses  = 525 < 4,750 cap (0.95 * undiagnosed)   -> shrinkage = 1
+#     re_eng_testing = 225 < 4,757.94 cap (0.45 * pool)       -> shrinkage = 1
+#     new_dx_linked     = 350*0.85 + 175*0.70 = 297.5 + 122.5 = 420
+#     retest_pos_linked = 150*0.85 +  75*0.70 = 127.5 +  52.5 = 180
+#     art_initiations   = 600
+#     max_art_init      = 45,000 + 525 - 34,426.8 + 225 = 11,323.2
+#       -> art_initiations final = 600 (cap doesn't bind)
+#
+#   Step 3 -- CD4 + AHD cascade (LIVE_MORT_C$prop_ahd$new_initiations = 0.209):
+#     n_cd4_tested  = min(600 * 0.92, 600)              = 552
+#     n_ahd_pool    = 600 * 0.209                       = 125.4
+#     n_ahd_diag    = min(552 * CD4_AHD_TARGETING_YIELD=0.4, 125.4)
+#                   = min(220.8, 125.4)                 = 125.4
+#     n_ahd_pkg_reached = min(125.4 * 0.88, 125.4)      = 110.352
+#
+#   Step 4 -- Cost lines charged to total_intervention_cost:
+#     PrEP        =  1,000   * 80    [min(1k, 600k) = 1k]    =  80,000.0
+#     Condoms     =100,000   * 0.10  [raw value, not reach]  =  10,000.0
+#     VMMC        =  5,000   * 50    [min(5k, 350k) = 5k]    = 250,000.0
+#     test_fac unit  = 10,000 * 2                            =  20,000.0
+#     test_com unit  =  5,000 * 1                            =   5,000.0
+#     test_fac link  = 500 * 20   [linkage cost per positive]=  10,000.0
+#     test_com link  = 250 * 10                              =   2,500.0
+#     tracking    = (10,573.2 * 0.40) * 30 = 4,229.28 * 30   = 126,878.4
+#     CD4         =   552    * 5                             =   2,760.0
+#     AHD         =   110.352* 100                           =  11,035.2
+#     TOTAL_INTERVENTION_COST                                = 518,173.6
+#       -> rounded in result list                            = 518,174
+#
+#   Step 5 -- DSD adjustment (charged to art_provision_cost, NOT above):
+#     dsd_cost_adjustment = 16,200 * 10                      = 162,000
+#     art_provision_cost = end_on_art * 200 + 162,000
+#       -> (result$art_provision_cost - result$end_on_art * 200) ~ 162,000
+#         (allow +/- 200 because both fields round independently; observed
+#         live-run delta is ~36, well within tolerance)
+#
+#   Step 6 -- Identity:
+#     total_cost = total_intervention_cost + art_provision_cost (within +/- 2;
+#     observed live-run delta is 1)
+#
+# NOTE on group placement (verified against logic file lines 386, 438, 481):
+#   - mmd_3month   lives in treatment_monitoring (NOT retention_support)
+#   - tracking_tracing lives in retention_support
+#   - cd4_testing & ahd_package live in advanced_disease (NOT mortality)
+# ---------------------------------------------------------------------------
+test_that("full multi-intervention baseline: total_intervention_cost = 518,174 and identities hold", {
+  with_hiv_params(LIVE_PARAMS_COSTS)
+  override_cost_globals()
+  
+  # Override unit costs, efficacies, linkage params for each intervention used.
+  # Makes the test independent of SharePoint-loaded intervention_params values.
+  ig_new <- intervention_groups
+  
+  # Prevention
+  ig_new$prevention$interventions$prep_oral$unit_cost          <- 80
+  ig_new$prevention$interventions$prep_oral$efficacy           <- 0.99
+  ig_new$prevention$interventions$condoms$unit_cost            <- 0.10
+  ig_new$prevention$interventions$condoms$efficacy             <- 0.80
+  ig_new$prevention$interventions$vmmc$unit_cost               <- 50
+  ig_new$prevention$interventions$vmmc$efficacy                <- 0.60
+  
+  # Testing
+  ig_new$testing$interventions$test_facility_general$unit_cost    <- 2
+  ig_new$testing$interventions$test_facility_general$linkage_cost <- 20
+  ig_new$testing$interventions$test_facility_general$linkage_rate <- 0.85
+  ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
+  ig_new$testing$interventions$test_community$unit_cost           <- 1
+  ig_new$testing$interventions$test_community$linkage_cost        <- 10
+  ig_new$testing$interventions$test_community$linkage_rate        <- 0.70
+  ig_new$testing$interventions$test_community$efficacy            <- 1.0
+  
+  # Treatment monitoring (DSD)
+  ig_new$treatment_monitoring$interventions$mmd_3month$unit_cost <- 10
+  ig_new$treatment_monitoring$interventions$mmd_3month$efficacy  <- 0.5
+  
+  # Retention support (tracking)
+  ig_new$retention_support$interventions$tracking_tracing$unit_cost <- 30
+  ig_new$retention_support$interventions$tracking_tracing$efficacy  <- 0.6
+  
+  # Advanced disease (CD4 + AHD)
+  ig_new$advanced_disease$interventions$cd4_testing$unit_cost <- 5
+  ig_new$advanced_disease$interventions$cd4_testing$efficacy  <- 1.0
+  ig_new$advanced_disease$interventions$ahd_package$unit_cost <- 100
+  ig_new$advanced_disease$interventions$ahd_package$efficacy  <- 0.5
+  
+  with_intervention_groups(list(
+    prevention           = ig_new$prevention,
+    testing              = ig_new$testing,
+    treatment_monitoring = ig_new$treatment_monitoring,
+    retention_support    = ig_new$retention_support,
+    advanced_disease     = ig_new$advanced_disease
+  ))
+  
+  pops <- calculate_populations(base_ctx())
+  interv <- zero_interventions()
+  interv$prep_oral             <- 1000
+  interv$condoms               <- 100000
+  interv$vmmc                  <- 5000
+  interv$test_facility_general <- 10000
+  interv$test_community        <- 5000
+  interv$mmd_3month            <- 50   # 50% of on_art_stable
+  interv$tracking_tracing      <- 40   # 40% of LTFU pool
+  interv$cd4_testing           <- 92   # 92% of art_initiations
+  interv$ahd_package           <- 88   # 88% of AHD-diagnosed
+  
+  result <- calculate_scenario_outcomes(
+    base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # (a) Total intervention cost = 518,174 (exact, observed delta = 0).
+  #     Use abs() check instead of expect_close to avoid testthat's relative
+  #     tolerance interpretation; matches the style of tests 9.3, 9.7, 9.8.
+  expect_lte(abs(result$total_intervention_cost - 518174), 1)
+  
+  # (b) DSD adjustment = 162,000 (mmd_3month * unit_cost). Observed delta ~ 36,
+  #     within +/- 200 tolerance to absorb independent rounding of end_on_art
+  #     and art_provision_cost in the result list.
+  expect_lte(
+    abs((result$art_provision_cost - result$end_on_art * ART_COST_STANDARD) - 162000),
+    200
+  )
+  
+  # (c) Bookkeeping identity (observed delta = 1, within +/- 2 for triple-rounded
+  #     fields).
+  expect_lte(
+    abs(result$total_cost - (result$total_intervention_cost + result$art_provision_cost)),
+    2
+  )
+})
