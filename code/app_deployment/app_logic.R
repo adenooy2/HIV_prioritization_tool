@@ -167,6 +167,7 @@ ANNUAL_SPONTANEOUS_REENGAGEMENT_RATE =hiv_params$spontaneous_reengagement_rate
 # to suppress.
 RETENTION_SUPPRESSION_RATE <- hiv_params$retention_suppression_rate
 
+ART_COST_STANDARD <- hiv_params$art_cost_standard %||% 200
 # ============================================================================
 # MTCT RATES BY MATERNAL ART/SUPPRESSION STATUS
 # Covers transmission risk across pregnancy, delivery, and breastfeeding period.
@@ -240,7 +241,7 @@ build_intervention_groups <- function(intervention_params){
           type = "absolute",
           unit_label = "annual people",
           efficacy = subset(intervention_params, intervention_key == "vmmc")$efficacy,
-          eligible_pop = "uncircumcised_males",
+          eligible_pop = "uncircumcised_males_all",
           unit_cost = subset(intervention_params, intervention_key == "vmmc")$unit_cost,
           outcomes = c("adult_infections")
         ),
@@ -251,15 +252,6 @@ build_intervention_groups <- function(intervention_params){
           efficacy = subset(intervention_params, intervention_key == "condoms")$efficacy,
           eligible_pop = "sexually_active_negative",
           unit_cost = subset(intervention_params, intervention_key == "condoms")$unit_cost,
-          outcomes = c("adult_infections")
-        ),
-        pep = list(
-          name = "PEP",
-          type = "absolute",
-          unit_label = "people",
-          efficacy = subset(intervention_params, intervention_key == "pep")$efficacy,
-          eligible_pop = "recent_exposure",
-          unit_cost = subset(intervention_params, intervention_key == "pep")$unit_cost,
           outcomes = c("adult_infections")
         ),
         infant_prophylaxis = list(
@@ -625,6 +617,7 @@ calculate_populations <- function(context) {
     circ_male                = hiv_negative * (prop_male_pct/100) * circ_prev,
     # kept for VMMC eligible_pop reference in cost loop
     uncircumcised_males      = hiv_negative * (prop_male_pct/100) * (1 - circ_prev),
+    uncircumcised_males_all  = context$total_population * (prop_male_pct/100) * (1 - circ_prev),  # HIV+ AND HIV- — used by VMMC cost cap
     sexually_active_negative = hiv_negative * (1 - prop_under14/100) * hiv_params$sexually_active_frac,
     recent_exposure = hiv_negative * hiv_params$recent_exposure_frac,
     hiv_exposed_infants = hiv_exposed_births,
@@ -657,7 +650,7 @@ calculate_populations <- function(context) {
 # ============================================================================
 default_baseline_interventions <- list(
   prep_oral = 5000, prep_lenacapavir = 0, vmmc = 30000,
-  condoms = 200000, pep = 2000, infant_prophylaxis = 70,
+  condoms = 200000, infant_prophylaxis = 70,
   test_facility_general = 25000,
   test_network = 3000, test_index = 2000, test_community = 20000,
   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
@@ -725,7 +718,7 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
       
       default_baseline_interventions <- list(
         prep_oral = 0.01*pops$total, prep_lenacapavir = 0, vmmc = 0.01*pops$uncircumcised_males,
-        condoms = 0.6*pops$total, pep = 0.2*pops$recent_exposure, infant_prophylaxis = 70,
+        condoms = 0.6*pops$total, infant_prophylaxis = 70,
         test_facility_general = round(0.134*pops$adult_pop, -4), 
         test_network = round(0.0024*pops$adult_pop, -4), 
         test_index = round(0.0024*pops$adult_pop, -4), 
@@ -782,59 +775,58 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
     }
   }
   
-  # Add Custom Country option
-  custom_context <- list(
-    total_population = 1000000,
-    hiv_prevalence = 0.05,
-    plhiv = NULL,
-    percent_diagnosed = 80,
-    percent_on_art = 75,
-    percent_suppressed = 85,
-    new_infections_per_year = 5000,
-    aids_deaths_per_year = 1000,
-    birth_rate = 24,
-    prop_pop_male = 49,
-    prop_pop_under_14 = 40,
-    anc_multiplier = 1     # Custom country: defaults to 1 (no ANC adjustment)
-  )
-  
-  custom_pops <- calculate_populations(custom_context)
-  
-  custom_baseline <- list(
-    prep_oral = 0.01*custom_pops$total, 
-    prep_lenacapavir = 0, 
-    vmmc = 0.01*custom_pops$uncircumcised_males,
-    condoms = 0.6*custom_pops$total, 
-    pep = 0.2*custom_pops$recent_exposure, 
-    infant_prophylaxis = 70,
-    test_facility_general = 0.05*custom_pops$adult_pop, 
-    test_network = 0.005*custom_pops$adult_pop, 
-    test_index = 0.005*custom_pops$adult_pop, 
-    test_community = 0.04*custom_pops$adult_pop,
-    test_kpsti = 0.02*custom_pops$adult_pop, 
-    hivst_facility = 0.02*custom_pops$adult_pop, 
-    hivst_community = 0.01*custom_pops$adult_pop,
-    eid = 75, 
-    anc_hiv_testing = 88, 
-    pnc_hiv_testing = 70,
-    vl_monitoring_routine = 60, 
-    mmd_3month = 40, 
-    mmd_6month = 20, 
-    mmd_12month = 5,
-    adherence_counseling = 55, 
-    tracking_tracing = 40, 
-    anc_vl_testing = 68,
-    pnc_vl_testing = 0,
-    cd4_testing = 92, 
-    ahd_package = 88
-  )
-  
-  presets[["Custom Country"]] <- list(
-    description = "Enter your own parameters",
-    context = custom_context,
-    baseline = custom_baseline
-  )
-  
+  # # Add Custom Country option
+  # custom_context <- list(
+  #   total_population = 1000000,
+  #   hiv_prevalence = 0.05,
+  #   plhiv = NULL,
+  #   percent_diagnosed = 80,
+  #   percent_on_art = 75,
+  #   percent_suppressed = 85,
+  #   new_infections_per_year = 5000,
+  #   aids_deaths_per_year = 1000,
+  #   birth_rate = 24,
+  #   prop_pop_male = 49,
+  #   prop_pop_under_14 = 40,
+  #   anc_multiplier = 1     # Custom country: defaults to 1 (no ANC adjustment)
+  # )
+  # 
+  # custom_pops <- calculate_populations(custom_context)
+  # 
+  # custom_baseline <- list(
+  #   prep_oral = 0.01*custom_pops$total, 
+  #   prep_lenacapavir = 0, 
+  #   vmmc = 0.01*custom_pops$uncircumcised_males,
+  #   condoms = 0.6*custom_pops$total, 
+  #   infant_prophylaxis = 70,
+  #   test_facility_general = 0.05*custom_pops$adult_pop, 
+  #   test_network = 0.005*custom_pops$adult_pop, 
+  #   test_index = 0.005*custom_pops$adult_pop, 
+  #   test_community = 0.04*custom_pops$adult_pop,
+  #   test_kpsti = 0.02*custom_pops$adult_pop, 
+  #   hivst_facility = 0.02*custom_pops$adult_pop, 
+  #   hivst_community = 0.01*custom_pops$adult_pop,
+  #   eid = 75, 
+  #   anc_hiv_testing = 88, 
+  #   pnc_hiv_testing = 70,
+  #   vl_monitoring_routine = 60, 
+  #   mmd_3month = 40, 
+  #   mmd_6month = 20, 
+  #   mmd_12month = 5,
+  #   adherence_counseling = 55, 
+  #   tracking_tracing = 40, 
+  #   anc_vl_testing = 68,
+  #   pnc_vl_testing = 0,
+  #   cd4_testing = 92, 
+  #   ahd_package = 88
+  # )
+  # 
+  # presets[["Custom Country"]] <- list(
+  #   description = "Enter your own parameters",
+  #   context = custom_context,
+  #   baseline = custom_baseline
+  # )
+  # 
   return(presets)
 }
 
@@ -1001,7 +993,6 @@ compute_prevention_adjustments <- function(scenario_interventions, strata, popul
   eff_prep_oral <- scenario_interventions$eff_prep_oral %||% 0.99
   eff_prep_len  <- scenario_interventions$eff_prep_len  %||% 1.00
   eff_condom    <- scenario_interventions$eff_condom    %||% 0.80
-  eff_pep       <- scenario_interventions$eff_pep       %||% 0.80
   
   # Behavioural condom parameters
   # acts_per_year: converts condoms distributed → people with consistent annual coverage
@@ -1043,32 +1034,23 @@ compute_prevention_adjustments <- function(scenario_interventions, strata, popul
     (1 - condom_cov_high    * eff_condom)
   protection_high <- 1 - residual_high
   
-  # ---- General female: condoms + PEP ----
-  condom_cov_gen_f <- condom_cov_gen
-  pep_cov_gen_f    <- clip((scenario_interventions$pep %||% 0) * 0.5 / max(strata$n_general_female, 1))
-  
-  residual_gen_female   <- (1 - condom_cov_gen_f * eff_condom) *
-    (1 - pep_cov_gen_f   * eff_pep)
+  # ---- General female: condoms ----
+  condom_cov_gen_f      <- condom_cov_gen
+  residual_gen_female   <- (1 - condom_cov_gen_f * eff_condom)
   protection_gen_female <- 1 - residual_gen_female
   
-  # ---- General uncircumcised male: condoms + PEP ----
-  condom_cov_gen_mu <- condom_cov_gen
-  pep_cov_gen_mu    <- clip((scenario_interventions$pep %||% 0) * 0.5 / max(strata$n_general_male_uncirc, 1))
-  
-  residual_gen_male_unc   <- (1 - condom_cov_gen_mu * eff_condom) *
-    (1 - pep_cov_gen_mu   * eff_pep)
+  # ---- General uncircumcised male: condoms ----
+  condom_cov_gen_mu       <- condom_cov_gen
+  residual_gen_male_unc   <- (1 - condom_cov_gen_mu * eff_condom)
   protection_gen_male_unc <- 1 - residual_gen_male_unc
   
-  # ---- General circumcised male: condoms + PEP ----
+  # ---- General circumcised male: condoms ----
   # Circumcised men also use condoms; this stacks ON TOP of their lower β_circ
   # (which encodes biological circumcision protection only).
   # Without this, men transferred from the uncirc pool by VMMC lose their
   # condom coverage and can appear to gain MORE infections — fixed here.
-  condom_cov_gen_mc <- condom_cov_gen
-  pep_cov_gen_mc    <- clip((scenario_interventions$pep %||% 0) * 0.5 / max(strata$n_general_male_circ, 1))
-  
-  residual_gen_male_circ   <- (1 - condom_cov_gen_mc * eff_condom) *
-    (1 - pep_cov_gen_mc    * eff_pep)
+  condom_cov_gen_mc        <- condom_cov_gen
+  residual_gen_male_circ   <- (1 - condom_cov_gen_mc * eff_condom)
   protection_gen_male_circ <- 1 - residual_gen_male_circ
   
   # ---- VMMC: converts uncirc men → circ pool (not a coverage multiplier) ----
@@ -1134,7 +1116,7 @@ estimate_new_infections_foi <- function(context,
     (1 - prev_adj$protection_gen_male_unc)
   
   # Circumcised men: lower β encodes biological circumcision protection;
-  # condom/PEP coverage applied on top via protection_gen_male_circ
+  # condom coverage applied on top via protection_gen_male_circ
   infections_gen_male_circ <- betas$beta_gen_male_circ *
     infectious_pressure_scenario *
     n_circ_eff *
@@ -1326,6 +1308,31 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   additional_suppressed_testing <- 0
   art_initiations <- 0
   art_inititations_testing <- 0
+  # Per-component linkage accumulators (testing modalities only).
+  # Split into new-diagnosis and retest-positive components because each is
+  # capped independently downstream (new_diagnoses_cap_prop vs
+  # testing_reengagement_cap). Post-loop, each component is scaled by its
+  # cap's shrinkage ratio (1 if cap doesn't bind), preserving per-modality
+  # cost attribution in the uncapped case and applying proportional scaling
+  # under capping.
+  #
+  #   *_linked_uncapped       = Σ_i (volume_i × linkage_rate_i)
+  #   *_linkage_cost_uncapped = Σ_i (volume_i × linkage_cost_i)             # per positive, NOT per linked
+  #   *_supp_uncapped         = Σ_i (volume_i × linkage_rate_i × supp_rate_i)
+  #
+  # The supp accumulator carries the per-source suppression rate (general
+  # testing uses testing_art_init_supp; PMTCT uses pmtct_cascade_supp_rate)
+  # so the post-loop application doesn't have to know which source any
+  # given linked patient came from.
+  #
+  # Under capping, the same shrinkage ratio scales linked count, cost, and
+  # suppression together, preserving the per-modality mix.
+  new_dx_linked_uncapped             <- 0
+  new_dx_linkage_cost_uncapped       <- 0
+  new_dx_supp_uncapped               <- 0
+  retest_pos_linked_uncapped         <- 0
+  retest_pos_linkage_cost_uncapped   <- 0
+  retest_pos_supp_uncapped           <- 0
   # PMTCT / infant cascade trackers
   pmtct_new_diagnoses    <- 0   # HIV+ pregnant women newly diagnosed via ANC/PNC -> PMTCT ART
   infant_prophy_cov_frac <- 0   # efficacy-weighted infant prophylaxis coverage (0-1)
@@ -1346,6 +1353,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   deferred_tracking_efficacy <- 0  # efficacy parameter from intervention spec
   deferred_tracking_unit_cost <- 0 # unit cost for cost calculation against full pool
   total_intervention_cost <- 0
+  dsd_cost_adjustment <- 0
   tests_performed <- 0
   
   # Base test yield: use country prior-year average from CSV if available;
@@ -1375,7 +1383,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # and "active" sub-pools (LTFU vs never_linked via prevalent_ltfu_frac),
   # but these splits were not empirically grounded.
   
-  average_linkage_cap <- hiv_params$average_linkage_cap
+  # `average_linkage_cap` removed: per-intervention linkage_rate values are
+  # now the authoritative source for linkage. The volume-weighted average is
+  # computed in the post-loop block (search for `L_avg`). Parameter validation
+  # (linkage_rate <= 1) should be enforced at the parameter-loading stage.
   
   # Flatten intervention structure
   all_interventions <- list()
@@ -1508,21 +1519,45 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         new_diagnoses         <- new_diagnoses         + new_dx
         re_engagement_testing <- re_engagement_testing + retest_pos
         
-        # ART initiations based on linkage rate.
-        # Linkage applies to new diagnoses immediately. For retest positives,
-        # linkage is applied here but the downstream LTFU cap may bind and
-        # reduce the effective re-engagement contribution.
+        # Linkage accounting (proportional-scaling approach).
+        # Accumulate per-component (new-dx vs retest-pos) linked counts,
+        # linkage costs, and suppression contributions. Each component is
+        # scaled post-loop by its own cap's shrinkage ratio:
+        #   shrinkage_new      = new_diagnoses        / new_diagnoses_uncapped
+        #   shrinkage_reengage = re_engagement_testing / re_engagement_testing_uncapped
+        # When neither cap binds (the common case), both shrinkages = 1.0 and
+        # the formula collapses to the original per-modality semantic:
+        #   linked_total = Σ_i (new_dx_i + retest_pos_i) × linkage_rate_i
+        #   cost_total   = Σ_i (new_dx_i + retest_pos_i) × linkage_cost_i    # per positive
+        # When a cap binds, the corresponding component is scaled down,
+        # preserving the per-modality mix.
+        #
+        # Replaces the previous in-loop `linked` and `art_inititations_testing`
+        # accumulation, and the `average_linkage_cap` post-loop patch.
         linkage_rate <- intervention$linkage_rate
-        linked <- (new_dx + retest_pos) * linkage_rate
-        art_inititations_testing <- art_inititations_testing + linked
+        # NOTE: linkage_cost is charged per POSITIVE result (cost-per-attempt
+        # semantic), not per successfully linked patient. The linkage activity
+        # (counseling, referral, escort, follow-up) is incurred for everyone
+        # who tests positive, regardless of whether they ultimately link to
+        # care. Linked-count and suppression contributions remain multiplied
+        # by linkage_rate (only successful linkers reach the cascade).
+        new_dx_linked_uncapped       <- new_dx_linked_uncapped +
+          new_dx     * linkage_rate
+        new_dx_linkage_cost_uncapped <- new_dx_linkage_cost_uncapped +
+          new_dx     * intervention$linkage_cost
+        new_dx_supp_uncapped         <- new_dx_supp_uncapped +
+          new_dx     * linkage_rate * hiv_params$testing_art_init_supp
+        retest_pos_linked_uncapped       <- retest_pos_linked_uncapped +
+          retest_pos * linkage_rate
+        retest_pos_linkage_cost_uncapped <- retest_pos_linkage_cost_uncapped +
+          retest_pos * intervention$linkage_cost
+        retest_pos_supp_uncapped         <- retest_pos_supp_uncapped +
+          retest_pos * linkage_rate * hiv_params$testing_art_init_supp
         
-        additional_suppressed_testing <- additional_suppressed_testing +
-          linked * hiv_params$testing_art_init_supp
-        
-        # Full costs: unit cost per test (all tests, including implicit no-ops)
-        # + linkage cost per linked patient.
+        # Unit cost charged here (per test administered, including implicit
+        # no-ops). Linkage cost is charged post-loop after caps are applied.
         total_intervention_cost <- total_intervention_cost +
-          (number_reached * intervention$unit_cost + linked * intervention$linkage_cost)
+          number_reached * intervention$unit_cost
       } else {
         # ANC/PNC: unit cost per test only; linkage cost charged in post-loop block
         total_intervention_cost <- total_intervention_cost +
@@ -1674,7 +1709,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       # Cost: prevention interventions charged here against on_art-based reach.
       # Tracking/tracing is deferred — its cost is charged later against the
       # full LTFU pool (prevalent + net incident), matching the deferred reach.
-      if (intervention$eligible_pop != "ltfu") {
+      if (intervention$eligible_pop == "on_art_stable") {
+        dsd_cost_adjustment <- dsd_cost_adjustment +
+          number_reached * intervention$unit_cost
+      } else if (intervention$eligible_pop != "ltfu") {
         total_intervention_cost <- total_intervention_cost +
           number_reached * intervention$unit_cost
       }
@@ -1701,20 +1739,37 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   pmtct_cascade_supp_rate    <- (context$percent_suppressed / 100) * hiv_params$pmtct_cascade_supp_discount
   pmtct_cascade_linked_art   <- pmtct_new_diagnoses * pmtct_cascade_linkage_rate
   pmtct_cascade_linked_supp  <- pmtct_cascade_linked_art * pmtct_cascade_supp_rate
+  pmtct_cascade_linkage_cost <- all_interventions$anc_hiv_testing$linkage_cost %||% 0
   
-  new_diagnoses                 <- new_diagnoses                 + pmtct_new_diagnoses
-  art_inititations_testing      <- art_inititations_testing      + pmtct_cascade_linked_art
-  additional_suppressed_testing <- additional_suppressed_testing + pmtct_cascade_linked_supp
-  
-  # Linkage cost for PMTCT-linked women (unit cost already charged in loop above)
-  total_intervention_cost <- total_intervention_cost +
-    pmtct_cascade_linked_art * (all_interventions$anc_hiv_testing$linkage_cost %||% 0)
+  # PMTCT-diagnosed women are routed through the SAME new-diagnosis pool as
+  # general testing (so the new_diagnoses cap applies to both together).
+  # Feed PMTCT contributions into the new-dx component accumulators so that
+  # if the new_diagnoses cap binds, PMTCT linked count, linkage cost, and
+  # suppression all scale by the same shrinkage_new factor as general testing.
+  # The PMTCT-specific suppression rate (pmtct_cascade_supp_rate) and linkage
+  # cost (anc_hiv_testing$linkage_cost) are baked into the supp/cost
+  # accumulators here, mirroring the in-loop pattern for general modalities.
+  # Linkage cost is charged on ALL PMTCT-diagnosed women (cost-per-attempt
+  # semantic), consistent with the general-testing treatment above. Only the
+  # linked count and suppression contribution apply the PMTCT linkage rate.
+  new_diagnoses                <- new_diagnoses + pmtct_new_diagnoses
+  new_dx_linked_uncapped       <- new_dx_linked_uncapped       + pmtct_cascade_linked_art
+  new_dx_linkage_cost_uncapped <- new_dx_linkage_cost_uncapped +
+    pmtct_new_diagnoses * pmtct_cascade_linkage_cost
+  new_dx_supp_uncapped         <- new_dx_supp_uncapped         + pmtct_cascade_linked_supp
+  # Note: art_inititations_testing, additional_suppressed_testing, and PMTCT
+  # linkage cost are no longer added here. They are computed post-cap in the
+  # ART INITIATIONS block below, after proportional scaling by shrinkage_new.
   
   # ========================================================================
   # APPLY CONSTRAINTS - CAP AT REALISTIC MAXIMUMS
   # ========================================================================
   
-  # Cannot diagnose more people than 95% are undiagnosed
+  # Cannot diagnose more people than 95% are undiagnosed.
+  # Capture pre-cap value to compute shrinkage_new in the ART initiations
+  # block below, so per-modality linked counts and costs scale proportionally
+  # if the cap binds.
+  new_diagnoses_uncapped <- new_diagnoses
   new_diagnoses <- min(new_diagnoses, populations$undiagnosed * hiv_params$new_diagnoses_cap_prop)
   
   # ── LTFU PREVENTION: convert retained fraction to people ─────────────────
@@ -1798,6 +1853,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # Apply cap to testing-driven re-engagement only. Tracking and spontaneous
   # flow freely — they are bounded structurally by their own formulas.
+  # Capture pre-cap value to compute shrinkage_reengage in the ART initiations
+  # block below, so per-modality linked counts and costs scale proportionally
+  # if the cap binds.
+  re_engagement_testing_uncapped <- re_engagement_testing
   re_engagement_testing <- min(re_engagement_testing, testing_reengagement_cap)
   re_engagement         <- re_engagement_testing
   
@@ -1814,19 +1873,51 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   additional_suppressed <- additional_suppressed +
     ltfu_reengaged * hiv_params$tracking_reengagement_supp
   
-  # ── ART INITIATIONS ───────────────────────────────────────────────────────
-  # Cap art_inititations_testing at the linkage-cap-implied maximum across
-  # active flows (new dx + LTFU re-engagement via testing).
-  art_inititations_testing <- min(art_inititations_testing,
-                                  average_linkage_cap *
-                                    (new_diagnoses + re_engagement_testing))
-  art_initiations <- art_inititations_testing + art_initiations
+  # ── ART INITIATIONS (proportional-scaling under caps) ────────────────────
+  # Compute per-component shrinkage ratios from the two upstream caps:
+  #   shrinkage_new      = new_diagnoses        / new_diagnoses_uncapped
+  #   shrinkage_reengage = re_engagement_testing / re_engagement_testing_uncapped
+  # Both are 1.0 when their respective caps don't bind (the common case),
+  # so the formula reduces to the per-modality semantic:
+  #   art_init_testing = Σ_i (new_dx_i + retest_pos_i) × linkage_rate_i
+  #   linkage_cost     = Σ_i (new_dx_i + retest_pos_i) × linkage_cost_i   # per positive
+  # When a cap binds, the corresponding component is scaled down,
+  # preserving the per-modality mix (assumes proportional capping across
+  # modalities — see source-comment note).
+  #
+  # PMTCT contributions were folded into new_dx_*_uncapped above so they
+  # share shrinkage_new with general new diagnoses.
+  #
+  # `average_linkage_cap` is no longer used: per-intervention linkage_rate
+  # values are the authoritative source, and the cascade-identity ceiling
+  # (max_art_initiations, below) remains the structural backstop. Parameter
+  # validation (linkage_rate <= 1) should be enforced at parameter load.
+  shrinkage_new <- if (new_diagnoses_uncapped > 0) {
+    new_diagnoses / new_diagnoses_uncapped
+  } else 0
+  shrinkage_reengage <- if (re_engagement_testing_uncapped > 0) {
+    re_engagement_testing / re_engagement_testing_uncapped
+  } else 0
   
-  # Additional suppressed from testing
-  additional_suppressed_testing <- min(
-    art_initiations * hiv_params$testing_art_init_supp,
-    additional_suppressed_testing
-  )
+  # Linked count (post-cap): scaled per component
+  art_inititations_testing <- shrinkage_new      * new_dx_linked_uncapped +
+    shrinkage_reengage * retest_pos_linked_uncapped
+  art_initiations          <- art_inititations_testing + art_initiations
+  
+  # Linkage cost (post-cap): scaled per component, same shrinkage as the
+  # corresponding linked count, so cost per linked patient is preserved
+  # per-modality in the uncapped case and proportionally scaled under capping.
+  total_intervention_cost <- total_intervention_cost +
+    shrinkage_new      * new_dx_linkage_cost_uncapped +
+    shrinkage_reengage * retest_pos_linkage_cost_uncapped
+  
+  # Additional suppressed from testing (post-cap): scaled per component. The
+  # supp_uncapped accumulators carry per-source suppression rates baked in
+  # (general: testing_art_init_supp; PMTCT: pmtct_cascade_supp_rate), so a
+  # single sum gives the correct combined suppression contribution.
+  additional_suppressed_testing <-
+    shrinkage_new      * new_dx_supp_uncapped +
+    shrinkage_reengage * retest_pos_supp_uncapped
   additional_suppressed <- additional_suppressed + additional_suppressed_testing
   
   # Cannot initiate more on ART than are diagnosed but not yet on ART
@@ -2140,7 +2231,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       eff_prep_oral = all_interventions$prep_oral$efficacy       %||% 0.99,
       eff_prep_len  = all_interventions$prep_lenacapavir$efficacy %||% 1.00,
       eff_condom    = all_interventions$condoms$efficacy          %||% 0.80,
-      eff_pep       = all_interventions$pep$efficacy              %||% 0.80,
       acts_per_year_high     = ACTS_PER_YEAR_HIGH,    
       acts_per_year_gen      = ACTS_PER_YEAR_GEN,     
       condom_use_rate_high   = CONDOM_USE_RATE_HIGH,    
@@ -2162,7 +2252,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         eff_prep_oral        = all_interventions$prep_oral$efficacy        %||% 0.99,
         eff_prep_len         = all_interventions$prep_lenacapavir$efficacy %||% 1.00,
         eff_condom           = all_interventions$condoms$efficacy          %||% 0.80,
-        eff_pep              = all_interventions$pep$efficacy              %||% 0.80,
         acts_per_year_high   = ACTS_PER_YEAR_HIGH,
         acts_per_year_gen    = ACTS_PER_YEAR_GEN,
         condom_use_rate_high = CONDOM_USE_RATE_HIGH,
@@ -2249,11 +2338,20 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     number_reached <- min(number_reached, eligible)
     
     if ("adult_infections" %in% intervention$outcomes) {
-      # Cost only — FOI accounts for protective effect
-      units_costed <- if (int_key == "condoms")
+      # Cost only — FOI accounts for protective effect.
+      # PrEP cost is decoupled from FOI: PrEP can be distributed beyond the
+      # high-risk pool (it costs money), but only the high-risk-capped
+      # coverage feeds infection impact (handled in compute_prevention_adjustments
+      # via the clip() on prep_*_cov_high). Cap PrEP cost at adult_pop —
+      # matches the UI cap (oral + lenacapavir combined cannot exceed
+      # adult_pop). Children don't receive adult PrEP.
+      units_costed <- if (int_key == "condoms") {
         (intervention_value %||% 0)
-      else
+      } else if (int_key %in% c("prep_oral", "prep_lenacapavir")) {
+        min(intervention_value, populations$adult_pop %||% 0)
+      } else {
         number_reached
+      }
       total_intervention_cost <- total_intervention_cost +
         units_costed * intervention$unit_cost
     }
@@ -2327,7 +2425,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     eid_infants_diagnosed <- 0
   }
   # Testing cost: all HIV-exposed infants reached (infected or not)
-  # Linkage cost: only HIV+ infants identified and linked to ART
+  # Linkage cost: HIV+ infants identified 
   total_intervention_cost <- total_intervention_cost +
     eid_infants_reached   * (all_interventions$eid$unit_cost    %||% 0) +
     eid_infants_diagnosed * (all_interventions$eid$linkage_cost %||% 0)
@@ -2367,9 +2465,17 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # CALCULATE COSTS
   # ========================================================================
   
-  # ART provision cost (outcome-driven)
-  art_provision_cost <- end_on_art * 200
-  
+  art_provision_cost <- end_on_art * ART_COST_STANDARD + dsd_cost_adjustment
+  if (art_provision_cost < 0) {
+    warning(sprintf(
+      paste0("art_provision_cost floored to 0: DSD savings (%.0f) exceeded ",
+             "standard ART provision cost (%.0f × %.0f = %.0f). ",
+             "Check DSD unit costs in intervention_params."),
+      -dsd_cost_adjustment, end_on_art, ART_COST_STANDARD,
+      end_on_art * ART_COST_STANDARD
+    ))
+    art_provision_cost <- 0
+  }
   # Total cost
   total_cost <- total_intervention_cost + art_provision_cost
   

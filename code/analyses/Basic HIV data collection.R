@@ -4,7 +4,7 @@ options(scipen=999)
 rm(list=ls())
 library(WDI)
 
-
+prop_high_risk=0.05
 ##UPDATE DIAGNOSES
 
 data_dir="/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/"
@@ -132,7 +132,7 @@ kp_wide_final$rr_high=11.5 #https://www.thelancet.com/journals/langlo/article/PI
 basic_data=left_join(basic_data, kp_wide_final)
 
 
-
+basic_data$prop_high_risk=prop_high_risk
 ########testing data (avg volume and positiivity)
 test_data=gam_data %>% filter(Indicator_GId %in% c("HIV_TESTS_VOL","HIV_POS_RATE")) %>% filter(Subgroup=="Total") %>% select(Area,Indicator_GId,Time.Period,Data.value) %>% 
   arrange(Area,Indicator_GId,desc(Time.Period)) %>% group_by(Area,Indicator_GId) %>% slice(1) %>% spread(Indicator_GId,Data.value)
@@ -180,6 +180,12 @@ colnames(anc_mults)[1]="country"
 basic_data=left_join(basic_data,anc_mults %>% select(country,ANC_multiplier))
 
 ######writes data
+
+sub_countries2=c("Botswana","Côte d'Ivoire","Eswatini","Ghana","Kenya","Lesotho","Malawi","Mozambique","Nigeria","South Africa","United Republic of Tanzania","Uganda","Zambia","Zimbabwe")
+
+basic_data=basic_data %>% filter(country%in%sub_countries2)
+
+
 write.csv(basic_data,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/basic_hiv_data.csv")
 
 
