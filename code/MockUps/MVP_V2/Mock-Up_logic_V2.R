@@ -1317,7 +1317,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # under capping.
   #
   #   *_linked_uncapped       = Σ_i (volume_i × linkage_rate_i)
-  #   *_linkage_cost_uncapped = Σ_i (volume_i × linkage_rate_i × linkage_cost_i)
+  #   *_linkage_cost_uncapped = Σ_i (volume_i × linkage_cost_i)             # per positive, NOT per linked
   #   *_supp_uncapped         = Σ_i (volume_i × linkage_rate_i × supp_rate_i)
   #
   # The supp accumulator carries the per-source suppression rate (general
@@ -1528,23 +1528,29 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         # When neither cap binds (the common case), both shrinkages = 1.0 and
         # the formula collapses to the original per-modality semantic:
         #   linked_total = Σ_i (new_dx_i + retest_pos_i) × linkage_rate_i
-        #   cost_total   = Σ_i (new_dx_i + retest_pos_i) × linkage_rate_i × linkage_cost_i
+        #   cost_total   = Σ_i (new_dx_i + retest_pos_i) × linkage_cost_i    # per positive
         # When a cap binds, the corresponding component is scaled down,
         # preserving the per-modality mix.
         #
         # Replaces the previous in-loop `linked` and `art_inititations_testing`
         # accumulation, and the `average_linkage_cap` post-loop patch.
         linkage_rate <- intervention$linkage_rate
+        # NOTE: linkage_cost is charged per POSITIVE result (cost-per-attempt
+        # semantic), not per successfully linked patient. The linkage activity
+        # (counseling, referral, escort, follow-up) is incurred for everyone
+        # who tests positive, regardless of whether they ultimately link to
+        # care. Linked-count and suppression contributions remain multiplied
+        # by linkage_rate (only successful linkers reach the cascade).
         new_dx_linked_uncapped       <- new_dx_linked_uncapped +
           new_dx     * linkage_rate
         new_dx_linkage_cost_uncapped <- new_dx_linkage_cost_uncapped +
-          new_dx     * linkage_rate * intervention$linkage_cost
+          new_dx     * intervention$linkage_cost
         new_dx_supp_uncapped         <- new_dx_supp_uncapped +
           new_dx     * linkage_rate * hiv_params$testing_art_init_supp
         retest_pos_linked_uncapped       <- retest_pos_linked_uncapped +
           retest_pos * linkage_rate
         retest_pos_linkage_cost_uncapped <- retest_pos_linkage_cost_uncapped +
-          retest_pos * linkage_rate * intervention$linkage_cost
+          retest_pos * intervention$linkage_cost
         retest_pos_supp_uncapped         <- retest_pos_supp_uncapped +
           retest_pos * linkage_rate * hiv_params$testing_art_init_supp
         
@@ -1743,10 +1749,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # The PMTCT-specific suppression rate (pmtct_cascade_supp_rate) and linkage
   # cost (anc_hiv_testing$linkage_cost) are baked into the supp/cost
   # accumulators here, mirroring the in-loop pattern for general modalities.
+  # Linkage cost is charged on ALL PMTCT-diagnosed women (cost-per-attempt
+  # semantic), consistent with the general-testing treatment above. Only the
+  # linked count and suppression contribution apply the PMTCT linkage rate.
   new_diagnoses                <- new_diagnoses + pmtct_new_diagnoses
   new_dx_linked_uncapped       <- new_dx_linked_uncapped       + pmtct_cascade_linked_art
   new_dx_linkage_cost_uncapped <- new_dx_linkage_cost_uncapped +
-    pmtct_cascade_linked_art * pmtct_cascade_linkage_cost
+    pmtct_new_diagnoses * pmtct_cascade_linkage_cost
   new_dx_supp_uncapped         <- new_dx_supp_uncapped         + pmtct_cascade_linked_supp
   # Note: art_inititations_testing, additional_suppressed_testing, and PMTCT
   # linkage cost are no longer added here. They are computed post-cap in the
@@ -1871,7 +1880,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Both are 1.0 when their respective caps don't bind (the common case),
   # so the formula reduces to the per-modality semantic:
   #   art_init_testing = Σ_i (new_dx_i + retest_pos_i) × linkage_rate_i
-  #   linkage_cost     = Σ_i (new_dx_i + retest_pos_i) × linkage_rate_i × linkage_cost_i
+  #   linkage_cost     = Σ_i (new_dx_i + retest_pos_i) × linkage_cost_i   # per positive
   # When a cap binds, the corresponding component is scaled down,
   # preserving the per-modality mix (assumes proportional capping across
   # modalities — see source-comment note).
@@ -2416,7 +2425,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     eid_infants_diagnosed <- 0
   }
   # Testing cost: all HIV-exposed infants reached (infected or not)
-  # Linkage cost: only HIV+ infants identified and linked to ART
+  # Linkage cost: HIV+ infants identified 
   total_intervention_cost <- total_intervention_cost +
     eid_infants_reached   * (all_interventions$eid$unit_cost    %||% 0) +
     eid_infants_diagnosed * (all_interventions$eid$linkage_cost %||% 0)

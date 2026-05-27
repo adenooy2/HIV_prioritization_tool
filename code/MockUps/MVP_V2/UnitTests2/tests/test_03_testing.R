@@ -362,22 +362,20 @@ test_that("country yield_multipliers scale the base yield", {
 })
 
 # ---------------------------------------------------------------------------
-# 3.7 Linkage cost = linked × linkage_cost (unit cost charged separately)
+# 3.7 Linkage cost = positive tests × linkage_cost (unit cost charged separately)
 # ---------------------------------------------------------------------------
 # WHAT: For each testing modality, two cost components accrue:
 #       (a) unit_cost × number_reached  (every test, regardless of result)
-#       (b) linkage_cost × linked       (per ART linkage achieved)
-# WHY:  Splitting these matters for cost-effectiveness analysis. Mis-attributing
-#       linkage cost to all tests inflates per-test costs.
+#       (b) linkage_cost × positive tests      (costs associated with trying to get indiviudals into further care)
+
 # HOW:  10,000 tests below threshold, yield = 0.05, prop_new_dx = 0.70,
 #       prop_reeng = 0.30, linkage_rate = 0.8, efficacy = 1.0.
 #         positive_tests = 500; new_dx = 350; retest_pos = 150
-#         linked         = (350 + 150) × 0.8 = 400
-#         unit cost      = 10,000 × 5      = 50,000
-#         linkage cost   = 400    × 10     = 4,000
-#         total testing-driven cost = 54,000
-#       Note: total_intervention_cost may include other items, but in this
-#       fixture only one modality is active so it should equal 54,000.
+#         # Expected linkage cost (per POSITIVE, not per linked):
+#   positives = 10,000 × 0.05 = 500
+#   linkage cost = 500 × 10 = 5,000
+# Expected unit cost: 10,000 × 5 = 50,000
+# # Total intervention cost: 55,000
 # ---------------------------------------------------------------------------
 test_that("testing modality cost = unit × tests + linkage_cost × linked", {
   with_hiv_params(list(sexually_active_frac = SAFR,
@@ -410,10 +408,12 @@ test_that("testing modality cost = unit × tests + linkage_cost × linked", {
     is_baseline = TRUE, baseline_interventions = interv
   )
 
+  # Expected linkage cost (per POSITIVE, not per linked):
+  #   positives = 10,000 × 0.05 = 500
+  #   linkage cost = 500 × 10 = 5,000
   # Expected unit cost: 10,000 × 5 = 50,000
-  # Expected linkage cost: 500 × 0.8 × 10 = 4,000
-  # Total intervention cost: 54,000
-  expect_close(result$total_intervention_cost, 54000)
+  # Total intervention cost: 55,000
+  expect_close(result$total_intervention_cost, 55000)
 })
 
 # ---------------------------------------------------------------------------

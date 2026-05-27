@@ -166,29 +166,28 @@ test_that("EAC cost uses eac_reach (layered VL × unsuppressed × EAC coverage)"
 # ---------------------------------------------------------------------------
 # 9.2 PMTCT linkage cost (post-cascade, line 1699)
 # ---------------------------------------------------------------------------
-# WHAT: After the PMTCT cascade resolves how many newly-diagnosed pregnant
-#       women linked to ART (pmtct_cascade_linked_art), a separate cost line
+# WHAT: After the PMTCT cascade resolves,   newly-diagnosed pregnant
+#       women are atempted to be linked to ART (pmtct_cascade_linked_art), a separate cost line
 #       at 1699 charges:
-#         total_intervention_cost += pmtct_cascade_linked_art × anc_hiv_testing$linkage_cost
+#         total_intervention_cost += pmtct_pos × anc_hiv_testing$linkage_cost
 #       This is in ADDITION to the per-test unit cost charged in the testing loop.
 #
 # WHY: Earlier ANC HIV tests (3.8 / 6.4) zeroed linkage_cost so this branch was
 #      uncovered. PMTCT linkage cost is non-trivial in real budgets.
 #
-# HOW: anc_hiv_testing: efficacy=1.0, unit_cost=0, linkage_rate=1.0, linkage_cost=50.
+# HOW: anc_hiv_testing: efficacy=1.0, unit_cost=0, linkage_rate=0.8, linkage_cost=50.
 #      ANC coverage 100%, all 125 pregnant_undiagnosed found and linked.
-#      pmtct_cascade_linked_art = min(125, 350) × 1.0 = 125
 #      Expected PMTCT linkage cost = 125 × 50 = 6,250.
 #      Testing unit cost = 0, so total_intervention_cost ≈ 6,250.
 # ---------------------------------------------------------------------------
-test_that("PMTCT linkage cost = pmtct_linked × anc_hiv_testing$linkage_cost", {
+test_that("PMTCT linkage cost = pmtct_pos × anc_hiv_testing$linkage_cost", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
   
   ig_new <- intervention_groups
   ig_new$testing$interventions$anc_hiv_testing$efficacy     <- 1.0
   ig_new$testing$interventions$anc_hiv_testing$unit_cost    <- 0
-  ig_new$testing$interventions$anc_hiv_testing$linkage_rate <- 1.0
+  ig_new$testing$interventions$anc_hiv_testing$linkage_rate <- 0.8
   ig_new$testing$interventions$anc_hiv_testing$linkage_cost <- 50
   with_intervention_groups(list(testing = ig_new$testing))
   
@@ -313,25 +312,24 @@ test_that("AHD package cost = n_ahd_pkg_reached × unit_cost", {
 # 9.5 ANC HIV testing unit cost separate from linkage cost
 # ---------------------------------------------------------------------------
 # WHAT: ANC HIV testing has BOTH unit_cost (per test, all reached) and
-#       linkage_cost (per PMTCT-linked). Both must accrue independently.
+#       linkage_cost (per pos pregnant women diagnosed). Both must accrue independently.
 #
 # HOW: Combine 6.4 setup with cost overrides.
 #      ANC HIV: efficacy = 1.0, unit_cost = 3, linkage_rate = 1.0, linkage_cost = 50.
 #      ANC coverage 100%:
 #        number_reached = 23,875 (pregnant_hiv_testable)
 #        unit cost     = 23,875 × 3 = 71,625
-#        pmtct_linked  = 125
 #        linkage cost  = 125 × 50 = 6,250
 #        total         = 77,875
 # ---------------------------------------------------------------------------
-test_that("ANC HIV testing cost = unit × reached + linkage × linked", {
+test_that("ANC HIV testing cost = unit × reached + linkage × pos", {
   with_hiv_params(LIVE_PARAMS_COSTS)
   override_cost_globals()
   
   ig_new <- intervention_groups
   ig_new$testing$interventions$anc_hiv_testing$efficacy     <- 1.0
   ig_new$testing$interventions$anc_hiv_testing$unit_cost    <- 3
-  ig_new$testing$interventions$anc_hiv_testing$linkage_rate <- 1.0
+  ig_new$testing$interventions$anc_hiv_testing$linkage_rate <- 0.8
   ig_new$testing$interventions$anc_hiv_testing$linkage_cost <- 50
   with_intervention_groups(list(testing = ig_new$testing))
   
