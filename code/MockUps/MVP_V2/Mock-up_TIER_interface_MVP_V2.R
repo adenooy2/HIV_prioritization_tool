@@ -41,6 +41,21 @@ tryCatch(
 # ============================================================================
 
 ui <- page_sidebar(
+  tags$head(tags$style(HTML("
+    hr { margin-top: 0.75rem; margin-bottom: 0.5rem; }
+    .disabled-input { margin: 0; }
+    .disabled-input .form-group { margin-bottom: 0; }
+    .disabled-input input {
+      pointer-events: none;
+      background-color: #e9ecef;
+      opacity: 1;
+    }
+  "))),
+  tags$script(HTML("
+      $(document).on('shiny:value shiny:idle', function() {
+        $('.disabled-input input').attr('readonly', true);
+      });
+    ")),
   title = "HIV Intervention Impact Calculator",
   sidebar = sidebar(
     width = 300,
@@ -53,12 +68,12 @@ ui <- page_sidebar(
     hr(),
     h5("Epidemic Parameters (Start of Year)"),
     numericInput("total_pop", "Total Population:", value = 5000000, min = 0),
-    numericInput("prevalence", "HIV Prevalence (%):", value = 4.5, min = 0, max = 100, step = 0.1),
-    numericInput("new_infections", "New Infections/Year:", value = 8500, min = 0),
+    tags$div(class = "disabled-input",numericInput("prevalence", "HIV Prevalence (%):", value = 4.5, min = 0, max = 100, step = 0.1)),
+    tags$div(class = "disabled-input",numericInput("new_infections", "New Infections/Year:", value = 8500, min = 0)),
     numericInput("pct_diagnosed", "% of PLHIV Diagnosed:", value = 85, min = 0, max = 100),  
     numericInput("pct_on_art", "% Diagnosed on ART:", value = 78, min = 0, max = 100),
     numericInput("pct_suppressed", "% on ART Suppressed:", value = 82, min = 0, max = 100),
-    numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0),
+    tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0)),
     p(style = "font-size: 0.85em; color: #666; margin-top: 10px;",
       "Note: Deaths are calculated by cascade stage and intervention effects.")
   ),
