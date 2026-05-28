@@ -4,6 +4,9 @@ options(scipen=999)
 rm(list=ls())
 library(WDI)
 
+#https://www.iedea.org/resources/multi-use-dataset/?cn-reloaded=1
+#https://iedeaharmonist.app.vumc.org/mud/
+
 prop_high_risk=0.05
 ##UPDATE DIAGNOSES
 
@@ -104,7 +107,7 @@ basic_data=basic_data %>% filter(country%in%sub_countries)
 
 
 ########KP data -UPDATE
-
+#https://kpatlas.unaids.org/dashboard
 kp_raw=read.csv(paste(data_dir,"KPAtlasDB_2025.csv",sep=""),quote = "")
 
 kp_raw=kp_raw %>% rename(country=Area) %>% filter(country %in% sub_countries)%>% 

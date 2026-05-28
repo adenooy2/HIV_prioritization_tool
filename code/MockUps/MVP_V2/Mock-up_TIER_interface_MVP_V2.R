@@ -2147,7 +2147,8 @@ server <- function(input, output, session) {
             span(style = paste0("font-size: 0.9em; color: ",
                                 ifelse(diff$diff_intervention_cost > 0, "red",
                                        ifelse(diff$diff_intervention_cost < 0, "green", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_intervention_cost > 0, "+", ""), "$",
+                 paste0("(", ifelse(diff$diff_intervention_cost > 0, "+",
+                                    ifelse(diff$diff_intervention_cost < 0, "-", "")), "$",
                         format(abs(diff$diff_intervention_cost), big.mark = ","), ")"))
           )
       ),
@@ -2160,7 +2161,8 @@ server <- function(input, output, session) {
             span(style = paste0("font-size: 0.9em; color: ",
                                 ifelse(diff$diff_art_provision_cost > 0, "red",
                                        ifelse(diff$diff_art_provision_cost < 0, "green", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_art_provision_cost > 0, "+", ""), "$",
+                 paste0("(", ifelse(diff$diff_art_provision_cost > 0, "+",
+                                    ifelse(diff$diff_art_provision_cost < 0, "-", "")), "$",
                         format(abs(diff$diff_art_provision_cost), big.mark = ","), ")"))
           )
       ),
@@ -2172,7 +2174,8 @@ server <- function(input, output, session) {
             span(style = paste0("font-size: 0.9em; color: ",
                                 ifelse(diff$diff_total_cost > 0, "red",
                                        ifelse(diff$diff_total_cost < 0, "green", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_total_cost > 0, "+", ""), "$",
+                 paste0("(", ifelse(diff$diff_total_cost > 0, "+",
+                                    ifelse(diff$diff_total_cost < 0, "-", "")), "$",
                         format(abs(diff$diff_total_cost), big.mark = ","), ")"))
           )
       )
@@ -2193,7 +2196,8 @@ server <- function(input, output, session) {
             span(style = paste0("font-size: 0.9em; color: ",
                                 ifelse(diff$diff_intervention_cost > 0, "red",
                                        ifelse(diff$diff_intervention_cost < 0, "green", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_intervention_cost > 0, "+", ""), "$",
+                 paste0("(", ifelse(diff$diff_intervention_cost > 0, "+",
+                                    ifelse(diff$diff_intervention_cost < 0, "-", "")), "$",
                         format(abs(diff$diff_intervention_cost), big.mark = ","), ")"))
           )
       ),
@@ -2207,7 +2211,8 @@ server <- function(input, output, session) {
             span(style = paste0("font-size: 0.9em; color: ",
                                 ifelse(diff$diff_art_provision_cost > 0, "red",
                                        ifelse(diff$diff_art_provision_cost < 0, "green", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_art_provision_cost > 0, "+", ""), "$",
+                 paste0("(", ifelse(diff$diff_art_provision_cost > 0, "+",
+                                    ifelse(diff$diff_art_provision_cost < 0, "-", "")), "$",
                         format(abs(diff$diff_art_provision_cost), big.mark = ","), ")"))
           )
       ),
@@ -2219,7 +2224,8 @@ server <- function(input, output, session) {
             span(style = paste0("font-size: 0.9em; color: ",
                                 ifelse(diff$diff_total_cost > 0, "red",
                                        ifelse(diff$diff_total_cost < 0, "green", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_total_cost > 0, "+", ""), "$",
+                 paste0("(", ifelse(diff$diff_total_cost > 0, "+",
+                                    ifelse(diff$diff_total_cost < 0, "-", "")), "$",
                         format(abs(diff$diff_total_cost), big.mark = ","), ")"))
           )
       )
