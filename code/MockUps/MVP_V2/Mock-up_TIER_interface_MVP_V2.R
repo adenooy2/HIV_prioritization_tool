@@ -1830,18 +1830,18 @@ server <- function(input, output, session) {
     outcomes <- outcomes_baseline()
     
     tagList(
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("New Adult Infections:")),
+      div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
+          span(style = "width: 100px; flex-shrink: 0;", strong("New Adult Infections:")),
           span(style = "font-size: 1.3em; font-weight: bold;",
                format(outcomes$end_new_infections, big.mark = ","))
       ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("New Infant Infections:")),
+      div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
+          span(style = "width: 100px; flex-shrink: 0;", strong("New Infant Infections:")),
           span(style = "font-size: 1.3em; font-weight: bold;",
                format(outcomes$end_infant_infections, big.mark = ","))
       ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("HIV-Related Deaths:")),
+      div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
+          span(style = "width: 100px; flex-shrink: 0;", strong("HIV-Related Deaths:")),
           span(style = "font-size: 1.3em; font-weight: bold;",
                format(outcomes$end_deaths, big.mark = ","))
       ),
@@ -1851,17 +1851,7 @@ server <- function(input, output, session) {
         div(class = "small text-muted mb-2", style = "font-size: 0.85em; font-style: italic;",
             sprintf("Mortality calibrated to country UNAIDS target (factor: %.2f). Scenarios show relative changes from this baseline.",
                     outcomes$mortality_calibration_factor))
-      },
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("New LTFU:")),
-          span(style = "font-size: 1.3em; font-weight: bold;",
-               format(outcomes$ltfu_new_effective, big.mark = ","))
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("Re-engaged in care:")),
-          span(style = "font-size: 1.3em; font-weight: bold;",
-               format(outcomes$ltfu_reengaged, big.mark = ","))
-      )
+      }
     )
   })
   
@@ -1870,79 +1860,46 @@ server <- function(input, output, session) {
     diff <- diff_scenario1()
     
     tagList(
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("New Adult Infections:")),
-          span(
-            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
-                                ifelse(diff$diff_new_infections < 0, "green",
-                                       ifelse(diff$diff_new_infections > 0, "red", "gray")), ";"),
-                 format(outcomes$end_new_infections, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_new_infections < 0, "green",
-                                       ifelse(diff$diff_new_infections > 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_new_infections > 0, "+", ""),
-                        format(diff$diff_new_infections, big.mark = ","), ")"))
+      div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
+          span(style = "width: 100px; flex-shrink: 0;", strong("New Adult Infections:")),
+          span(style = "white-space: nowrap;",
+               span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
+                                   ifelse(diff$diff_new_infections < 0, "green",
+                                          ifelse(diff$diff_new_infections > 0, "red", "gray")), ";"),
+                    format(outcomes$end_new_infections, big.mark = ",")),
+               span(style = paste0("font-size: 0.9em; color: ",
+                                   ifelse(diff$diff_new_infections < 0, "green",
+                                          ifelse(diff$diff_new_infections > 0, "red", "gray")), ";"),
+                    paste0(" (", ifelse(diff$diff_new_infections > 0, "+", ""),
+                           format(diff$diff_new_infections, big.mark = ","), ")"))
           )
       ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("New Infant Infections:")),
-          span(
-            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
-                                ifelse(diff$diff_infant_infections < 0, "green",
-                                       ifelse(diff$diff_infant_infections > 0, "red", "gray")), ";"),
-                 format(outcomes$end_infant_infections, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_infant_infections < 0, "green",
-                                       ifelse(diff$diff_infant_infections > 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_infant_infections > 0, "+", ""),
-                        format(diff$diff_infant_infections, big.mark = ","), ")"))
+      div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
+          span(style = "width: 100px; flex-shrink: 0;", strong("New Infant Infections:")),
+          span(style = "white-space: nowrap;",
+               span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
+                                   ifelse(diff$diff_infant_infections < 0, "green",
+                                          ifelse(diff$diff_infant_infections > 0, "red", "gray")), ";"),
+                    format(outcomes$end_infant_infections, big.mark = ",")),
+               span(style = paste0("font-size: 0.9em; color: ",
+                                   ifelse(diff$diff_infant_infections < 0, "green",
+                                          ifelse(diff$diff_infant_infections > 0, "red", "gray")), ";"),
+                    paste0(" (", ifelse(diff$diff_infant_infections > 0, "+", ""),
+                           format(diff$diff_infant_infections, big.mark = ","), ")"))
           )
       ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("HIV-Related Deaths:")),
-          span(
-            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
-                                ifelse(diff$diff_deaths < 0, "green",
-                                       ifelse(diff$diff_deaths > 0, "red", "gray")), ";"),
-                 format(outcomes$end_deaths, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_deaths < 0, "green",
-                                       ifelse(diff$diff_deaths > 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_deaths > 0, "+", ""),
-                        format(diff$diff_deaths, big.mark = ","), ")"))
-          )
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("New LTFU:")),
-          span(
-            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
-                                ifelse(diff$diff_ltfu_new_effective < 0, "green",
-                                       ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
-                 format(outcomes$ltfu_new_effective, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_ltfu_new_effective < 0, "green",
-                                       ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_ltfu_new_effective > 0, "+", ""),
-                        format(diff$diff_ltfu_new_effective, big.mark = ","), ")"))
-          )
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("Re-engaged in care:")),
-          span(
-            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
-                                ifelse(diff$diff_ltfu_reengaged > 0, "green",
-                                       ifelse(diff$diff_ltfu_reengaged < 0, "red", "gray")), ";"),
-                 format(outcomes$ltfu_reengaged, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_ltfu_reengaged > 0, "green",
-                                       ifelse(diff$diff_ltfu_reengaged < 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_ltfu_reengaged > 0, "+", ""),
-                        format(diff$diff_ltfu_reengaged, big.mark = ","), ")"))
+      div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
+          span(style = "width: 100px; flex-shrink: 0;", strong("HIV-Related Deaths:")),
+          span(style = "white-space: nowrap;",
+               span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
+                                   ifelse(diff$diff_deaths < 0, "green",
+                                          ifelse(diff$diff_deaths > 0, "red", "gray")), ";"),
+                    format(outcomes$end_deaths, big.mark = ",")),
+               span(style = paste0("font-size: 0.9em; color: ",
+                                   ifelse(diff$diff_deaths < 0, "green",
+                                          ifelse(diff$diff_deaths > 0, "red", "gray")), ";"),
+                    paste0(" (", ifelse(diff$diff_deaths > 0, "+", ""),
+                           format(diff$diff_deaths, big.mark = ","), ")"))
           )
       )
     )
@@ -1953,79 +1910,46 @@ server <- function(input, output, session) {
     diff <- diff_scenario2()
     
     tagList(
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("New Adult Infections:")),
-          span(
-            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
-                                ifelse(diff$diff_new_infections < 0, "green",
-                                       ifelse(diff$diff_new_infections > 0, "red", "gray")), ";"),
-                 format(outcomes$end_new_infections, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_new_infections < 0, "green",
-                                       ifelse(diff$diff_new_infections > 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_new_infections > 0, "+", ""),
-                        format(diff$diff_new_infections, big.mark = ","), ")"))
+      div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
+          span(style = "width: 100px; flex-shrink: 0;", strong("New Adult Infections:")),
+          span(style = "white-space: nowrap;",
+               span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
+                                   ifelse(diff$diff_new_infections < 0, "green",
+                                          ifelse(diff$diff_new_infections > 0, "red", "gray")), ";"),
+                    format(outcomes$end_new_infections, big.mark = ",")),
+               span(style = paste0("font-size: 0.9em; color: ",
+                                   ifelse(diff$diff_new_infections < 0, "green",
+                                          ifelse(diff$diff_new_infections > 0, "red", "gray")), ";"),
+                    paste0(" (", ifelse(diff$diff_new_infections > 0, "+", ""),
+                           format(diff$diff_new_infections, big.mark = ","), ")"))
           )
       ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("New Infant Infections:")),
-          span(
-            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
-                                ifelse(diff$diff_infant_infections < 0, "green",
-                                       ifelse(diff$diff_infant_infections > 0, "red", "gray")), ";"),
-                 format(outcomes$end_infant_infections, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_infant_infections < 0, "green",
-                                       ifelse(diff$diff_infant_infections > 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_infant_infections > 0, "+", ""),
-                        format(diff$diff_infant_infections, big.mark = ","), ")"))
+      div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
+          span(style = "width: 100px; flex-shrink: 0;", strong("New Infant Infections:")),
+          span(style = "white-space: nowrap;",
+               span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
+                                   ifelse(diff$diff_infant_infections < 0, "green",
+                                          ifelse(diff$diff_infant_infections > 0, "red", "gray")), ";"),
+                    format(outcomes$end_infant_infections, big.mark = ",")),
+               span(style = paste0("font-size: 0.9em; color: ",
+                                   ifelse(diff$diff_infant_infections < 0, "green",
+                                          ifelse(diff$diff_infant_infections > 0, "red", "gray")), ";"),
+                    paste0(" (", ifelse(diff$diff_infant_infections > 0, "+", ""),
+                           format(diff$diff_infant_infections, big.mark = ","), ")"))
           )
       ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("HIV-Related Deaths:")),
-          span(
-            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
-                                ifelse(diff$diff_deaths < 0, "green",
-                                       ifelse(diff$diff_deaths > 0, "red", "gray")), ";"),
-                 format(outcomes$end_deaths, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_deaths < 0, "green",
-                                       ifelse(diff$diff_deaths > 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_deaths > 0, "+", ""),
-                        format(diff$diff_deaths, big.mark = ","), ")"))
-          )
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("New LTFU:")),
-          span(
-            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
-                                ifelse(diff$diff_ltfu_new_effective < 0, "green",
-                                       ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
-                 format(outcomes$ltfu_new_effective, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_ltfu_new_effective < 0, "green",
-                                       ifelse(diff$diff_ltfu_new_effective > 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_ltfu_new_effective > 0, "+", ""),
-                        format(diff$diff_ltfu_new_effective, big.mark = ","), ")"))
-          )
-      ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          span(strong("Re-engaged in care:")),
-          span(
-            span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
-                                ifelse(diff$diff_ltfu_reengaged > 0, "green",
-                                       ifelse(diff$diff_ltfu_reengaged < 0, "red", "gray")), ";"),
-                 format(outcomes$ltfu_reengaged, big.mark = ",")),
-            br(),
-            span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff$diff_ltfu_reengaged > 0, "green",
-                                       ifelse(diff$diff_ltfu_reengaged < 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff$diff_ltfu_reengaged > 0, "+", ""),
-                        format(diff$diff_ltfu_reengaged, big.mark = ","), ")"))
+      div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
+          span(style = "width: 100px; flex-shrink: 0;", strong("HIV-Related Deaths:")),
+          span(style = "white-space: nowrap;",
+               span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
+                                   ifelse(diff$diff_deaths < 0, "green",
+                                          ifelse(diff$diff_deaths > 0, "red", "gray")), ";"),
+                    format(outcomes$end_deaths, big.mark = ",")),
+               span(style = paste0("font-size: 0.9em; color: ",
+                                   ifelse(diff$diff_deaths < 0, "green",
+                                          ifelse(diff$diff_deaths > 0, "red", "gray")), ";"),
+                    paste0(" (", ifelse(diff$diff_deaths > 0, "+", ""),
+                           format(diff$diff_deaths, big.mark = ","), ")"))
           )
       )
     )
