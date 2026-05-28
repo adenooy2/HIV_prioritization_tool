@@ -2785,6 +2785,16 @@ calculate_scenario_difference <- function(scenario, baseline) {
     diff_total_infections  = scenario$end_total_infections  - baseline$end_total_infections,
     diff_deaths            = scenario$end_deaths            - baseline$end_deaths,
     
+    # Percentage change vs baseline (NA-safe; 0 baseline -> NA)
+    pct_art_initiations = ifelse(baseline$art_initiations  == 0, NA,
+                                 (scenario$art_initiations - baseline$art_initiations) / baseline$art_initiations * 100),
+    pct_new_infections  = ifelse(baseline$end_new_infections == 0, NA,
+                                 (scenario$end_new_infections - baseline$end_new_infections) / baseline$end_new_infections * 100),
+    pct_deaths          = ifelse(baseline$end_deaths == 0, NA,
+                                 (scenario$end_deaths - baseline$end_deaths) / baseline$end_deaths * 100),
+    pct_suppressed      = ifelse(baseline$end_suppressed == 0, NA,
+                                 (scenario$end_suppressed - baseline$end_suppressed) / baseline$end_suppressed * 100),
+    
     # Infections/deaths averted (relative to baseline)
     additional_infections_averted = -((scenario$end_new_infections - baseline$end_new_infections) +
                                         (scenario$end_infant_infections - baseline$end_infant_infections)),
