@@ -124,11 +124,9 @@ kp_wide$prop_high_risk=kp_wide$high_risk_pop/kp_wide$pop_sexually_active
 
 #kp_wide$prop_high_risk=0.03 #1% MSM, 1.2% FSW 
 
-
-
 # 
 kp_wide_final=kp_wide %>% ungroup() %>% select(country,prop_high_risk)
-kp_wide_final$rr_high=11.5 #https://www.thelancet.com/journals/langlo/article/PIIS2214-109X(24)00270-5/fulltext
+kp_wide_final$rr_high=8.6 #(11.5 #https://www.thelancet.com/journals/langlo/article/PIIS2214-109X(24)00270-5/fulltext)
 basic_data=left_join(basic_data, kp_wide_final)
 
 

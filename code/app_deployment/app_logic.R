@@ -223,7 +223,7 @@ build_intervention_groups <- function(intervention_params){
           type = "absolute",
           unit_label = "people",
           efficacy = subset(intervention_params, intervention_key == "prep_oral")$efficacy,
-          eligible_pop = "high_risk_negative",
+          eligible_pop = "sexually_active_negative",
           unit_cost = subset(intervention_params, intervention_key == "prep_oral")$unit_cost,
           outcomes = c("adult_infections")
         ),
@@ -232,7 +232,7 @@ build_intervention_groups <- function(intervention_params){
           type = "absolute",
           unit_label = "people",
           efficacy = subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy,
-          eligible_pop = "high_risk_negative",
+          eligible_pop = "sexually_active_negative",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost,
           outcomes = c("adult_infections")
         ),
@@ -983,6 +983,46 @@ calibrate_beta <- function(context, populations, strata, strata_params,
 # ----------------------------------------------------------------------------
 # STEP 4: COMPUTE PREVENTION COVERAGE ADJUSTMENTS
 # ----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# Allocate PrEP supply across high-risk and general strata with a fold-rate
+# advantage to high-risk, with spillover to general when high-risk saturates.
+#
+#   prep_high_risk_fold (k): per-capita coverage in high-risk is k× general
+#
+#   Case A (no saturation):       c_G = T / (k*H + G);     c_H = k * c_G
+#   Case B (high-risk saturates): c_H = 1; c_G = (T - H) / G
+#   Case C (both saturate):       c_H = 1; c_G = 1
+#
+# Threshold T(B) when c_H -> 1 in Case A: T = H + G/k.
+# Threshold T(C) when c_G -> 1 in Case B: T = H + G.
+#
+# Returns: list(cov_high, cov_gen) — per-capita coverages, each in [0, 1].
+# Used independently for prep_oral and prep_lenacapavir.
+# ----------------------------------------------------------------------------
+allocate_prep_coverage <- function(total_units, n_high_risk, n_general, fold) {
+  if (is.null(total_units) || total_units <= 0 || (n_high_risk + n_general) <= 0) {
+    return(list(cov_high = 0, cov_gen = 0))
+  }
+  H <- max(n_high_risk, 0)
+  G <- max(n_general,   0)
+  k <- max(fold, 1)  # fold < 1 would invert prioritisation; clamp at 1
+  
+  threshold_no_sat   <- H + G / k          # T at which c_H hits 1
+  threshold_full_sat <- H + G              # T at which both hit 1
+  
+  if (total_units <= threshold_no_sat) {
+    cov_gen  <- total_units / (k * H + G)
+    cov_high <- k * cov_gen
+  } else if (total_units <= threshold_full_sat) {
+    cov_high <- 1
+    cov_gen  <- (total_units - H) / max(G, 1)
+  } else {
+    cov_high <- 1
+    cov_gen  <- 1
+  }
+  list(cov_high = min(cov_high, 1), cov_gen = min(cov_gen, 1))
+}
+
 # Efficacies passed in via scenario_interventions$eff_* keys so they stay
 # in sync with intervention_params (set in calculate_scenario_outcomes before calling).
 # Multiplicative stacking prevents double-counting when interventions overlap.
@@ -1025,32 +1065,56 @@ compute_prevention_adjustments <- function(scenario_interventions, strata, popul
   condom_cov_high <- clip(total_condoms * condom_use_rate_high / total_acts)
   condom_cov_gen  <- clip(total_condoms * condom_use_rate_gen  / total_acts)
   
-  # ---- High-risk stratum: PrEP (oral + LEN) + condoms ----
-  prep_oral_cov_high <- clip((scenario_interventions$prep_oral        %||% 0) / max(strata$n_high_risk, 1))
-  prep_len_cov_high  <- clip((scenario_interventions$prep_lenacapavir %||% 0) / max(strata$n_high_risk, 1))
+  # ---- PrEP allocation across high-risk + general ----
+  # k-fold per-capita advantage to high-risk. Both prep_oral and
+  # prep_lenacapavir are allocated INDEPENDENTLY using the same fold parameter.
+  # Surplus beyond high-risk capacity spills to general (see allocate_prep_coverage).
+  prep_fold <- hiv_params$prep_high_risk_fold %||% 3
   
+  prep_oral_alloc <- allocate_prep_coverage(
+    total_units = scenario_interventions$prep_oral %||% 0,
+    n_high_risk = strata$n_high_risk,
+    n_general   = strata$n_general,
+    fold        = prep_fold
+  )
+  prep_len_alloc <- allocate_prep_coverage(
+    total_units = scenario_interventions$prep_lenacapavir %||% 0,
+    n_high_risk = strata$n_high_risk,
+    n_general   = strata$n_general,
+    fold        = prep_fold
+  )
+  
+  prep_oral_cov_high <- prep_oral_alloc$cov_high
+  prep_oral_cov_gen  <- prep_oral_alloc$cov_gen
+  prep_len_cov_high  <- prep_len_alloc$cov_high
+  prep_len_cov_gen   <- prep_len_alloc$cov_gen
+  
+  # ---- High-risk stratum: PrEP (oral + LEN) + condoms ----
   residual_high   <- (1 - prep_oral_cov_high * eff_prep_oral) *
     (1 - prep_len_cov_high  * eff_prep_len)  *
     (1 - condom_cov_high    * eff_condom)
   protection_high <- 1 - residual_high
   
-  # ---- General female: condoms ----
-  condom_cov_gen_f      <- condom_cov_gen
-  residual_gen_female   <- (1 - condom_cov_gen_f * eff_condom)
+  # ---- General female: PrEP + condoms ----
+  residual_gen_female   <- (1 - prep_oral_cov_gen * eff_prep_oral) *
+    (1 - prep_len_cov_gen  * eff_prep_len)  *
+    (1 - condom_cov_gen    * eff_condom)
   protection_gen_female <- 1 - residual_gen_female
   
-  # ---- General uncircumcised male: condoms ----
-  condom_cov_gen_mu       <- condom_cov_gen
-  residual_gen_male_unc   <- (1 - condom_cov_gen_mu * eff_condom)
+  # ---- General uncircumcised male: PrEP + condoms ----
+  residual_gen_male_unc   <- (1 - prep_oral_cov_gen * eff_prep_oral) *
+    (1 - prep_len_cov_gen  * eff_prep_len)  *
+    (1 - condom_cov_gen    * eff_condom)
   protection_gen_male_unc <- 1 - residual_gen_male_unc
   
-  # ---- General circumcised male: condoms ----
-  # Circumcised men also use condoms; this stacks ON TOP of their lower β_circ
+  # ---- General circumcised male: PrEP + condoms ----
+  # Circumcised men also use PrEP/condoms; this stacks ON TOP of their lower β_circ
   # (which encodes biological circumcision protection only).
   # Without this, men transferred from the uncirc pool by VMMC lose their
-  # condom coverage and can appear to gain MORE infections — fixed here.
-  condom_cov_gen_mc        <- condom_cov_gen
-  residual_gen_male_circ   <- (1 - condom_cov_gen_mc * eff_condom)
+  # protection coverage and can appear to gain MORE infections — fixed here.
+  residual_gen_male_circ   <- (1 - prep_oral_cov_gen * eff_prep_oral) *
+    (1 - prep_len_cov_gen  * eff_prep_len)  *
+    (1 - condom_cov_gen    * eff_condom)
   protection_gen_male_circ <- 1 - residual_gen_male_circ
   
   # ---- VMMC: converts uncirc men → circ pool (not a coverage multiplier) ----
@@ -2339,16 +2403,16 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     
     if ("adult_infections" %in% intervention$outcomes) {
       # Cost only — FOI accounts for protective effect.
-      # PrEP cost is decoupled from FOI: PrEP can be distributed beyond the
-      # high-risk pool (it costs money), but only the high-risk-capped
-      # coverage feeds infection impact (handled in compute_prevention_adjustments
-      # via the clip() on prep_*_cov_high). Cap PrEP cost at adult_pop —
-      # matches the UI cap (oral + lenacapavir combined cannot exceed
-      # adult_pop). Children don't receive adult PrEP.
+      # PrEP cost is capped at sexually_active_negative (HIV-neg, sexually active).
+      # This is the same denominator used by FOI for impact, so cost and
+      # impact stay internally consistent. Children and non-sexually-active
+      # adults are excluded — they can't biologically benefit from PrEP and
+      # are not in the FOI strata. Allocation (3-fold high-risk advantage with
+      # spillover) is handled in compute_prevention_adjustments.
       units_costed <- if (int_key == "condoms") {
         (intervention_value %||% 0)
       } else if (int_key %in% c("prep_oral", "prep_lenacapavir")) {
-        min(intervention_value, populations$adult_pop %||% 0)
+        min(intervention_value, populations$sexually_active_negative %||% 0)
       } else {
         number_reached
       }
