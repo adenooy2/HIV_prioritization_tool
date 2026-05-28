@@ -32,7 +32,11 @@ SAFR <- 0.85  # live sexually_active_frac
 
 # Helper: build deterministic strata + populations + scenario context
 prev_setup <- function() {
-  with_hiv_params(list(sexually_active_frac = SAFR), envir = parent.frame())
+  # Pin sexually_active_frac AND prep_high_risk_fold so derivations are
+  # deterministic regardless of the live hiv_params Excel values (the live
+  # fold value is unknown to the test author — same rationale as SAFR).
+  with_hiv_params(list(sexually_active_frac = SAFR, prep_high_risk_fold = 3),
+                  envir = parent.frame())
   ctx     <- make_fixture_context()
   pops    <- calculate_populations(ctx)
   sp      <- define_strata_params(ctx)
@@ -48,11 +52,10 @@ zero_interventions <- function() {
 # ---------------------------------------------------------------------------
 # Live-param fixture for cost-cap tests (4.8a/b/c, 4.9)
 # ---------------------------------------------------------------------------
-# Only sexually_active_frac is needed for the asserted values (the caps depend
-# on adult_pop and uncircumcised_males_all from the fixture context, not on
-# SAFR). Kept minimal and consistent with the rest of test_04, which only
-# overrides SAFR via prev_setup().
-LIVE_PARAMS_PREVENTION_04 <- list(sexually_active_frac = SAFR)
+# Pins sexually_active_frac (drives the sexually_active_negative cap) and
+# prep_high_risk_fold (drives PrEP allocation) so asserted values are
+# deterministic regardless of the live hiv_params Excel sheet.
+LIVE_PARAMS_PREVENTION_04 <- list(sexually_active_frac = SAFR, prep_high_risk_fold = 3)
 
 # Local copy of test_09_costs.R::base_ctx — each test file runs in its own
 # testthat context, so helpers defined in other test files are not in scope.

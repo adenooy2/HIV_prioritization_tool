@@ -168,10 +168,10 @@ ui <- page_sidebar(
           card_header("Combined Cascade Comparison"),
           card_body(plotOutput("cascade_combined", height = "500px"))
         ),
-        card(
-          card_header("Cascade Numbers"),
-          card_body(tableOutput("cascade_table"))
-        ),
+        # card(
+        #   card_header("Cascade Numbers"),
+        #   card_body(tableOutput("cascade_table"))
+        # ),
         
         # Other Outcomes Row
         h3("Key Outcomes Summary", class = "mt-4 mb-3"),

@@ -137,7 +137,7 @@ test_that("FOI roundtrip (no baseline_prev_adj) reproduces observed infections",
 #       Expected: result ≈ 5,000.
 # ---------------------------------------------------------------------------
 test_that("FOI roundtrip with matching baseline & scenario reproduces observed", {
-  with_hiv_params(list(sexually_active_frac = SAFR))
+  with_hiv_params(list(sexually_active_frac = SAFR, prep_high_risk_fold = 3))
   ctx    <- make_fixture_context()
   pops   <- calculate_populations(ctx)
   
@@ -187,7 +187,9 @@ test_that("FOI roundtrip with matching baseline & scenario reproduces observed",
 #       vmmc = 0 ⇒ vmmc_coverage_frac = 0.
 # ---------------------------------------------------------------------------
 test_that("compute_prevention_adjustments isolates PrEP-only correctly (k-fold)", {
-  with_hiv_params(list(sexually_active_frac = SAFR))
+  # Pin prep_high_risk_fold = 3 so the allocation is deterministic regardless
+  # of the live hiv_params value (same rationale as SAFR — see file header).
+  with_hiv_params(list(sexually_active_frac = SAFR, prep_high_risk_fold = 3))
   ctx     <- make_fixture_context()
   pops    <- calculate_populations(ctx)
   sp      <- define_strata_params(ctx)
@@ -284,7 +286,7 @@ test_that("VMMC coverage fraction uses the general uncirc-male pool as denominat
 #       Expected: infections strictly decreasing.
 # ---------------------------------------------------------------------------
 test_that("scaling PrEP up monotonically reduces infections", {
-  with_hiv_params(list(sexually_active_frac = SAFR))
+  with_hiv_params(list(sexually_active_frac = SAFR, prep_high_risk_fold = 3))
   ctx    <- make_fixture_context()
   pops   <- calculate_populations(ctx)
   
