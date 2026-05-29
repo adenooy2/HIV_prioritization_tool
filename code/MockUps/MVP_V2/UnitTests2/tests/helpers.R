@@ -57,6 +57,23 @@ message("Source complete. Globals available: hiv_params, intervention_params, ",
         "regional_presets.")
 
 # ---------------------------------------------------------------------------
+# 1b. Patch hiv_params with keys added since the Excel was last updated.
+#     Mirrors the %||% fallbacks in the logic file so tests get deterministic
+#     values even when SharePoint Excel predates these changes.
+# ---------------------------------------------------------------------------
+.new_keys <- list(
+  bf_duration_months              = 18,
+  nvp_prophylaxis_duration_months = 1.5
+)
+for (.k in names(.new_keys)) {
+  if (is.null(hiv_params[[.k]]) || (length(hiv_params[[.k]]) == 1 && is.na(hiv_params[[.k]]))) {
+    hiv_params[[.k]] <- .new_keys[[.k]]
+  }
+}
+assign("hiv_params", hiv_params, envir = .GlobalEnv)
+rm(.new_keys, .k)
+
+# ---------------------------------------------------------------------------
 # 2. Fixture builders
 # ---------------------------------------------------------------------------
 # make_fixture_context() returns a context list with deliberately round numbers
@@ -97,6 +114,7 @@ make_fixture_context <- function(...) {
     circ_prevalence         = 30,
     prop_high_risk          = 0.05,
     rr_high                 = 4,
+    percent_on_art_pregnant = 80,
     test_yield              = 0.05,
     prior_year_tests        = NULL,
     prop_retesting          = 0.30,

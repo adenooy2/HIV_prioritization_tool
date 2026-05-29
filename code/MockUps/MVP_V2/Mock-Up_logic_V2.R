@@ -170,12 +170,15 @@ RETENTION_SUPPRESSION_RATE <- hiv_params$retention_suppression_rate
 ART_COST_STANDARD <- hiv_params$art_cost_standard %||% 200
 # ============================================================================
 # MTCT RATES BY MATERNAL ART/SUPPRESSION STATUS
-# Covers transmission risk across pregnancy, delivery, and breastfeeding period.
+# Single cumulative rates covering pregnancy, delivery, and breastfeeding.
+# Sourced directly from hiv_params (Excel general_values).
+# NVP efficacy is adjusted dynamically in the MTCT block using
+# bf_duration_months and nvp_prophylaxis_duration_months.
 # ============================================================================
 MTCT_RATES <- list(
-  on_art_suppressed    = hiv_params$mtct_on_art_suppressed, 
-  on_art_unsuppressed  = hiv_params$mtct_on_art_unsuppressed,   
-  not_on_art           = hiv_params$mtct_not_on_art 
+  on_art_suppressed    = hiv_params$mtct_on_art_suppressed,
+  on_art_unsuppressed  = hiv_params$mtct_on_art_unsuppressed,
+  not_on_art           = hiv_params$mtct_not_on_art
 )
 
 # ============================================================================
@@ -255,7 +258,7 @@ build_intervention_groups <- function(intervention_params){
           outcomes = c("adult_infections")
         ),
         infant_prophylaxis = list(
-          name = "Infant prophylaxis",
+          name = "Infant HIV prophylaxis",
           type = "coverage",
           unit_label = "% of HIV-exposed infants",
           efficacy = subset(intervention_params, intervention_key == "infant_prophylaxis")$efficacy,
@@ -629,15 +632,15 @@ calculate_populations <- function(context) {
     # (every HIV-exposed infant corresponds to one pregnant HIV+ woman).
     pregnant_hiv_pos_cascade     = hiv_exposed_births,
     pregnant_on_art              = hiv_exposed_births *
-      (context$percent_diagnosed / 100) * (context$percent_on_art / 100),
+      (context$percent_diagnosed / 100) * (context$percent_on_art_pregnant / 100),
     pregnant_on_art_suppressed   = hiv_exposed_births *
-      (context$percent_diagnosed / 100) * (context$percent_on_art / 100) *
+      (context$percent_diagnosed / 100) * (context$percent_on_art_pregnant / 100) *
       (context$percent_suppressed / 100),
     pregnant_on_art_unsuppressed = hiv_exposed_births *
-      (context$percent_diagnosed / 100) * (context$percent_on_art / 100) *
+      (context$percent_diagnosed / 100) * (context$percent_on_art_pregnant / 100) *
       (1 - context$percent_suppressed / 100),
     pregnant_not_on_art          = hiv_exposed_births *
-      (1 - (context$percent_diagnosed / 100) * (context$percent_on_art / 100)),
+      (1 - (context$percent_diagnosed / 100) * (context$percent_on_art_pregnant / 100)),
     pregnant_undiagnosed         = hiv_exposed_births * (1 - context$percent_diagnosed / 100),
     # HIV testing eligible pool: HIV-negative pregnant + HIV+ undiagnosed pregnant
     pregnant_hiv_testable        = (births - hiv_exposed_births) +
@@ -694,6 +697,11 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
         plhiv=row$plhiv,
         percent_diagnosed = row$percent_diagnosed,
         percent_on_art = row$percent_on_art,
+        percent_on_art_pregnant = {
+          val <- as.numeric(row$percent_on_art_pregnant)
+          if (is.na(val)) as.numeric(row$percent_on_art) else val
+        },
+        
         percent_suppressed = row$percent_suppressed,
         aids_deaths_per_year = row$aids_deaths_per_year,
         birth_rate = row$birth_rate,
@@ -2469,12 +2477,72 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     mtct_unsupp * MTCT_RATES$on_art_unsuppressed +
     mtct_no_art * MTCT_RATES$not_on_art
   
-  # Step 4: Infant prophylaxis (NVP) further reduces residual transmission.
-  # Efficacy drawn from intervention CSV, consistent with all other interventions.
-  infant_prophy_reduction   <- baseline_infant_infections * infant_prophy_cov_frac *
-    (all_interventions$infant_prophylaxis$efficacy %||% 0)
+  # Step 4: Infant prophylaxis (NVP) reduces transmission over its coverage window.
+  #
+  # NVP only protects during the period it is administered. Effective efficacy
+  # against the full cumulative MTCT rate is scaled by the fraction of the total
+  # risk window covered:
+  #
+  #   eff_efficacy = nvp_raw_efficacy * (nvp_prophylaxis_duration_months / bf_duration_months)
+  #
+  # hiv_params inputs:
+  #   bf_duration_months              - total breastfeeding duration (default 18)
+  #   nvp_prophylaxis_duration_months - months NVP is given (1.5 = 6-week standard;
+  #                                     18 = extended through full breastfeeding)
+  #
+  # Example: 54% efficacy, 6-week NVP (1.5m), 18m breastfeeding
+  #   -> 0.54 * (1.5/18) = 0.045 effective efficacy
+  nvp_bf_months     <- hiv_params$bf_duration_months              %||% 18
+  nvp_prophy_months <- hiv_params$nvp_prophylaxis_duration_months %||% 1.5
+  nvp_raw_eff       <- all_interventions$infant_prophylaxis$efficacy %||% 0
+  nvp_eff_adjusted  <- nvp_raw_eff * min(1, nvp_prophy_months / nvp_bf_months)
+  
+  infant_prophy_reduction   <- baseline_infant_infections * infant_prophy_cov_frac * nvp_eff_adjusted
   end_infant_infections     <- max(0, baseline_infant_infections - infant_prophy_reduction)
   infant_infections_averted <- infant_prophy_reduction
+  
+  # ── DEBUG: implied MTCT rate vs published (console only) ──────────────────
+  # Implied final MTCT rate = infant infections / HIV-exposed infants. This is
+  # the model's analogue of a published country final transmission rate (the
+  # % of HIV-exposed infants infected through pregnancy/delivery/breastfeeding),
+  # so it can be eyeballed against UNAIDS/UNICEF country figures. Baseline is
+  # the pre-prophylaxis (maternal-cascade-only) rate. Denominator-consistent
+  # with the published rate (both use HIV-exposed infants). Print only.
+  if (populations$hiv_exposed_infants > 0) {
+    cat(sprintf(
+      "[MTCT] implied final rate: %.2f%%  (baseline %.2f%%)  | %.0f / %.0f exposed infants\n",
+      100 * end_infant_infections      / populations$hiv_exposed_infants,
+      100 * baseline_infant_infections / populations$hiv_exposed_infants,
+      end_infant_infections,
+      populations$hiv_exposed_infants))
+  } else {
+    cat("[MTCT] implied rate: n/a (no HIV-exposed infants)\n")
+  }
+  
+  # ── DEBUG: MTCT composition breakdown (console only) ──────────────────────
+  # Localises a suspicious implied rate. Two suspects:
+  #   (1) cascade composition — if mtct_supp dominates, baseline collapses
+  #       because suppressed mothers carry the lowest transmission rate;
+  #   (2) the three MTCT_RATES inputs themselves (placeholder / mis-scaled).
+  # Shares are over hiv_exposed_infants so they should sum to ~100%.
+  if (populations$hiv_exposed_infants > 0) {
+    .hei <- populations$hiv_exposed_infants
+    cat(sprintf(
+      "[MTCT]   buckets: supp=%.0f (%.1f%%)  unsupp=%.0f (%.1f%%)  no_art=%.0f (%.1f%%)\n",
+      mtct_supp,   100 * mtct_supp   / .hei,
+      mtct_unsupp, 100 * mtct_unsupp / .hei,
+      mtct_no_art, 100 * mtct_no_art / .hei))
+    cat(sprintf(
+      "[MTCT]   rates: supp=%.4f  unsupp=%.4f  no_art=%.4f\n",
+      MTCT_RATES$on_art_suppressed,
+      MTCT_RATES$on_art_unsuppressed,
+      MTCT_RATES$not_on_art))
+    cat(sprintf(
+      "[MTCT]   prophylaxis: cov_frac=%.3f  efficacy=%.3f  reduction=%.0f infections\n",
+      infant_prophy_cov_frac,
+      all_interventions$infant_prophylaxis$efficacy %||% 0,
+      infant_prophy_reduction))
+  }
   
   # Step 5: Finalise EID diagnosis count and costs.
   # Cost applies to ALL HIV-exposed infants tested (hiv_exposed_infants x coverage),

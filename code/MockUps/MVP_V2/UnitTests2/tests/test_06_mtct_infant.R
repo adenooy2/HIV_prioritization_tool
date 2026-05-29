@@ -56,8 +56,8 @@ LIVE_INFANT_MORT <- list(
 )
 
 LIVE_PARAMS_MTCT <- list(
-  sexually_active_frac           = 0.85,
-  ltfu_rate_stable                = 0.044,
+  sexually_active_frac             = 0.85,
+  ltfu_rate_stable                 = 0.044,
   ltfu_rate_unstable               = 0.14,
   spontaneous_reengagement_rate    = 0,
   retention_suppression_rate       = 0.41,
@@ -70,7 +70,12 @@ LIVE_PARAMS_MTCT <- list(
   average_linkage_cap              = 0.93,
   pmtct_cascade_supp_discount      = 0.9,
   eid_supp_rate                    = 0.38,
-  prop_cd4_ahd                     = 0.4
+  prop_cd4_ahd                     = 0.4,
+  # Duration params for NVP efficacy adjustment (Step 4 of MTCT cascade).
+  # Tests 6.5/6.6 use full-duration NVP (ratio=1.0) to keep arithmetic
+  # unchanged. Test 6.13 explicitly tests partial-duration scaling.
+  bf_duration_months               = 18,
+  nvp_prophylaxis_duration_months  = 18
 )
 
 zero_interventions <- function() {
@@ -285,29 +290,21 @@ test_that("ANC HIV testing routes undiagnosed pregnant women through PMTCT casca
 })
 
 # ---------------------------------------------------------------------------
-# 6.5 Infant prophylaxis reduces infant infections multiplicatively
+# 6.5 Infant prophylaxis reduces infant infections multiplicatively (full duration)
 # ---------------------------------------------------------------------------
-# WHAT: infant_prophy_cov_frac = (number_reached / hiv_exposed_infants) × efficacy
-#       infant_prophy_reduction = baseline_infant_inf × cov_frac × efficacy_of_prophy
-#       Wait — re-reading line 1550-51:
-#         infant_prophy_cov_frac += (number_reached / hiv_exposed_infants) × intervention$efficacy
-#       So coverage frac itself is already efficacy-weighted. Then line 2301-02:
-#         infant_prophy_reduction = baseline × cov_frac × efficacy
-#       This means efficacy is applied TWICE? Let me re-read.
-#       Actually I think line 2302 multiplies by efficacy AGAIN. With cov=100%,
-#       eff=0.50:
-#         cov_frac = 1.0 × 0.50 = 0.50
-#         reduction = baseline × 0.50 × 0.50 = baseline × 0.25
-#       This may be a bug — squared efficacy. Or the cov_frac is supposed to
-#       be the raw fraction (number_reached / pool) and only multiplied by
-#       efficacy once. Worth flagging.
-# WHY: Pins current behaviour while flagging the apparent double-efficacy.
-# HOW: infant_prophylaxis: type = coverage, eligible_pop = hiv_exposed_infants.
-#      Override efficacy = 1.0 (so the double-application doesn't matter).
-#      At 100% coverage × eff=1.0:
-#        cov_frac = 1.0 × 1.0 = 1.0
-#        reduction = 76 × 1.0 × 1.0 = 76
-#        end_infant_inf = max(0, 76 - 76) = 0
+# WHAT: NVP efficacy is duration-adjusted in the logic:
+#         nvp_eff_adjusted = raw_eff × min(1, nvp_prophy_months / bf_months)
+#       LIVE_PARAMS_MTCT sets bf_duration_months = nvp_prophylaxis_duration_months = 18,
+#       so ratio = 1.0 and nvp_eff_adjusted = raw_eff. This pins the full-duration
+#       case where adjusted efficacy equals raw efficacy.
+#       infant_prophy_reduction = baseline × cov_frac × nvp_eff_adjusted
+# WHY: Isolates the coverage/efficacy multiplication from duration scaling.
+#      Test 6.13 explicitly tests partial-duration scaling.
+# HOW: eff=1.0, cov=100%, ratio=1.0:
+#        cov_frac         = 1.0 × 1.0 = 1.0
+#        nvp_eff_adjusted = 1.0 × 1.0 = 1.0
+#        reduction        = 76 × 1.0 × 1.0 = 76
+#        end_infant_inf   = max(0, 76 - 76) = 0
 # ---------------------------------------------------------------------------
 test_that("infant prophylaxis at 100% × eff=1 reduces infections to 0", {
   with_hiv_params(LIVE_PARAMS_MTCT)
@@ -334,21 +331,21 @@ test_that("infant prophylaxis at 100% × eff=1 reduces infections to 0", {
 })
 
 # ---------------------------------------------------------------------------
-# 6.6 Infant prophylaxis: efficacy applied once (single-application formula)
+# 6.6 Infant prophylaxis: duration-adjusted efficacy scales reduction linearly
 # ---------------------------------------------------------------------------
-# WHAT: With efficacy = 0.50 and coverage = 100%, reduction = baseline × 0.50.
-#       The intervention-loop accumulator (line 1551) computes
-#       infant_prophy_cov_frac = (number_reached / hiv_exposed_infants) × efficacy
-#       and the MTCT cascade applies the cov_frac directly without re-multiplying
-#       by efficacy. (Earlier versions of the code multiplied by efficacy in both
-#       places; that double-application was fixed in V2.)
-# WHY: Verifies that scaling efficacy linearly scales the reduction. If the
-#      formula reverts to double-application, this test fails with end_inf = 57
-#      (i.e. reduction = 19 instead of 38), prompting a code-review.
-# HOW: eff = 0.50, cov = 100%:
-#        cov_frac  = 1.0 × 0.50 = 0.50
-#        reduction = 76 × 0.50  = 38
-#        end_infant_inf = 76 - 38 = 38
+# WHAT: With raw efficacy = 0.50, full-duration NVP (ratio=1.0), coverage = 100%:
+#         nvp_eff_adjusted = 0.50 × 1.0 = 0.50
+#         cov_frac         = 1.0 × 0.50 = 0.50
+#         reduction        = 76 × 0.50  = 38
+#       LIVE_PARAMS_MTCT sets ratio=1.0 so this is equivalent to the pre-change
+#       single-application formula.
+# WHY: Verifies efficacy scales the reduction linearly at full NVP duration.
+#      If duration adjustment is misapplied (e.g. ratio applied twice),
+#      reduction would be 76 × 0.50 × (1.5/18) = ~3 instead of 38.
+# HOW: eff = 0.50, cov = 100%, ratio = 1.0:
+#        nvp_eff_adjusted = 0.50
+#        reduction        = 76 × 0.50 = 38
+#        end_infant_inf   = 76 - 38 = 38
 # ---------------------------------------------------------------------------
 test_that("infant prophylaxis applies efficacy linearly (single-application)", {
   with_hiv_params(LIVE_PARAMS_MTCT)
@@ -611,4 +608,48 @@ test_that("ANC VL shift capped at pregnant_on_art_unsuppressed even with eff>1",
   
   expect_close(result$mtct_pregnant_unsuppressed, 0)
   expect_close(result$mtct_pregnant_suppressed,   900)
+})
+# ---------------------------------------------------------------------------
+# 6.13 NVP duration scaling: partial coverage window reduces effective efficacy
+# ---------------------------------------------------------------------------
+# WHAT: With 6-week standard NVP (1.5 months) over 18-month breastfeeding:
+#         nvp_eff_adjusted = raw_eff × (1.5 / 18) = raw_eff × 0.0833
+#       At raw_eff = 1.0, cov = 100%:
+#         reduction = 76 × 1.0 × 0.0833 = 6.33 -> 6
+#         end_infant_inf = 76 - 6 = 70
+# WHY: Directly tests the duration-fraction formula. If the formula ignores
+#      duration (ratio stays 1.0), end_infant_inf would wrongly be 0.
+# HOW: Override nvp_prophylaxis_duration_months = 1.5 (6-week NVP),
+#      bf_duration_months = 18. eff = 1.0, cov = 100%.
+# ---------------------------------------------------------------------------
+test_that("6-week NVP (1.5m / 18m) scales efficacy to 8.3% of raw", {
+  with_hiv_params(modifyList(LIVE_PARAMS_MTCT, list(
+    nvp_prophylaxis_duration_months = 1.5,
+    bf_duration_months              = 18
+  )))
+  override_mtct_globals()
+  
+  ig_new <- intervention_groups
+  ig_new$prevention$interventions$infant_prophylaxis$efficacy  <- 1.0
+  ig_new$prevention$interventions$infant_prophylaxis$unit_cost <- 0
+  with_intervention_groups(list(prevention = ig_new$prevention))
+  
+  ctx <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
+                              yield_multipliers = list())
+  pops <- calculate_populations(ctx)
+  
+  interv <- zero_interventions()
+  interv$infant_prophylaxis <- 100
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # nvp_eff_adjusted = 1.0 × (1.5/18) = 0.0833
+  # reduction = 76 × 1.0 × 0.0833 = 6.33 -> 6
+  # end_infant_inf = 76 - 6 = 70  (not 0 as with full-duration NVP)
+  expect_lte(abs(result$end_infant_infections - 70), 1)
+  expect_lte(abs(result$infant_infections_averted - 6), 1)
+  # Must be substantially higher than full-duration case (0)
+  expect_gt(result$end_infant_infections, 60)
 })
