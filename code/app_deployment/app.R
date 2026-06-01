@@ -40,7 +40,6 @@ tryCatch(
 
 
 
-
 # ============================================================================
 # USER INTERFACE
 # ============================================================================
@@ -218,6 +217,61 @@ ui <- page_sidebar(
 # ============================================================================
 
 server <- function(input, output, session) {
+  
+  # ---- Intervention tooltip text (used in Baseline & Scenarios tabs) ----
+  # Keys MUST match the int_key values used in intervention_groups.
+  # Edit text here — it propagates to every tooltip in both tabs.
+  intervention_tooltips <- list(
+    # Prevention
+    prep_oral           = "Number of individuals currently receiving and/or initiated on oral PrEP.",
+    prep_lenacapavir    = "Number of individuals currently receiving and/or initiated on long-acting injectable PrEP (lenacapavir).",
+    vmmc                = "Voluntary medical male circumcisions performed in the year.",
+    condoms             = "Total number of condoms distributed in the year.",
+    infant_prophylaxis  = "Percentage of HIV-exposed infants receiving HIV prophylaxis (e.g. NVP) to reduce vertical transmission.",
+    
+    # Testing
+    test_facility_general = "Number of HIV tests performed at health facilities (excluding ANC).",
+    test_network          = "Number of HIV tests performed through social-network testing approaches.",
+    test_index            = "Number of tests conducted among partners of newly-diagnosed people living with HIV.",
+    test_community        = "Number of HIV tests performed in community settings.",
+    test_kpsti            = "Number of HIV tests performed among key populations or through STI services (excluding adolescents).",
+    hivst_facility        = "Number of HIV self-tests distributed at facilities.",
+    hivst_community       = "Number of HIV self-tests distributed in the community.",
+    eid                   = "Percentage of HIV-exposed infants receiving HIV testing.",
+    anc_hiv_testing       = "Percentage of pregnant women receiving ANC HIV testing.",
+    pnc_hiv_testing       = "Percentage of postpartum women (not known to be living with HIV) receiving PNC HIV testing.",
+    
+    # Treatment monitoring
+    vl_monitoring_routine = "Percentage of people on ART receiving routine viral load testing.",
+    mmd_3month            = "Number / percentage of stable ART clients enrolled in 3-month multi-month dispensing.",
+    mmd_6month            = "Number / percentage of stable ART clients enrolled in 6-month multi-month dispensing.",
+    mmd_12month           = "Number / percentage of stable ART clients enrolled in 12-month multi-month dispensing.",
+    community_pickup      = "Number / percentage of stable ART clients using community-based ART pick-up.",
+    
+    # Retention support
+    adherence_counseling  = "Percentage of individuals identified as unsuppressed (through a recent viral load) receiving Enhanced Adherence Counselling (EAC).",
+    tracking_tracing      = "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool.",
+    anc_vl_testing        = "Coverage of pregnant women living with HIV who receive viral load testing.",
+    pnc_vl_testing        = "Coverage of postpartum women living with HIV who receive viral load testing.",
+    
+    # Advanced disease
+    cd4_testing  = "Coverage of CD4 testing among individuals initiating ART to identify advanced disease. Required to unlock the AHD package.",
+    ahd_package  = "Number / percentage of AHD-diagnosed clients receiving the package of care (LAM, CrAg, fluconazole)."
+  )
+  
+  # Helper: builds the small info-icon tooltip trigger for an intervention.
+  # Returns NULL when no tooltip text is defined for that key, so the icon
+  # is silently skipped rather than appearing without a message.
+  make_intervention_tip <- function(int_key, placement = "right") {
+    tip_text <- intervention_tooltips[[int_key]]
+    if (is.null(tip_text)) return(NULL)
+    tooltip(
+      bsicons::bs_icon("info-circle", class = "text-primary",
+                       style = "cursor: help; font-size: 0.9em; margin-left: 4px;"),
+      tip_text,
+      placement = placement
+    )
+  }
   
   # Store original baseline to scale proportionally
   original_population <- reactiveVal(5000000)
@@ -1145,9 +1199,15 @@ server <- function(input, output, session) {
         min_val <- 0
         max_val <- if(intervention$type == "coverage") 100 else NA
         
+        # Build a label that includes a small info icon with a tooltip.
+        label_with_tip <- tagList(
+          paste0(intervention$name, " (", intervention$unit_label, ")"),
+          make_intervention_tip(int_key)
+        )
+        
         numericInput(
           paste0("baseline_", int_key),
-          label = paste0(intervention$name, " (", intervention$unit_label, ")"),
+          label = label_with_tip,
           value = value,
           min = min_val,
           max = max_val,
@@ -1205,7 +1265,7 @@ server <- function(input, output, session) {
           col_widths = c(4, 4, 4),
           div(
             style = "padding-top: 25px; font-size: 0.9em;",
-            strong(intervention$name),
+            tagList(strong(intervention$name), make_intervention_tip(int_key)),
             br(),
             span(style = "color: #666;", "Baseline: ", format(round(base_value, 1), big.mark = ",")),
             br(),
