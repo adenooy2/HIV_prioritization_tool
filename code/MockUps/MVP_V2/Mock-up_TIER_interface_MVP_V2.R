@@ -12,6 +12,7 @@
 
 library(shiny)
 library(bslib)
+library(bsicons)
 library(DT)
 library(ggplot2)
 library(dplyr)
@@ -73,98 +74,12 @@ ui <- page_sidebar(
     numericInput("pct_diagnosed", "% of PLHIV Diagnosed:", value = 85, min = 0, max = 100),  
     numericInput("pct_on_art", "% Diagnosed on ART:", value = 78, min = 0, max = 100),
     numericInput("pct_suppressed", "% on ART Suppressed:", value = 82, min = 0, max = 100),
-    tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0))
-    
+    tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0)),
+    p(style = "font-size: 0.85em; color: #666; margin-top: 10px;",
+      "Note: Deaths are calculated by cascade stage and intervention effects.")
   ),
   
   navset_card_tab(
-    nav_panel(
-      "User Guide",
-      div(
-        style = "max-width: 900px; padding: 12px 4px; line-height: 1.5;",
-        
-        h3("HIV Prioritisation Tool — User Guide"),
-        p(em("A decision-support tool for trade-off analysis in HIV service planning")),
-        
-        h4("What the tool is for"),
-        p("This tool is built to help decision makers and planners think through trade-offs when choosing between HIV service investments. It takes a current programme picture and lets the user vary the volume of any intervention to see how cascade outcomes (people diagnosed, on ART, suppressed), new infections, deaths, and total cost are likely to move in response."),
-        p("It is a global prioritisation tool. To remain usable across country contexts and tractable for rapid scenario comparison, it deliberately simplifies the underlying epidemiology: it runs a single-year calculation, applies a fixed force-of-infection structure with four risk strata, and uses globally-derived efficacy parameters that are not country-calibrated in the way a full transmission model would be."),
-        p(strong("Important: "), "the tool is ", em("indicative and illustrative"),
-          " of the direction and rough magnitude of impact of different choices. While effort has gone into the underlying parameters and identities, outputs will not be 100% accurate. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decision supported by this tool."),
-        
-        h4("How to use the tool"),
-        tags$ol(
-          tags$li(strong("Set the country context. "),
-                  "Enter or confirm population and current 95-targets (diagnosed, on ART, suppressed) in the most recent reporting year."),
-          tags$li(strong("Enter the baseline scenario. "),
-                  "Populate each intervention with the volume and coverage of services delivered in the year prior (see ", em("What the baseline represents"), " below)."),
-          tags$li(strong("Build a scenario. "),
-                  "Adjust intervention volumes up or down from baseline. You can scale things in either direction."),
-          tags$li(strong("Compare. "),
-                  "The output shows the estimated differences between each scenario and baseline. This includes the 95-targets, expected infections, infant infections, deaths and budget. Positive ", tags$q("infections averted"), " and ", tags$q("deaths averted"),
-                  " mean the scenario outperforms baseline. Negative values mean it does worse — useful for testing budget-cut scenarios."),
-          tags$li(strong("Iterate. "),
-                  "Run several scenarios side-by-side to see where additional money buys the most impact and where cuts are least harmful.")
-        ),
-        
-        h4("What the baseline scenario coverage represents"),
-        p("Baseline coverage values should reflect what was actually delivered in the most recent completed year — i.e. the volumes the programme achieved, not its targets, plans or guidelines. The baseline serves two purposes: (1) it calibrates the model so the simulated epidemic matches the observed one, and (2) it is the reference point against which each scenario is compared. If baseline values are too optimistic, scale-up scenarios will look weaker than they should, and scale-down scenarios will look worse than they should."),
-        p("All numerical inputs are annual counts of people reached / units delivered, except where the input is explicitly described as a percentage."),
-        
-        h4("Intervention definitions and data requirements"),
-        
-        h5(strong("Prevention")),
-        tags$ul(
-          tags$li(strong("Oral PrEP — "), "Number of individuals currently receiving and/or initiated on oral PrEP."),
-          tags$li(strong("Long-acting PrEP (lenacapavir) — "), "Number of individuals currently receiving and/or initiated on long-acting injectable PrEP."),
-          tags$li(strong("Condoms — "), "Total number of condoms distributed in the year."),
-          tags$li(strong("VMMC — "), "Voluntary medical male circumcisions performed in the year."),
-          tags$li(strong("Infant prophylaxis — "), "Percentage of HIV-exposed infants receiving HIV prophylaxis (e.g. NVP) to reduce vertical transmission.")
-        ),
-        
-        h5(strong("Testing and diagnosis")),
-        tags$ul(
-          tags$li(strong("Facility-based testing (general) — "), "Number of HIV tests performed at health facilities (excl. ANC)."),
-          tags$li(strong("Network testing — "), "Number of tests conducted as a result of network testing programmes."),
-          tags$li(strong("Index testing — "), "Number of tests conducted among partners of newly-diagnosed people living with HIV."),
-          tags$li(strong("Community testing — "), "Number of HIV tests performed in community settings."),
-          tags$li(strong("Key populations: "), "Number of HIV tests performed among key populations or through STI services (excluding adolescents)."),
-          tags$li(strong("Facility HIVST: "), "Number of HIV self-tests distributed at facilities."),
-          tags$li(strong("Community HIVST: "), "Number of HIV self-tests distributed in the community."),
-          tags$li(strong("Early Infant Diagnosis (EID) — "), "Percentage of HIV-exposed infants receiving HIV testing."),
-          tags$li(strong("ANC HIV testing — "), "Percentage of pregnant women receiving ANC HIV testing."),
-          tags$li(strong("PNC HIV testing — "), "Percentage of postpartum women (not known to be living with HIV) receiving PNC HIV testing.")
-        ),
-        
-        h5(strong("Treatment, retention and monitoring")),
-        tags$ul(
-          tags$li(strong("Routine VL monitoring — "), "Percentage of people on ART receiving routine viral load testing."),
-          tags$li(strong("ANC and PNC VL testing — "), "Coverage of pregnant and postpartum women living with HIV who receive viral load testing."),
-          tags$li(strong("Multi-month dispensing / DSD (3-month, 6-month, 12-month, ART pick-ups) — "), "Number of stable ART clients enrolled in differentiated service delivery."),
-          tags$li(strong("Enhanced Adherence Counselling (EAC) — "), "Percentage of individuals identified as unsuppressed (through a recent viral load)."),
-          tags$li(strong("Tracking and tracing — "), "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool.")
-        ),
-        
-        h5(strong("Advanced HIV disease")),
-        tags$ul(
-          tags$li(strong("CD4 testing — "), "Coverage of CD4 testing among individuals initiating ART to identify advanced disease. Required to ", tags$q("unlock"), " the AHD package."),
-          tags$li(strong("AHD package — "), "Number of AHD-diagnosed clients receiving the package of care.")
-        ),
-        
-        h4("What the tool does not do"),
-        tags$ul(
-          tags$li("It does not project multi-year dynamics; each run is a single-year calculation."),
-          tags$li("It does not model resistance, age structure, or sub-national heterogeneity."),
-          tags$li("It does not optimise; it calculates the consequences of a chosen mix, leaving the decision to the user."),
-          tags$li("It represents a complementary tool for country-led analysis and other validated modelling tools.")
-        ),
-        
-        hr(),
-        p(em("Use the tool to compare directions and trade-offs. Use country processes and validated models for the exact numbers in your plan."),
-          style = "color: #595959; text-align: center;")
-      )
-    ),
-    
     nav_panel(
       "Baseline Coverage",
       uiOutput("baseline_ui")
@@ -299,6 +214,61 @@ ui <- page_sidebar(
 # ============================================================================
 
 server <- function(input, output, session) {
+  
+  # ---- Intervention tooltip text (used in Baseline & Scenarios tabs) ----
+  # Keys MUST match the int_key values used in intervention_groups.
+  # Edit text here — it propagates to every tooltip in both tabs.
+  intervention_tooltips <- list(
+    # Prevention
+    prep_oral           = "Number of individuals currently receiving and/or initiated on oral PrEP.",
+    prep_lenacapavir    = "Number of individuals currently receiving and/or initiated on long-acting injectable PrEP (lenacapavir).",
+    vmmc                = "Voluntary medical male circumcisions performed in the year.",
+    condoms             = "Total number of condoms distributed in the year.",
+    infant_prophylaxis  = "Percentage of HIV-exposed infants receiving HIV prophylaxis (e.g. NVP) to reduce vertical transmission.",
+    
+    # Testing
+    test_facility_general = "Number of HIV tests performed at health facilities (excluding ANC).",
+    test_network          = "Number of HIV tests performed through social-network testing approaches.",
+    test_index            = "Number of tests conducted among partners of newly-diagnosed people living with HIV.",
+    test_community        = "Number of HIV tests performed in community settings.",
+    test_kpsti            = "Number of HIV tests performed among key populations or through STI services (excluding adolescents).",
+    hivst_facility        = "Number of HIV self-tests distributed at facilities.",
+    hivst_community       = "Number of HIV self-tests distributed in the community.",
+    eid                   = "Percentage of HIV-exposed infants receiving HIV testing.",
+    anc_hiv_testing       = "Percentage of pregnant women receiving ANC HIV testing.",
+    pnc_hiv_testing       = "Percentage of postpartum women (not known to be living with HIV) receiving PNC HIV testing.",
+    
+    # Treatment monitoring
+    vl_monitoring_routine = "Percentage of people on ART receiving routine viral load testing.",
+    mmd_3month            = "Number / percentage of stable ART clients enrolled in 3-month multi-month dispensing.",
+    mmd_6month            = "Number / percentage of stable ART clients enrolled in 6-month multi-month dispensing.",
+    mmd_12month           = "Number / percentage of stable ART clients enrolled in 12-month multi-month dispensing.",
+    community_pickup      = "Number / percentage of stable ART clients using community-based ART pick-up.",
+    
+    # Retention support
+    adherence_counseling  = "Percentage of individuals identified as unsuppressed (through a recent viral load) receiving Enhanced Adherence Counselling (EAC).",
+    tracking_tracing      = "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool.",
+    anc_vl_testing        = "Coverage of pregnant women living with HIV who receive viral load testing.",
+    pnc_vl_testing        = "Coverage of postpartum women living with HIV who receive viral load testing.",
+    
+    # Advanced disease
+    cd4_testing  = "Coverage of CD4 testing among individuals initiating ART to identify advanced disease. Required to unlock the AHD package.",
+    ahd_package  = "Number / percentage of AHD-diagnosed clients receiving the package of care (LAM, CrAg, fluconazole)."
+  )
+  
+  # Helper: builds the small info-icon tooltip trigger for an intervention.
+  # Returns NULL when no tooltip text is defined for that key, so the icon
+  # is silently skipped rather than appearing without a message.
+  make_intervention_tip <- function(int_key, placement = "right") {
+    tip_text <- intervention_tooltips[[int_key]]
+    if (is.null(tip_text)) return(NULL)
+    tooltip(
+      bsicons::bs_icon("info-circle", class = "text-primary",
+                       style = "cursor: help; font-size: 0.9em; margin-left: 4px;"),
+      tip_text,
+      placement = placement
+    )
+  }
   
   # Store original baseline to scale proportionally
   original_population <- reactiveVal(5000000)
@@ -1226,9 +1196,15 @@ server <- function(input, output, session) {
         min_val <- 0
         max_val <- if(intervention$type == "coverage") 100 else NA
         
+        # Build a label that includes a small info icon with a tooltip.
+        label_with_tip <- tagList(
+          paste0(intervention$name, " (", intervention$unit_label, ")"),
+          make_intervention_tip(int_key)
+        )
+        
         numericInput(
           paste0("baseline_", int_key),
-          label = paste0(intervention$name, " (", intervention$unit_label, ")"),
+          label = label_with_tip,
           value = value,
           min = min_val,
           max = max_val,
@@ -1286,7 +1262,7 @@ server <- function(input, output, session) {
           col_widths = c(4, 4, 4),
           div(
             style = "padding-top: 25px; font-size: 0.9em;",
-            strong(intervention$name),
+            tagList(strong(intervention$name), make_intervention_tip(int_key)),
             br(),
             span(style = "color: #666;", "Baseline: ", format(round(base_value, 1), big.mark = ",")),
             br(),

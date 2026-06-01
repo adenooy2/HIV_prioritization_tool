@@ -258,7 +258,7 @@ build_intervention_groups <- function(intervention_params){
           outcomes = c("adult_infections")
         ),
         infant_prophylaxis = list(
-          name = "Infant HIV prophylaxis to reduce evrtical transmission",
+          name = "Infant HIV prophylaxis to reduce vertical transmission",
           type = "coverage",
           unit_label = "% of HIV-exposed infants",
           efficacy = subset(intervention_params, intervention_key == "infant_prophylaxis")$efficacy,
