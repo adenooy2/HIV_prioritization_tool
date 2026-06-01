@@ -73,12 +73,98 @@ ui <- page_sidebar(
     numericInput("pct_diagnosed", "% of PLHIV Diagnosed:", value = 85, min = 0, max = 100),  
     numericInput("pct_on_art", "% Diagnosed on ART:", value = 78, min = 0, max = 100),
     numericInput("pct_suppressed", "% on ART Suppressed:", value = 82, min = 0, max = 100),
-    tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0)),
-    p(style = "font-size: 0.85em; color: #666; margin-top: 10px;",
-      "Note: Deaths are calculated by cascade stage and intervention effects.")
+    tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0))
+    
   ),
   
   navset_card_tab(
+    nav_panel(
+      "User Guide",
+      div(
+        style = "max-width: 900px; padding: 12px 4px; line-height: 1.5;",
+        
+        h3("HIV Prioritisation Tool — User Guide"),
+        p(em("A decision-support tool for trade-off analysis in HIV service planning")),
+        
+        h4("What the tool is for"),
+        p("This tool is built to help decision makers and planners think through trade-offs when choosing between HIV service investments. It takes a current programme picture and lets the user vary the volume of any intervention to see how cascade outcomes (people diagnosed, on ART, suppressed), new infections, deaths, and total cost are likely to move in response."),
+        p("It is a global prioritisation tool. To remain usable across country contexts and tractable for rapid scenario comparison, it deliberately simplifies the underlying epidemiology: it runs a single-year calculation, applies a fixed force-of-infection structure with four risk strata, and uses globally-derived efficacy parameters that are not country-calibrated in the way a full transmission model would be."),
+        p(strong("Important: "), "the tool is ", em("indicative and illustrative"),
+          " of the direction and rough magnitude of impact of different choices. While effort has gone into the underlying parameters and identities, outputs will not be 100% accurate. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decision supported by this tool."),
+        
+        h4("How to use the tool"),
+        tags$ol(
+          tags$li(strong("Set the country context. "),
+                  "Enter or confirm population and current 95-targets (diagnosed, on ART, suppressed) in the most recent reporting year."),
+          tags$li(strong("Enter the baseline scenario. "),
+                  "Populate each intervention with the volume and coverage of services delivered in the year prior (see ", em("What the baseline represents"), " below)."),
+          tags$li(strong("Build a scenario. "),
+                  "Adjust intervention volumes up or down from baseline. You can scale things in either direction."),
+          tags$li(strong("Compare. "),
+                  "The output shows the estimated differences between each scenario and baseline. This includes the 95-targets, expected infections, infant infections, deaths and budget. Positive ", tags$q("infections averted"), " and ", tags$q("deaths averted"),
+                  " mean the scenario outperforms baseline. Negative values mean it does worse — useful for testing budget-cut scenarios."),
+          tags$li(strong("Iterate. "),
+                  "Run several scenarios side-by-side to see where additional money buys the most impact and where cuts are least harmful.")
+        ),
+        
+        h4("What the baseline scenario coverage represents"),
+        p("Baseline coverage values should reflect what was actually delivered in the most recent completed year — i.e. the volumes the programme achieved, not its targets, plans or guidelines. The baseline serves two purposes: (1) it calibrates the model so the simulated epidemic matches the observed one, and (2) it is the reference point against which each scenario is compared. If baseline values are too optimistic, scale-up scenarios will look weaker than they should, and scale-down scenarios will look worse than they should."),
+        p("All numerical inputs are annual counts of people reached / units delivered, except where the input is explicitly described as a percentage."),
+        
+        h4("Intervention definitions and data requirements"),
+        
+        h5(strong("Prevention")),
+        tags$ul(
+          tags$li(strong("Oral PrEP — "), "Number of individuals currently receiving and/or initiated on oral PrEP."),
+          tags$li(strong("Long-acting PrEP (lenacapavir) — "), "Number of individuals currently receiving and/or initiated on long-acting injectable PrEP."),
+          tags$li(strong("Condoms — "), "Total number of condoms distributed in the year."),
+          tags$li(strong("VMMC — "), "Voluntary medical male circumcisions performed in the year."),
+          tags$li(strong("Infant prophylaxis — "), "Percentage of HIV-exposed infants receiving HIV prophylaxis (e.g. NVP) to reduce vertical transmission.")
+        ),
+        
+        h5(strong("Testing and diagnosis")),
+        tags$ul(
+          tags$li(strong("Facility-based testing (general) — "), "Number of HIV tests performed at health facilities (excl. ANC)."),
+          tags$li(strong("Network testing — "), "Number of tests conducted as a result of network testing programmes."),
+          tags$li(strong("Index testing — "), "Number of tests conducted among partners of newly-diagnosed people living with HIV."),
+          tags$li(strong("Community testing — "), "Number of HIV tests performed in community settings."),
+          tags$li(strong("Key populations: "), "Number of HIV tests performed among key populations or through STI services (excluding adolescents)."),
+          tags$li(strong("Facility HIVST: "), "Number of HIV self-tests distributed at facilities."),
+          tags$li(strong("Community HIVST: "), "Number of HIV self-tests distributed in the community."),
+          tags$li(strong("Early Infant Diagnosis (EID) — "), "Percentage of HIV-exposed infants receiving HIV testing."),
+          tags$li(strong("ANC HIV testing — "), "Percentage of pregnant women receiving ANC HIV testing."),
+          tags$li(strong("PNC HIV testing — "), "Percentage of postpartum women (not known to be living with HIV) receiving PNC HIV testing.")
+        ),
+        
+        h5(strong("Treatment, retention and monitoring")),
+        tags$ul(
+          tags$li(strong("Routine VL monitoring — "), "Percentage of people on ART receiving routine viral load testing."),
+          tags$li(strong("ANC and PNC VL testing — "), "Coverage of pregnant and postpartum women living with HIV who receive viral load testing."),
+          tags$li(strong("Multi-month dispensing / DSD (3-month, 6-month, 12-month, ART pick-ups) — "), "Number of stable ART clients enrolled in differentiated service delivery."),
+          tags$li(strong("Enhanced Adherence Counselling (EAC) — "), "Percentage of individuals identified as unsuppressed (through a recent viral load)."),
+          tags$li(strong("Tracking and tracing — "), "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool.")
+        ),
+        
+        h5(strong("Advanced HIV disease")),
+        tags$ul(
+          tags$li(strong("CD4 testing — "), "Coverage of CD4 testing among individuals initiating ART to identify advanced disease. Required to ", tags$q("unlock"), " the AHD package."),
+          tags$li(strong("AHD package — "), "Number of AHD-diagnosed clients receiving the package of care.")
+        ),
+        
+        h4("What the tool does not do"),
+        tags$ul(
+          tags$li("It does not project multi-year dynamics; each run is a single-year calculation."),
+          tags$li("It does not model resistance, age structure, or sub-national heterogeneity."),
+          tags$li("It does not optimise; it calculates the consequences of a chosen mix, leaving the decision to the user."),
+          tags$li("It represents a complementary tool for country-led analysis and other validated modelling tools.")
+        ),
+        
+        hr(),
+        p(em("Use the tool to compare directions and trade-offs. Use country processes and validated models for the exact numbers in your plan."),
+          style = "color: #595959; text-align: center;")
+      )
+    ),
+    
     nav_panel(
       "Baseline Coverage",
       uiOutput("baseline_ui")
