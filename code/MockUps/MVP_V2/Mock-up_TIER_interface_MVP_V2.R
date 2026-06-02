@@ -21,6 +21,8 @@ library(scales)
 library(httr)
 library(readr)
 library(readxl)
+library(rmarkdown)
+library(pagedown)
 
 # Source logic file
 tryCatch(
@@ -81,6 +83,92 @@ ui <- page_sidebar(
   
   navset_card_tab(
     nav_panel(
+      "User Guide",
+      div(
+        style = "max-width: 900px; padding: 12px 4px; line-height: 1.5;",
+        
+        h3("HIV Prioritisation Tool — User Guide"),
+        p(em("A decision-support tool for trade-off analysis in HIV service planning")),
+        
+        h4("What the tool is for"),
+        p("This tool is built to help decision makers and planners think through trade-offs when choosing between HIV service investments. It takes a current programme picture and lets the user vary the volume of any intervention to see how cascade outcomes (people diagnosed, on ART, suppressed), new infections, deaths, and total cost are likely to move in response."),
+        p("It is a global prioritisation tool. To remain usable across country contexts and tractable for rapid scenario comparison, it deliberately simplifies the underlying epidemiology: it runs a single-year calculation, applies a fixed force-of-infection structure with four risk strata, and uses globally-derived efficacy parameters that are not country-calibrated in the way a full transmission model would be."),
+        p(strong("Important: "), "the tool is ", em("indicative and illustrative"),
+          " of the direction and rough magnitude of impact of different choices. While effort has gone into the underlying parameters and identities, outputs will not be 100% accurate. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decision supported by this tool."),
+        
+        h4("How to use the tool"),
+        tags$ol(
+          tags$li(strong("Set the country context. "),
+                  "Enter or confirm population and current 95-targets (diagnosed, on ART, suppressed) in the most recent reporting year."),
+          tags$li(strong("Enter the baseline scenario. "),
+                  "Populate each intervention with the volume and coverage of services delivered in the year prior (see ", em("What the baseline represents"), " below)."),
+          tags$li(strong("Build a scenario. "),
+                  "Adjust intervention volumes up or down from baseline. You can scale things in either direction."),
+          tags$li(strong("Compare. "),
+                  "The output shows the estimated differences between each scenario and baseline. This includes the 95-targets, expected infections, infant infections, deaths and budget. Positive ", tags$q("infections averted"), " and ", tags$q("deaths averted"),
+                  " mean the scenario outperforms baseline. Negative values mean it does worse — useful for testing budget-cut scenarios."),
+          tags$li(strong("Iterate. "),
+                  "Run several scenarios side-by-side to see where additional money buys the most impact and where cuts are least harmful.")
+        ),
+        
+        h4("What the baseline scenario coverage represents"),
+        p("Baseline coverage values should reflect what was actually delivered in the most recent completed year — i.e. the volumes the programme achieved, not its targets, plans or guidelines. The baseline serves two purposes: (1) it calibrates the model so the simulated epidemic matches the observed one, and (2) it is the reference point against which each scenario is compared. If baseline values are too optimistic, scale-up scenarios will look weaker than they should, and scale-down scenarios will look worse than they should."),
+        p("All numerical inputs are annual counts of people reached / units delivered, except where the input is explicitly described as a percentage."),
+        
+        h4("Intervention definitions and data requirements"),
+        
+        h5(strong("Prevention")),
+        tags$ul(
+          tags$li(strong("Oral PrEP — "), "Number of individuals currently receiving and/or initiated on oral PrEP."),
+          tags$li(strong("Long-acting PrEP (lenacapavir) — "), "Number of individuals currently receiving and/or initiated on long-acting injectable PrEP."),
+          tags$li(strong("Condoms — "), "Total number of condoms distributed in the year."),
+          tags$li(strong("VMMC — "), "Voluntary medical male circumcisions performed in the year."),
+          tags$li(strong("Infant prophylaxis — "), "Percentage of HIV-exposed infants receiving HIV prophylaxis (e.g. NVP) to reduce vertical transmission.")
+        ),
+        
+        h5(strong("Testing and diagnosis")),
+        tags$ul(
+          tags$li(strong("Facility-based testing (general) — "), "Number of HIV tests performed at health facilities (excl. ANC)."),
+          tags$li(strong("Community testing — "), "Number of HIV tests performed in community settings."),
+          tags$li(strong("Index testing — "), "Number of tests conducted among partners of newly-diagnosed people living with HIV."),
+          tags$li(strong("Key populations: "), "Number of HIV tests performed among key populations or through STI services (excluding adolescents)."),
+          tags$li(strong("Facility HIVST: "), "Number of HIV self-tests distributed at facilities."),
+          tags$li(strong("Community HIVST: "), "Number of HIV self-tests distributed in the community."),
+          tags$li(strong("Early Infant Diagnosis (EID) — "), "Percentage of HIV-exposed infants receiving HIV testing."),
+          tags$li(strong("ANC HIV testing — "), "Percentage of pregnant women receiving ANC HIV testing."),
+          tags$li(strong("PNC HIV testing — "), "Percentage of postpartum women (not known to be living with HIV) receiving PNC HIV testing.")
+        ),
+        
+        h5(strong("Treatment, retention and monitoring")),
+        tags$ul(
+          tags$li(strong("Routine VL monitoring — "), "Percentage of people on ART receiving routine viral load testing."),
+          tags$li(strong("ANC and PNC VL testing — "), "Coverage of pregnant and postpartum women living with HIV who receive viral load testing."),
+          tags$li(strong("Multi-month dispensing / DSD (3-month, 6-month, 12-month, ART pick-ups) — "), "Number of stable ART clients enrolled in differentiated service delivery."),
+          tags$li(strong("Enhanced Adherence Counselling (EAC) — "), "Percentage of individuals identified as unsuppressed (through a recent viral load)."),
+          tags$li(strong("Tracking and tracing — "), "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool.")
+        ),
+        
+        h5(strong("Advanced HIV disease")),
+        tags$ul(
+          tags$li(strong("CD4 testing — "), "Coverage of CD4 testing among individuals initiating ART to identify advanced disease. Required to ", tags$q("unlock"), " the AHD package."),
+          tags$li(strong("AHD package — "), "Number of AHD-diagnosed clients receiving the package of care.")
+        ),
+        
+        h4("What the tool does not do"),
+        tags$ul(
+          tags$li("It does not project multi-year dynamics; each run is a single-year calculation."),
+          tags$li("It does not model resistance, age structure, or sub-national heterogeneity."),
+          tags$li("It does not optimise; it calculates the consequences of a chosen mix, leaving the decision to the user."),
+          tags$li("It represents a complementary tool for country-led analysis and other validated modelling tools.")
+        ),
+        
+        hr(),
+        p(em("Use the tool to compare directions and trade-offs. Use country processes and validated models for the exact numbers in your plan."),
+          style = "color: #595959; text-align: center;")
+      )
+    ),
+    
+    nav_panel(
       "Baseline Coverage",
       uiOutput("baseline_ui")
     ),
@@ -95,15 +183,20 @@ ui <- page_sidebar(
     nav_panel(
       "Results Comparison",
       div(
+        style = "display: flex; justify-content: flex-end; margin-bottom: 8px;",
+        downloadButton("download_report",
+                       "Download report (PDF)",
+                       class = "btn-primary",
+                       icon = icon("download"))
+      ),
+      div(
         style = "background-color: #fffbeb; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px;",
-        tags$strong(style = "color: #92400e;", "\u26a0 Interpretation note: "),
+        tags$strong(style = "color: #92400e;", "\u26a0 Interpretation note. "),
         tags$span(style = "color: #78350f; font-size: 0.9em;",
-                  "Percentages (95-95-95 targets) can be misleading when patient numbers change. ",
-                  "For example, scaling down retention support causes unsuppressed patients to drop out at higher rates than suppressed patients, ",
-                  "which can ",
-                  tags$em("improve"),
-                  " the reported 3rd 95% even though fewer people are actually suppressed. ",
-                  "Always check the absolute population numbers in the cascade chart and epidemiological outcomes before drawing conclusions."
+                  "This tool is ",
+                  tags$em("indicative and illustrative"),
+                  " of the direction and rough magnitude of impact of different choices. Outputs are not 100% accurate. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, supported (not replaced) by this tool. ",
+                  "Percentages (95-95-95 targets) can also be misleading when patient numbers change \u2014 always check the absolute population numbers in the cascade chart and epidemiological outcomes before drawing conclusions."
         )
       ),
       div(
@@ -269,6 +362,11 @@ server <- function(input, output, session) {
       placement = placement
     )
   }
+  
+  # Null-coalescing helper used by the PDF download handler.
+  # Returns x unless x is NULL, then y. Lets us provide defaults for
+  # reactive values that may still be NULL on first load.
+  `%||%` <- function(x, y) if (is.null(x)) y else x
   
   # Store original baseline to scale proportionally
   original_population <- reactiveVal(5000000)
@@ -1473,12 +1571,23 @@ server <- function(input, output, session) {
   # ========================================================================
   
   baseline_input_values <- reactive({
+    # Fallback source: the scaled regional preset. Used when the Baseline tab
+    # hasn't been rendered yet (so input$baseline_* is still NULL) — without
+    # this, a user who jumps straight to Scenarios sees baseline=0 for every
+    # intervention and any scenario diff is computed against zero, not the
+    # preset.
+    preset <- baseline_values()
+    
     baseline <- list()
     for (group_key in names(intervention_groups)) {
       group <- intervention_groups[[group_key]]
       for (int_key in names(group$interventions)) {
         input_id <- paste0("baseline_", int_key)
         value <- input[[input_id]]
+        if (is.null(value) || is.na(value)) {
+          # widget hasn't rendered yet (or was cleared) — use the preset
+          value <- preset[[int_key]]
+        }
         baseline[[int_key]] <- ifelse(is.null(value) || is.na(value), 0, value)
       }
     }
@@ -1503,6 +1612,7 @@ server <- function(input, output, session) {
   }, ignoreInit = TRUE)
   
   scenario1_values <- reactive({
+    preset <- baseline_values()
     scenario <- list()
     for (group_key in names(intervention_groups)) {
       group <- intervention_groups[[group_key]]
@@ -1510,7 +1620,12 @@ server <- function(input, output, session) {
         input_id <- paste0("scenario1_", int_key)
         value <- input[[input_id]]
         if (is.null(value) || is.na(value)) {
+          # Scenario widget hasn't rendered or is blank — try the baseline
+          # widget; if THAT hasn't rendered either, fall back to the preset.
           baseline_value <- input[[paste0("baseline_", int_key)]]
+          if (is.null(baseline_value) || is.na(baseline_value)) {
+            baseline_value <- preset[[int_key]]
+          }
           value <- ifelse(is.null(baseline_value) || is.na(baseline_value), 0, baseline_value)
         }
         scenario[[int_key]] <- value
@@ -1520,6 +1635,7 @@ server <- function(input, output, session) {
   })
   
   scenario2_values <- reactive({
+    preset <- baseline_values()
     scenario <- list()
     for (group_key in names(intervention_groups)) {
       group <- intervention_groups[[group_key]]
@@ -1528,6 +1644,9 @@ server <- function(input, output, session) {
         value <- input[[input_id]]
         if (is.null(value) || is.na(value)) {
           baseline_value <- input[[paste0("baseline_", int_key)]]
+          if (is.null(baseline_value) || is.na(baseline_value)) {
+            baseline_value <- preset[[int_key]]
+          }
           value <- ifelse(is.null(baseline_value) || is.na(baseline_value), 0, baseline_value)
         }
         scenario[[int_key]] <- value
@@ -2305,6 +2424,7 @@ server <- function(input, output, session) {
   output$plot_scenario1 <- renderPlot({
     outcomes <- outcomes_scenario1()
     diff <- diff_scenario1()
+    diff2 <- diff_scenario2()    # needed for the shared y-axis range
     
     plot_data <- data.frame(
       Outcome = c("Infections", "Deaths", "ART\nInitiations"),
@@ -2322,10 +2442,17 @@ server <- function(input, output, session) {
                    outcomes_baseline()$art_initiations)
     )
     
+    # Shared y-axis range across BOTH scenario plots so bar heights are
+    # directly comparable. Computed from the union of both scenarios' diffs.
+    all_vals <- c(diff$diff_new_infections,  diff$diff_deaths,  diff$diff_art_initiations,
+                  diff2$diff_new_infections, diff2$diff_deaths, diff2$diff_art_initiations)
+    y_lim <- range(c(all_vals, 0), na.rm = TRUE)
+    
     ggplot(plot_data, aes(x = Outcome, y = Value, fill = is_good)) +
       geom_col(width = 0.7) +
+      geom_hline(yintercept = 0, colour = "#374151", linewidth = 0.4) +
       scale_fill_manual(values = c("TRUE" = "#10b981", "FALSE" = "#ef4444"), guide = "none") +
-      scale_y_continuous(labels = comma) +
+      scale_y_continuous(labels = comma, limits = y_lim) +
       labs(title = "Additional Impact vs Baseline", 
            y = "Number of People (relative to baseline)", x = NULL) +
       theme_minimal() +
@@ -2337,6 +2464,7 @@ server <- function(input, output, session) {
   output$plot_scenario2 <- renderPlot({
     outcomes <- outcomes_scenario2()
     diff <- diff_scenario2()
+    diff1 <- diff_scenario1()    # needed for the shared y-axis range
     
     plot_data <- data.frame(
       Outcome = c("Infections", "Deaths", "ART\nInitiations"),
@@ -2354,10 +2482,16 @@ server <- function(input, output, session) {
                    outcomes_baseline()$art_initiations)
     )
     
+    # Shared y-axis range — must match the calculation in plot_scenario1.
+    all_vals <- c(diff$diff_new_infections,  diff$diff_deaths,  diff$diff_art_initiations,
+                  diff1$diff_new_infections, diff1$diff_deaths, diff1$diff_art_initiations)
+    y_lim <- range(c(all_vals, 0), na.rm = TRUE)
+    
     ggplot(plot_data, aes(x = Outcome, y = Value, fill = is_good)) +
       geom_col(width = 0.7) +
+      geom_hline(yintercept = 0, colour = "#374151", linewidth = 0.4) +
       scale_fill_manual(values = c("TRUE" = "#10b981", "FALSE" = "#ef4444"), guide = "none") +
-      scale_y_continuous(labels = comma) +
+      scale_y_continuous(labels = comma, limits = y_lim) +
       labs(title = "Additional Impact vs Baseline", 
            y = "Number of People (relative to baseline)", x = NULL) +
       theme_minimal() +
@@ -2427,6 +2561,84 @@ server <- function(input, output, session) {
     )
   }, striped = TRUE, hover = TRUE, bordered = TRUE, align = "lrrr",
   colnames = TRUE)
+  
+  # ========================================================================
+  # DOWNLOAD REPORT (PDF)
+  # ------------------------------------------------------------------------
+  # Renders an R Markdown template (report_template.Rmd, located next to
+  # this app file) and converts it to PDF via headless Chromium.
+  # Requires on the server:
+  #   - R packages: rmarkdown, pagedown
+  #   - chromium-browser (or chromium) installed system-wide
+  # The reactive values current at the moment the user clicks Download are
+  # snapshotted via isolate() and passed to the template as `params`, so
+  # the PDF reflects exactly what was on screen at click time.
+  # ========================================================================
+  output$download_report <- downloadHandler(
+    filename = function() {
+      paste0("HIV_Tool_Report_",
+             format(Sys.time(), "%Y%m%d_%H%M"),
+             ".pdf")
+    },
+    content = function(file) {
+      
+      # Locate the template. We try the app directory first (production),
+      # then the current working directory (interactive runs).
+      app_dir <- tryCatch(
+        dirname(sys.frame(1)$ofile),
+        error = function(e) NULL
+      )
+      tpl_candidates <- c(
+        if (!is.null(app_dir)) file.path(app_dir, "report_template.Rmd"),
+        "report_template.Rmd",
+        file.path(getwd(), "report_template.Rmd")
+      )
+      tpl <- tpl_candidates[file.exists(tpl_candidates)][1]
+      if (is.na(tpl)) {
+        stop("report_template.Rmd not found. Place it in the same ",
+             "directory as the app file.")
+      }
+      
+      # Copy to a temp location so concurrent downloads do not collide.
+      tmp_rmd <- tempfile(fileext = ".Rmd")
+      file.copy(tpl, tmp_rmd, overwrite = TRUE)
+      
+      # Snapshot reactive values now so the PDF reflects click-time state.
+      report_params <- list(
+        country_name    = isolate(input$region) %||% "—",
+        generated_at    = format(Sys.time(), "%d %B %Y, %H:%M"),
+        baseline_vals   = isolate(baseline_input_values()),
+        scenario1_vals  = isolate(scenario1_values()),
+        scenario2_vals  = isolate(scenario2_values()),
+        outcomes_base   = isolate(outcomes_baseline()),
+        outcomes_s1     = isolate(outcomes_scenario1()),
+        outcomes_s2     = isolate(outcomes_scenario2()),
+        diff_s1         = isolate(diff_scenario1()),
+        diff_s2         = isolate(diff_scenario2()),
+        populations     = isolate(populations()),
+        interventions   = intervention_groups
+      )
+      
+      # Render Rmd -> HTML, then HTML -> PDF via headless Chromium.
+      out_html <- tempfile(fileext = ".html")
+      rmarkdown::render(
+        input         = tmp_rmd,
+        output_file   = out_html,
+        params        = report_params,
+        envir         = new.env(parent = globalenv()),
+        quiet         = TRUE
+      )
+      
+      pagedown::chrome_print(
+        input         = out_html,
+        output        = file,
+        format        = "pdf",
+        timeout       = 120,
+        extra_args    = c("--no-sandbox")   # required in many container setups
+      )
+    },
+    contentType = "application/pdf"
+  )
 }
 
 # ============================================================================
