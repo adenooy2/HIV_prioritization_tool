@@ -187,6 +187,9 @@ sub_countries2=c("Botswana","Côte d'Ivoire","Eswatini","Ghana","Kenya","Lesotho
 
 basic_data=basic_data %>% filter(country%in%sub_countries2)
 
+basic_data$use_mortality_calibration="FALSE"
+basic_data$use_mortality_calibration[basic_data$country=="South Africa"]="TRUE"
+
 
 write.csv(basic_data,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/basic_hiv_data.csv")
 

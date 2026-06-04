@@ -18,6 +18,7 @@ library(scales)
 library(httr)
 library(readr)
 library(readxl)
+options(tier.mort_diag = FALSE)
 
 # Null-coalescing helper used throughout FOI module.
 # Returns `a` if it is non-NULL, non-empty, and not entirely NA; else `b`.
@@ -719,7 +720,22 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
           as.numeric(row$total_tests_prev_year) else NULL,
         # Retesting probability: country-specific override; NULL means use hiv_params default
         prop_retesting   = if (!is.null(row$prop_retest)        && !is.na(row$prop_retest))
-          as.numeric(row$prop_retest) else NULL
+          as.numeric(row$prop_retest) else NULL,
+        # Country-specific mortality calibration flag. When TRUE, the country's
+        # baseline modelled deaths are anchored to its UNAIDS aids_deaths_per_year
+        # value via a single scalar factor that is then re-applied to all
+        # scenarios. Defaults to FALSE when the column is absent or blank, so
+        # existing CSVs without this column behave identically to today.
+        # Set TRUE for countries where uncalibrated literature rates produce
+        # implausible totals (e.g. South Africa, where the very large
+        # diagnosed-not-on-ART pool is treated as ART-naive by the rate
+        # parameters and inflates predicted deaths ~3x).
+        use_mortality_calibration = if (!is.null(row$use_mortality_calibration) &&
+                                        !is.na(row$use_mortality_calibration)) {
+          val <- row$use_mortality_calibration
+          isTRUE(val) || identical(val, 1) || identical(val, 1L) ||
+            (is.character(val) && toupper(val) %in% c("TRUE", "T", "1", "YES", "Y"))
+        } else FALSE
       )
       
       pops <- calculate_populations(context)
@@ -2213,8 +2229,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # ========================================================================
   target_aids_deaths <- context$aids_deaths_per_year
   
+  # Calibration fires if either (a) the global toggle is on, or (b) the
+  # country-specific flag from basic_hiv_data.csv (use_mortality_calibration)
+  # is TRUE. Country flag defaults to FALSE when absent.
+  country_calibration_flag <- isTRUE(context$use_mortality_calibration)
+  calibrate_this_country   <- USE_MORTALITY_CALIBRATION || country_calibration_flag
+  
   if (is_baseline) {
-    if (USE_MORTALITY_CALIBRATION &&
+    if (calibrate_this_country &&
         !is.null(target_aids_deaths) && !is.na(target_aids_deaths) &&
         target_aids_deaths > 0 && total_hiv_deaths > 0) {
       mortality_calibration_factor <- target_aids_deaths / total_hiv_deaths

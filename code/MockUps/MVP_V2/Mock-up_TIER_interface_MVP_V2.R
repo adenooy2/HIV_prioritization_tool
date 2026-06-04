@@ -426,7 +426,8 @@ server <- function(input, output, session) {
       yield_multipliers = preset$context$yield_multipliers,
       current_diagnoses = preset$context$current_diagnoses,
       anc_multiplier    = preset$context$anc_multiplier,   # ANC/adult HIV prev ratio, from CSV
-      percent_on_art_pregnant = preset$context$percent_on_art_pregnant
+      percent_on_art_pregnant = preset$context$percent_on_art_pregnant,
+      use_mortality_calibration = preset$context$use_mortality_calibration   # per-country mortality calibration flag
     ))
   }, ignoreInit = FALSE)
   
@@ -473,7 +474,8 @@ server <- function(input, output, session) {
       prop_retesting    = if (!is.null(cc)) cc$prop_retesting    else NULL,
       yield_multipliers = if (!is.null(cc)) cc$yield_multipliers else NULL,
       current_diagnoses = if (!is.null(cc)) cc$current_diagnoses else NULL,
-      anc_multiplier    = if (!is.null(cc)) cc$anc_multiplier    else NULL
+      anc_multiplier    = if (!is.null(cc)) cc$anc_multiplier    else NULL,
+      use_mortality_calibration = if (!is.null(cc)) cc$use_mortality_calibration else FALSE
     )
   })
   
