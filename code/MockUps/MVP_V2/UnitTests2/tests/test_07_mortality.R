@@ -638,3 +638,66 @@ test_that("AHD package has no effect when CD4 coverage = 0", {
   # deaths_new_initiations should match the no-package case (~2).
   expect_lte(abs(result$deaths_new_initiations - 2), 1)
 })
+
+
+# ---------------------------------------------------------------------------
+# 7.11 Per-country mortality calibration flag (context$use_mortality_calibration)
+# ---------------------------------------------------------------------------
+# WHAT: The country-flag path triggers calibration even when the global toggle
+#       USE_MORTALITY_CALIBRATION is FALSE. This is the path used in production
+#       for South Africa via the basic_hiv_data.csv column.
+# WHY:  Verifies that the new conditional path works and that existing tests'
+#       assumption (global toggle off => no calibration) still holds when the
+#       country flag is also off or NULL.
+# ---------------------------------------------------------------------------
+
+test_that("country flag triggers calibration when global toggle is off", {
+  override_mortality_globals()   # sets USE_MORTALITY_CALIBRATION = FALSE
+  
+  ctx_calibrate <- make_fixture_context(aids_deaths_per_year = 2500,
+                                        use_mortality_calibration = TRUE)
+  interv <- make_fixture_interventions()
+  pops   <- calculate_populations(ctx_calibrate)
+  
+  result <- calculate_scenario_outcomes(
+    ctx_calibrate, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # Calibration ON via country flag -> factor scales modelled deaths to target
+  expect_gt(result$mortality_calibration_factor, 1.5)   # modelled ~1,157 vs target 2,500
+  expect_within_pct(result$mortality_calibration_factor, 2500 / 1157.27, pct = 2)
+})
+
+test_that("country flag FALSE leaves global toggle as sole determinant", {
+  override_mortality_globals()   # sets USE_MORTALITY_CALIBRATION = FALSE
+  
+  ctx_no_calib <- make_fixture_context(aids_deaths_per_year = 2500,
+                                       use_mortality_calibration = FALSE)
+  interv <- make_fixture_interventions()
+  pops   <- calculate_populations(ctx_no_calib)
+  
+  result <- calculate_scenario_outcomes(
+    ctx_no_calib, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  expect_close(result$mortality_calibration_factor, 1.0)
+})
+
+test_that("country flag NULL behaves identically to FALSE", {
+  override_mortality_globals()
+  
+  # Fixture without use_mortality_calibration field at all (the production
+  # default for countries other than South Africa).
+  ctx_null <- make_fixture_context(aids_deaths_per_year = 2500)
+  # Confirm the field is genuinely absent
+  expect_null(ctx_null$use_mortality_calibration)
+  
+  interv <- make_fixture_interventions()
+  pops   <- calculate_populations(ctx_null)
+  
+  result <- calculate_scenario_outcomes(
+    ctx_null, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  expect_close(result$mortality_calibration_factor, 1.0)
+})
