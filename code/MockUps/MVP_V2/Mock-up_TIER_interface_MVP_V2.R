@@ -193,8 +193,8 @@ ui <- page_sidebar(
         tags$strong(style = "color: #92400e;", "\u26a0 Interpretation note. "),
         tags$span(style = "color: #78350f; font-size: 0.9em;",
                   "This tool is ",
-                  tags$em("indicative and illustrative"),
-                  " of the direction and rough magnitude of impact of different choices. Outputs are not 100% accurate. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, supported (not replaced) by this tool. ",
+                  tags$em("indicative"),
+                  " of the direction and rough magnitude of impact of different choices. Outputs are not 100% accurate and only treatment and included intervention costs are incorporated. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, supported (not replaced) by this tool. ",
                   "Percentages (95-95-95 targets) can also be misleading when patient numbers change \u2014 always check the absolute population numbers in the cascade chart and epidemiological outcomes before drawing conclusions."
         )
       ),
@@ -2577,7 +2577,7 @@ server <- function(input, output, session) {
   # ========================================================================
   output$download_report <- downloadHandler(
     filename = function() {
-      paste0("HIV_Tool_Report_",
+      paste0("Tier_Plus_Report_",
              format(Sys.time(), "%Y%m%d_%H%M"),
              ".pdf")
     },
