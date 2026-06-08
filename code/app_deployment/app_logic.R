@@ -18,6 +18,7 @@ library(scales)
 library(httr)
 library(readr)
 library(readxl)
+options(tier.mort_diag = FALSE)
 
 # Null-coalescing helper used throughout FOI module.
 # Returns `a` if it is non-NULL, non-empty, and not entirely NA; else `b`.
@@ -701,6 +702,18 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
           val <- as.numeric(row$percent_on_art_pregnant)
           if (is.na(val)) as.numeric(row$percent_on_art) else val
         },
+        # Country-specific ART unit cost (USD per person-year on ART).
+        # Falls back to the global ART_COST_STANDARD (from hiv_params /
+        # intervention_params Excel) if the column is missing, blank, or
+        # negative. See basic_hiv_data.csv `art_cost_standard` column.
+        art_cost_standard = {
+          if (!is.null(row$art_cost_standard)) {
+            val <- suppressWarnings(as.numeric(as.character(row$art_cost_standard)))
+            if (is.na(val) || val < 0) ART_COST_STANDARD else val
+          } else {
+            ART_COST_STANDARD
+          }
+        },
         
         percent_suppressed = row$percent_suppressed,
         aids_deaths_per_year = row$aids_deaths_per_year,
@@ -719,7 +732,22 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
           as.numeric(row$total_tests_prev_year) else NULL,
         # Retesting probability: country-specific override; NULL means use hiv_params default
         prop_retesting   = if (!is.null(row$prop_retest)        && !is.na(row$prop_retest))
-          as.numeric(row$prop_retest) else NULL
+          as.numeric(row$prop_retest) else NULL,
+        # Country-specific mortality calibration flag. When TRUE, the country's
+        # baseline modelled deaths are anchored to its UNAIDS aids_deaths_per_year
+        # value via a single scalar factor that is then re-applied to all
+        # scenarios. Defaults to FALSE when the column is absent or blank, so
+        # existing CSVs without this column behave identically to today.
+        # Set TRUE for countries where uncalibrated literature rates produce
+        # implausible totals (e.g. South Africa, where the very large
+        # diagnosed-not-on-ART pool is treated as ART-naive by the rate
+        # parameters and inflates predicted deaths ~3x).
+        use_mortality_calibration = if (!is.null(row$use_mortality_calibration) &&
+                                        !is.na(row$use_mortality_calibration)) {
+          val <- row$use_mortality_calibration
+          isTRUE(val) || identical(val, 1) || identical(val, 1L) ||
+            (is.character(val) && toupper(val) %in% c("TRUE", "T", "1", "YES", "Y"))
+        } else FALSE
       )
       
       pops <- calculate_populations(context)
@@ -2213,8 +2241,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # ========================================================================
   target_aids_deaths <- context$aids_deaths_per_year
   
+  # Calibration fires if either (a) the global toggle is on, or (b) the
+  # country-specific flag from basic_hiv_data.csv (use_mortality_calibration)
+  # is TRUE. Country flag defaults to FALSE when absent.
+  country_calibration_flag <- isTRUE(context$use_mortality_calibration)
+  calibrate_this_country   <- USE_MORTALITY_CALIBRATION || country_calibration_flag
+  
   if (is_baseline) {
-    if (USE_MORTALITY_CALIBRATION &&
+    if (calibrate_this_country &&
         !is.null(target_aids_deaths) && !is.na(target_aids_deaths) &&
         target_aids_deaths > 0 && total_hiv_deaths > 0) {
       mortality_calibration_factor <- target_aids_deaths / total_hiv_deaths
@@ -2501,6 +2535,38 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   end_infant_infections     <- max(0, baseline_infant_infections - infant_prophy_reduction)
   infant_infections_averted <- infant_prophy_reduction
   
+  # ========================================================================
+  # ACUTE MATERNAL INFECTION DURING BREASTFEEDING (incident pathway)
+  # ========================================================================
+  # Women who acquire HIV during pregnancy or breastfeeding are NOT captured
+  # by the prevalent-cohort PMTCT cascade above. Their seroconversion typically
+  # post-dates the ANC test, so without late-pregnancy or PNC retesting they
+  # remain undiagnosed and untreated through the breastfeeding period. Acute
+  # maternal infection carries substantially elevated MTCT risk (Johnson et al.
+  #
+  # Approach: estimate the share of new adult infections that occur in women
+  # currently pregnant/breastfeeding using their time-at-risk in that state,
+  # approximated as births × 1.75 woman-years (0.75 yr pregnancy + 1.0 yr BF).
+  # NOTE: the 1.0 yr BF here is a steady-state cohort weight specific to this
+  # calculation; the existing hiv_params$bf_duration_months (default 18) drives
+  # NVP efficacy duration scaling above and is a different quantity.
+  #
+  # These infections are MISSED BY EID: the mother was HIV-negative at ANC, so
+  # her infant is not flagged as HIV-exposed and never enters the EID program.
+  # They are routed directly to infant_untreated downstream.
+  percent_maternal_bf_inf    <- (context$total_population * context$birth_rate / 1000 * (3+hiv_params$bf_duration_months)/12) /
+    context$total_population
+  maternal_infections_bf     <- percent_maternal_bf_inf * context$new_infections_per_year
+  infant_infections_acute_bf <- maternal_infections_bf *
+    (hiv_params$acute_bf_transmission %||% 0.28)
+  
+  # ── DEBUG: acute-BF pathway diagnostic (console only) ─────────────────────
+  if (populations$hiv_exposed_infants > 0 || infant_infections_acute_bf > 0) {
+    cat(sprintf(
+      "[MTCT-ACUTE] preg_bf_share=%.3f  maternal_inf_bf=%.0f  infant_inf_acute=%.0f\n",
+      percent_maternal_bf_inf, maternal_infections_bf, infant_infections_acute_bf))
+  }
+  
   # ── DEBUG: implied MTCT rate vs published (console only) ──────────────────
   # Implied final MTCT rate = infant infections / HIV-exposed infants. This is
   # the model's analogue of a published country final transmission rate (the
@@ -2575,7 +2641,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   infant_on_art        <- eid_infants_diagnosed * eid_linkage_rate
   infant_suppressed    <- infant_on_art * infant_supp_rate
   infant_on_art_unsupp <- infant_on_art - infant_suppressed
-  infant_untreated     <- max(0, end_infant_infections - infant_on_art)
+  # Acute-BF infections bypass EID entirely (mother never flagged HIV-exposed),
+  # so they add directly to the untreated infant pool.
+  infant_untreated     <- max(0, end_infant_infections - infant_on_art) +
+    infant_infections_acute_bf
   
   # Deaths by infant treatment group
   infant_deaths_suppressed  <- infant_suppressed    * INFANT_MORTALITY_RATES$suppressed
@@ -2584,9 +2653,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   total_infant_deaths       <- infant_deaths_suppressed + infant_deaths_on_art +
     infant_deaths_untreated
   
-  # Infant deaths averted vs no-EID counterfactual (all infected infants untreated)
+  # Infant deaths averted vs no-EID counterfactual (all infected infants untreated).
+  # Counterfactual includes acute-BF infections (also untreated) so deaths_averted
+  # reflects what EID/PMTCT prevents vs a true no-intervention world.
   infant_deaths_averted <- max(0,
-                               end_infant_infections * INFANT_MORTALITY_RATES$untreated - total_infant_deaths
+                               (end_infant_infections + infant_infections_acute_bf) *
+                                 INFANT_MORTALITY_RATES$untreated - total_infant_deaths
   )
   
   # Wire into adult totals
@@ -2597,14 +2669,15 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # CALCULATE COSTS
   # ========================================================================
   
-  art_provision_cost <- end_on_art * ART_COST_STANDARD + dsd_cost_adjustment
+  art_cost_unit <- context$art_cost_standard %||% ART_COST_STANDARD
+  art_provision_cost <- end_on_art * art_cost_unit + dsd_cost_adjustment
   if (art_provision_cost < 0) {
     warning(sprintf(
       paste0("art_provision_cost floored to 0: DSD savings (%.0f) exceeded ",
              "standard ART provision cost (%.0f × %.0f = %.0f). ",
              "Check DSD unit costs in intervention_params."),
-      -dsd_cost_adjustment, end_on_art, ART_COST_STANDARD,
-      end_on_art * ART_COST_STANDARD
+      -dsd_cost_adjustment, end_on_art, art_cost_unit,
+      end_on_art * art_cost_unit
     ))
     art_provision_cost <- 0
   }
@@ -2815,8 +2888,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     
     # End-of-year epidemiological outcomes (absolute values)
     end_new_infections = round(end_new_infections),
-    end_infant_infections = round(end_infant_infections),
-    end_total_infections = round(end_new_infections + end_infant_infections),
+    end_infant_infections = round(end_infant_infections + infant_infections_acute_bf),
+    end_infant_infections_cascade  = round(end_infant_infections),
+    end_infant_infections_acute_bf = round(infant_infections_acute_bf),
+    maternal_infections_bf         = round(maternal_infections_bf),
+    end_total_infections = round(end_new_infections + end_infant_infections +
+                                   infant_infections_acute_bf),
     end_deaths = round(end_deaths),
     
     # Costs

@@ -86,14 +86,13 @@ ui <- page_sidebar(
       div(
         style = "max-width: 900px; padding: 12px 4px; line-height: 1.5;",
         
-        h3("HIV Prioritisation Tool — User Guide"),
+        h3("TIER-Plus — User Guide"),
         p(em("A decision-support tool for trade-off analysis in HIV service planning")),
         
-        h4("What the tool is for"),
-        p("This tool is built to help decision makers and planners think through trade-offs when choosing between HIV service investments. It takes a current programme picture and lets the user vary the volume of any intervention to see how cascade outcomes (people diagnosed, on ART, suppressed), new infections, deaths, and total cost are likely to move in response."),
-        p("It is a global prioritisation tool. To remain usable across country contexts and tractable for rapid scenario comparison, it deliberately simplifies the underlying epidemiology: it runs a single-year calculation, applies a fixed force-of-infection structure with four risk strata, and uses globally-derived efficacy parameters that are not country-calibrated in the way a full transmission model would be."),
-        p(strong("Important: "), "the tool is ", em("indicative and illustrative"),
-          " of the direction and rough magnitude of impact of different choices. While effort has gone into the underlying parameters and identities, outputs will not be 100% accurate. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decision supported by this tool."),
+        h4("What is Tier-Plus"),
+        p("TIER-Plus is an extension of the original TIER prioritization tool. It aims to enable stakeholders to compare outcome and cost trade-offs across HIV interventions though an accessible, interactive platform.  It takes a current programme picture and lets the user vary the volume of interventions to compare how cascade outcomes, new infections, deaths, and total cost are expected to move in response."),
+        p(strong("Important: Tier-Plus is intended as a support tool for prioritization conversations. "), "As such, the tool is ", em("indicative "),
+          " of the direction and rough magnitude of impact of different choices. To make the tool quick and easy to use, and applicable across many contexts, it does not have the full complexity of other modelling tools. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decisions supported by this tool."),
         
         h4("How to use the tool"),
         tags$ol(
@@ -111,7 +110,7 @@ ui <- page_sidebar(
         ),
         
         h4("What the baseline scenario coverage represents"),
-        p("Baseline coverage values should reflect what was actually delivered in the most recent completed year — i.e. the volumes the programme achieved, not its targets, plans or guidelines. The baseline serves two purposes: (1) it calibrates the model so the simulated epidemic matches the observed one, and (2) it is the reference point against which each scenario is compared. If baseline values are too optimistic, scale-up scenarios will look weaker than they should, and scale-down scenarios will look worse than they should."),
+        p("Baseline coverage values should reflect what was delivered in the most recent year. It serves as a reference point against which alternative scenarios can be compared - i.e if we had the same implementation as last year what impact can we expect and how might this differ with alternative services. Additionally, baseline data is incoporated for model calibration, and hence serves an important purppose." ),
         p("All numerical inputs are annual counts of people reached / units delivered, except where the input is explicitly described as a percentage."),
         
         h4("Intervention definitions and data requirements"),
@@ -193,8 +192,8 @@ ui <- page_sidebar(
         tags$strong(style = "color: #92400e;", "\u26a0 Interpretation note. "),
         tags$span(style = "color: #78350f; font-size: 0.9em;",
                   "This tool is ",
-                  tags$em("indicative and illustrative"),
-                  " of the direction and rough magnitude of impact of different choices. Outputs are not 100% accurate. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, supported (not replaced) by this tool. ",
+                  tags$em("indicative"),
+                  " of the direction and rough magnitude of impact of different choices. Outputs are not 100% accurate and only treatment and included intervention costs are incorporated. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, supported (not replaced) by this tool. ",
                   "Percentages (95-95-95 targets) can also be misleading when patient numbers change \u2014 always check the absolute population numbers in the cascade chart and epidemiological outcomes before drawing conclusions."
         )
       ),
@@ -425,7 +424,9 @@ server <- function(input, output, session) {
       yield_multipliers = preset$context$yield_multipliers,
       current_diagnoses = preset$context$current_diagnoses,
       anc_multiplier    = preset$context$anc_multiplier,   # ANC/adult HIV prev ratio, from CSV
-      percent_on_art_pregnant = preset$context$percent_on_art_pregnant
+      percent_on_art_pregnant = preset$context$percent_on_art_pregnant,
+      use_mortality_calibration = preset$context$use_mortality_calibration,  # per-country mortality calibration flag
+      art_cost_standard = preset$context$art_cost_standard   # per-country ART unit cost (USD/PY); NULL/NA falls back to global in logic
     ))
   }, ignoreInit = FALSE)
   
@@ -472,7 +473,12 @@ server <- function(input, output, session) {
       prop_retesting    = if (!is.null(cc)) cc$prop_retesting    else NULL,
       yield_multipliers = if (!is.null(cc)) cc$yield_multipliers else NULL,
       current_diagnoses = if (!is.null(cc)) cc$current_diagnoses else NULL,
-      anc_multiplier    = if (!is.null(cc)) cc$anc_multiplier    else NULL
+      anc_multiplier    = if (!is.null(cc)) cc$anc_multiplier    else NULL,
+      use_mortality_calibration = if (!is.null(cc)) cc$use_mortality_calibration else FALSE,
+      # Country-specific ART unit cost. NULL when no preset selected (e.g.
+      # Custom Country) -- the logic file's `%||% ART_COST_STANDARD` fallback
+      # then uses the global Excel/intervention_params value.
+      art_cost_standard = if (!is.null(cc)) cc$art_cost_standard else NULL
     )
   })
   
@@ -2575,7 +2581,7 @@ server <- function(input, output, session) {
   # ========================================================================
   output$download_report <- downloadHandler(
     filename = function() {
-      paste0("HIV_Tool_Report_",
+      paste0("Tier_Plus_Report_",
              format(Sys.time(), "%Y%m%d_%H%M"),
              ".pdf")
     },
