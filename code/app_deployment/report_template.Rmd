@@ -257,7 +257,7 @@ cell <- function(val, delta = NULL, good_when = "down", money = FALSE) {
 }
 
 epi_tbl <- data.frame(
-  Outcome = c("New adult infections", "New infant infections",
+  Outcome = c("New adult acquisitions", "New infant acquisitions",
               "HIV-related deaths", "ART initiations",
               "End-of-year on ART (suppressed)"),
   Baseline = c(fmt_n(out_base$end_new_infections),
@@ -351,7 +351,7 @@ ggplot(cascade_df,
 ```{r impact-summary, fig.width=8, fig.height=3.6, out.width="100%"}
 mk_impact_df <- function(diff_obj, scen_label) {
   data.frame(
-    Outcome = c("Infections", "Deaths", "ART\ninitiations"),
+    Outcome = c("Acquisitions", "Deaths", "ART\ninitiations"),
     Value   = c(diff_obj$diff_new_infections,
                 diff_obj$diff_deaths,
                 diff_obj$diff_art_initiations),

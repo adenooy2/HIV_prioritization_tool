@@ -72,7 +72,7 @@ ui <- page_sidebar(
     h5("Epidemic Parameters (Start of Year)"),
     numericInput("total_pop", "Total Population:", value = 5000000, min = 0),
     tags$div(class = "disabled-input",numericInput("prevalence", "HIV Prevalence (%):", value = 4.5, min = 0, max = 100, step = 0.1)),
-    tags$div(class = "disabled-input",numericInput("new_infections", "New Infections/Year:", value = 8500, min = 0)),
+    tags$div(class = "disabled-input",numericInput("new_infections", "New Acquisitions/Year:", value = 8500, min = 0)),
     numericInput("pct_diagnosed", "% of PLHIV Diagnosed:", value = 85, min = 0, max = 100),  
     numericInput("pct_on_art", "% Diagnosed on ART:", value = 78, min = 0, max = 100),
     numericInput("pct_suppressed", "% on ART Suppressed:", value = 82, min = 0, max = 100),
@@ -91,7 +91,7 @@ ui <- page_sidebar(
         p(em("A decision-support tool for trade-off analysis in HIV service planning")),
         
         h4("What is Tier-Plus"),
-        p("TIER-Plus is an extension of the original TIER prioritization tool. It aims to enable stakeholders to compare outcome and cost trade-offs across HIV interventions though an accessible, interactive platform.  It takes a current programme picture and lets the user vary the volume of interventions to compare how cascade outcomes, new infections, deaths, and total cost are expected to move in response."),
+        p("TIER-Plus is an extension of the original TIER prioritization tool. It aims to enable stakeholders to compare outcome and cost trade-offs across HIV interventions though an accessible, interactive platform.  It takes a current programme picture and lets the user vary the volume of interventions to compare how cascade outcomes, new acquisitions, deaths, and total cost are expected to move in response."),
         p(strong("Important: Tier-Plus is intended as a support tool for prioritization conversations. "), "As such, the tool is ", em("indicative "),
           " of the direction and rough magnitude of impact of different choices. To make the tool quick and easy to use, and applicable across many contexts, it does not have the full complexity of other modelling tools. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decisions supported by this tool."),
         
@@ -104,7 +104,7 @@ ui <- page_sidebar(
           tags$li(strong("Build a scenario. "),
                   "Adjust intervention volumes up or down from baseline. You can scale things in either direction."),
           tags$li(strong("Compare. "),
-                  "The output shows the estimated differences between each scenario and baseline. This includes the 95-targets, expected infections, infant infections, deaths and budget. Positive ", tags$q("infections averted"), " and ", tags$q("deaths averted"),
+                  "The output shows the estimated differences between each scenario and baseline. This includes the 95-targets, expected acquisitions, infant acquisitions, deaths and budget. Positive ", tags$q("acquisitions averted"), " and ", tags$q("deaths averted"),
                   " mean the scenario outperforms baseline. Negative values mean it does worse — useful for testing budget-cut scenarios."),
           tags$li(strong("Iterate. "),
                   "Run several scenarios side-by-side to see where additional money buys the most impact and where cuts are least harmful.")
@@ -760,7 +760,7 @@ server <- function(input, output, session) {
                            max   = round(index_cap))
         showNotification(
           paste0("Baseline: Index testing capped at ", format(round(index_cap), big.mark = ","),
-                 " (2\u00D7 prior-year new infections: ",
+                 " (2\u00D7 prior-year new acquisitions: ",
                  format(round(ctx$new_infections_per_year), big.mark = ","), ")"),
           type     = "warning",
           duration = 5
@@ -990,7 +990,7 @@ server <- function(input, output, session) {
                            max   = round(index_cap))
         showNotification(
           paste0("Scenario 1: Index testing capped at ", format(round(index_cap), big.mark = ","),
-                 " (2\u00D7 prior-year new infections: ",
+                 " (2\u00D7 prior-year new acquisitions: ",
                  format(round(ctx$new_infections_per_year), big.mark = ","), ")"),
           type     = "warning",
           duration = 5
@@ -1219,7 +1219,7 @@ server <- function(input, output, session) {
                            max   = round(index_cap))
         showNotification(
           paste0("Scenario 2: Index testing capped at ", format(round(index_cap), big.mark = ","),
-                 " (2\u00D7 prior-year new infections: ",
+                 " (2\u00D7 prior-year new acquisitions: ",
                  format(round(ctx$new_infections_per_year), big.mark = ","), ")"),
           type     = "warning",
           duration = 5
@@ -2012,17 +2012,17 @@ server <- function(input, output, session) {
     
     tagList(
       div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
-          span(style = "width: 100px; flex-shrink: 0;", strong("New Adult Infections:")),
+          span(style = "width: 110px; flex-shrink: 0;", strong("New Adult Acquisitions:")),
           span(style = "font-size: 1.3em; font-weight: bold;",
                format(outcomes$end_new_infections, big.mark = ","))
       ),
       div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
-          span(style = "width: 100px; flex-shrink: 0;", strong("New Infant Infections:")),
+          span(style = "width: 110px; flex-shrink: 0;", strong("New Infant Acquisitions:")),
           span(style = "font-size: 1.3em; font-weight: bold;",
                format(outcomes$end_infant_infections, big.mark = ","))
       ),
       div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
-          span(style = "width: 100px; flex-shrink: 0;", strong("HIV-Related Deaths:")),
+          span(style = "width: 110px; flex-shrink: 0;", strong("HIV-Related Deaths:")),
           span(style = "font-size: 1.3em; font-weight: bold;",
                format(outcomes$end_deaths, big.mark = ","))
       ),
@@ -2042,7 +2042,7 @@ server <- function(input, output, session) {
     
     tagList(
       div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
-          span(style = "width: 100px; flex-shrink: 0;", strong("New Adult Infections:")),
+          span(style = "width: 110px; flex-shrink: 0;", strong("New Adult Acquisitions:")),
           span(style = "white-space: nowrap;",
                span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
                                    ifelse(diff$diff_new_infections < 0, "green",
@@ -2056,7 +2056,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
-          span(style = "width: 100px; flex-shrink: 0;", strong("New Infant Infections:")),
+          span(style = "width: 110px; flex-shrink: 0;", strong("New Infant Acquisitions:")),
           span(style = "white-space: nowrap;",
                span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
                                    ifelse(diff$diff_infant_infections < 0, "green",
@@ -2070,7 +2070,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
-          span(style = "width: 100px; flex-shrink: 0;", strong("HIV-Related Deaths:")),
+          span(style = "width: 110px; flex-shrink: 0;", strong("HIV-Related Deaths:")),
           span(style = "white-space: nowrap;",
                span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
                                    ifelse(diff$diff_deaths < 0, "green",
@@ -2092,7 +2092,7 @@ server <- function(input, output, session) {
     
     tagList(
       div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
-          span(style = "width: 100px; flex-shrink: 0;", strong("New Adult Infections:")),
+          span(style = "width: 110px; flex-shrink: 0;", strong("New Adult Acquisitions:")),
           span(style = "white-space: nowrap;",
                span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
                                    ifelse(diff$diff_new_infections < 0, "green",
@@ -2106,7 +2106,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
-          span(style = "width: 100px; flex-shrink: 0;", strong("New Infant Infections:")),
+          span(style = "width: 110px; flex-shrink: 0;", strong("New Infant Acquisitions:")),
           span(style = "white-space: nowrap;",
                span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
                                    ifelse(diff$diff_infant_infections < 0, "green",
@@ -2120,7 +2120,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex border-bottom pb-2 mb-2", style = "gap: 0.5rem;",
-          span(style = "width: 100px; flex-shrink: 0;", strong("HIV-Related Deaths:")),
+          span(style = "width: 110px; flex-shrink: 0;", strong("HIV-Related Deaths:")),
           span(style = "white-space: nowrap;",
                span(style = paste0("font-size: 1.3em; font-weight: bold; color: ",
                                    ifelse(diff$diff_deaths < 0, "green",
@@ -2183,7 +2183,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          strong("Change in Infections:"),
+          strong("Change in Acquisitions:"),
           span(
             # diff_new_infections: +ve = more infections (bad, red); -ve = fewer (good, green)
             class = ifelse(diff$diff_new_infections < 0, "text-success",
@@ -2237,7 +2237,7 @@ server <- function(input, output, session) {
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
-          strong("Change in Infections:"),
+          strong("Change in Acquisitions:"),
           span(
             # diff_new_infections: +ve = more infections (bad, red); -ve = fewer (good, green)
             class = ifelse(diff$diff_new_infections < 0, "text-success",
@@ -2408,7 +2408,7 @@ server <- function(input, output, session) {
     diff2 <- diff_scenario2()    # needed for the shared y-axis range
     
     plot_data <- data.frame(
-      Outcome = c("Infections", "Deaths", "ART\nInitiations"),
+      Outcome = c("Acquisitions", "Deaths", "ART\nInitiations"),
       Value   = c(diff$diff_new_infections,
                   diff$diff_deaths,
                   diff$diff_art_initiations),
@@ -2448,7 +2448,7 @@ server <- function(input, output, session) {
     diff1 <- diff_scenario1()    # needed for the shared y-axis range
     
     plot_data <- data.frame(
-      Outcome = c("Infections", "Deaths", "ART\nInitiations"),
+      Outcome = c("Acquisitions", "Deaths", "ART\nInitiations"),
       Value   = c(diff$diff_new_infections,
                   diff$diff_deaths,
                   diff$diff_art_initiations),
