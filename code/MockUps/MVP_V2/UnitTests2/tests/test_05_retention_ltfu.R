@@ -4,9 +4,21 @@
 # Tests for LTFU prevention and re-engagement logic inside
 # calculate_scenario_outcomes():
 #
-#   - DSD interventions (mmd_3/6/12, community_pickup) are additive in their
-#     contribution to ltfu_retained_frac (they're mutually exclusive on the
-#     same stable patient by UI constraint)
+#   - MMD interventions (mmd_3/6/12) contribute additively to ltfu_retained_frac;
+#     they are mutually exclusive on the same stable patient by UI constraint
+#     (the three coverages must sum to <=100%). Community pickup (cpu) is no
+#     longer an independent additive slot — it is a delivery mode that OVERRIDES
+#     MMD facility pickup for a fraction `cpu` of MMD-enrolled clients, applied
+#     equally across MMD-3/6/12. Net contribution from the DSD bundle:
+#         (1 - cpu) × (c3·eff_3 + c6·eff_6 + c12·eff_12)
+#       +  cpu     × (c3 + c6 + c12) × eff_cpu
+#     With cpu = 0 this reduces to the prior additive formula, so tests 5.2,
+#     5.3, 5.4, 5.6, 5.6b, 5.6c, 5.7 still pass without modification.
+#   - suppression_delta (the FOI input) is computed as
+#       end_suppressed - baseline_end_suppressed
+#     (state-based) rather than additional_suppressed - baseline_additional_suppressed
+#     (event-flow). This ensures retention, testing, EAC and mortality changes
+#     all feed FOI symmetrically — see test 5.7b for the regression guard.
 #   - tracking_tracing is DEFERRED in the intervention loop and applied
 #     against (prevalent_ltfu + ltfu_new_effective) AFTER prevention resolves
 #   - ltfu_prevented applies only to ltfu_new_stable (current code only has
@@ -15,7 +27,8 @@
 #     testing/tracking (prevents perverse scale-down behaviour)
 #   - testing_reengagement_cap binds only testing-driven flow, not tracking
 #     or spontaneous
-#   - DSD costs apply to ALL stable clients reached (not just retained)
+#   - DSD costs apply to ALL stable clients reached (not just retained), with
+#     the same override-split between MMD facility cost and community cost
 #   - Tracking cost applies to the deferred pool
 #
 # Parameter values used (locked via with_hiv_params):
@@ -30,7 +43,7 @@
 # ============================================================================
 
 source("helpers.R")  # rename test_helpers.R -> helpers.R per earlier discussion;
-                     # if you kept it as test_helpers.R, change this line back.
+# if you kept it as test_helpers.R, change this line back.
 
 # Live hiv_params values, locked here for reproducibility
 LIVE_PARAMS_RETENTION <- list(
@@ -136,9 +149,9 @@ override_retention <- function(int_key, efficacy, unit_cost) {
 test_that("year-start LTFU flow uses live ltfu_rate_stable/unstable values", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
-
+  
   pops <- calculate_populations(retention_context())
-
+  
   expect_close(pops$on_art_stable,        32400)
   expect_close(pops$ltfu_new_stable,      32400 * 0.044)   # 1425.6
   expect_close(pops$ltfu_new_unstable,    3600  * 0.14)    # 504
@@ -162,21 +175,21 @@ test_that("year-start LTFU flow uses live ltfu_rate_stable/unstable values", {
 test_that("single DSD intervention contributes additively to ltfu_prevented", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
-
+  
   ig_new <- override_retention("mmd_3month", efficacy = 0.10, unit_cost = 0)
   with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
-
+  
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
                             yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$mmd_3month <- 50    # 50% coverage of stable
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Expected ltfu_prevented = round(1,425.6 × 0.05) = round(71.28) = 71
   expect_lte(abs(result$ltfu_prevented - 71), 1)
 })
@@ -194,28 +207,164 @@ test_that("single DSD intervention contributes additively to ltfu_prevented", {
 test_that("two DSD interventions contribute additively to ltfu_retained_frac", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
-
+  
   ig_new <- intervention_groups
   ig_new$treatment_monitoring$interventions$mmd_3month$efficacy  <- 0.10
   ig_new$treatment_monitoring$interventions$mmd_3month$unit_cost <- 0
   ig_new$treatment_monitoring$interventions$mmd_6month$efficacy  <- 0.20
   ig_new$treatment_monitoring$interventions$mmd_6month$unit_cost <- 0
   with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
-
+  
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
                             yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$mmd_3month <- 40
   interv$mmd_6month <- 30
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Expected: 1,425.6 × 0.10 = 142.56 -> round to 143
   expect_lte(abs(result$ltfu_prevented - 143), 1)
+})
+
+# ---------------------------------------------------------------------------
+# 5.3b Community pickup overrides MMD effect at the cpu coverage rate
+# ---------------------------------------------------------------------------
+# WHAT: With mmd_3month (cov 40%, eff 0.10) + mmd_6month (cov 50%, eff 0.20)
+#       + community_pickup (cov 30%, eff 0.15):
+#       mmd_sum            = 0.40 + 0.50                       = 0.90
+#       mmd_only_term      = (1 - 0.30) × (0.40·0.10 + 0.50·0.20)
+#                          = 0.70 × 0.14                       = 0.098
+#       community_term     = 0.30 × 0.90 × 0.15                = 0.0405
+#       ltfu_retained_frac = 0.098 + 0.0405                    = 0.1385
+#       ltfu_prevented     = 1,425.6 × 0.1385 = 197.4456 -> 197 (round)
+# WHY:  Locks the override semantic: community pickup REPLACES the MMD
+#       delivery mode (and its efficacy) for a `cpu` fraction of MMD-enrolled
+#       clients, applied equally across the three MMD categories. Without
+#       this test, a regression to the old additive rule (where cpu acts as a
+#       fourth independent slot) would pass tests 5.2/5.3 silently.
+# HOW:  Override efficacy/unit_cost on mmd_3, mmd_6, community_pickup so the
+#       arithmetic is closed-form (unit_cost = 0 keeps cost out of this test;
+#       cost path is covered separately in 5.6f).
+# ---------------------------------------------------------------------------
+test_that("community pickup overrides MMD effect at the cpu coverage rate", {
+  with_hiv_params(LIVE_PARAMS_RETENTION)
+  override_ltfu_rates()
+  
+  ig_new <- intervention_groups
+  ig_new$treatment_monitoring$interventions$mmd_3month$efficacy        <- 0.10
+  ig_new$treatment_monitoring$interventions$mmd_3month$unit_cost       <- 0
+  ig_new$treatment_monitoring$interventions$mmd_6month$efficacy        <- 0.20
+  ig_new$treatment_monitoring$interventions$mmd_6month$unit_cost       <- 0
+  ig_new$treatment_monitoring$interventions$community_pickup$efficacy  <- 0.15
+  ig_new$treatment_monitoring$interventions$community_pickup$unit_cost <- 0
+  with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
+  
+  ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
+                            yield_multipliers = list())
+  pops <- calculate_populations(ctx)
+  
+  interv <- zero_interventions()
+  interv$mmd_3month       <- 40
+  interv$mmd_6month       <- 50
+  interv$community_pickup <- 30
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # ltfu_retained_frac = 0.1385; × 1,425.6 = 197.4456 -> 197
+  expect_lte(abs(result$ltfu_prevented - 197), 1)
+})
+
+# ---------------------------------------------------------------------------
+# 5.3c Community pickup at 100% fully replaces MMD effect on mmd_sum share
+# ---------------------------------------------------------------------------
+# WHAT: cpu = 1.0, c3 = 0.40, c6 = 0.50, eff_3 = 0.10, eff_6 = 0.20,
+#       eff_cpu = 0.15.
+#       mmd_only_term      = (1 - 1.0) × (...)              = 0
+#       community_term     = 1.0 × 0.90 × 0.15              = 0.135
+#       ltfu_retained_frac = 0.135
+#       ltfu_prevented     = 1,425.6 × 0.135 = 192.456 -> 192 (round)
+# WHY:  Edge case at the upper boundary of cpu. Confirms (1 - cpu) factor
+#       zeros the MMD term and the community term scales by mmd_sum, not by 1
+#       (a regression that scaled by 1 would give 0.15 × 1,425.6 = 213.84
+#       -> 214, which this test would catch).
+# ---------------------------------------------------------------------------
+test_that("community pickup at 100% fully replaces MMD effect on mmd_sum share", {
+  with_hiv_params(LIVE_PARAMS_RETENTION)
+  override_ltfu_rates()
+  
+  ig_new <- intervention_groups
+  ig_new$treatment_monitoring$interventions$mmd_3month$efficacy        <- 0.10
+  ig_new$treatment_monitoring$interventions$mmd_3month$unit_cost       <- 0
+  ig_new$treatment_monitoring$interventions$mmd_6month$efficacy        <- 0.20
+  ig_new$treatment_monitoring$interventions$mmd_6month$unit_cost       <- 0
+  ig_new$treatment_monitoring$interventions$community_pickup$efficacy  <- 0.15
+  ig_new$treatment_monitoring$interventions$community_pickup$unit_cost <- 0
+  with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
+  
+  ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
+                            yield_multipliers = list())
+  pops <- calculate_populations(ctx)
+  
+  interv <- zero_interventions()
+  interv$mmd_3month       <- 40
+  interv$mmd_6month       <- 50
+  interv$community_pickup <- 100
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # community_term = 1.0 × 0.90 × 0.15 = 0.135 -> 1,425.6 × 0.135 = 192.456 -> 192
+  expect_lte(abs(result$ltfu_prevented - 192), 1)
+})
+
+# ---------------------------------------------------------------------------
+# 5.3d Community pickup with zero MMD enrolment has no effect and no cost
+# ---------------------------------------------------------------------------
+# WHAT: cpu = 0.50, all mmd_* = 0 -> mmd_sum = 0.
+#       mmd_only_term      = (1 - 0.5) × 0                  = 0
+#       community_term     = 0.5 × 0 × eff_cpu              = 0
+#       ltfu_retained_frac = 0
+#       Similarly community_cost = 0.5 × 0 × stable × uc_cpu = 0,
+#       so dsd_cost_adjustment = 0 -> art_provision_cost = end_on_art × 200.
+# WHY:  Locks the intended semantic that community pickup is a delivery MODE
+#       layered on MMD enrolment, not a standalone DSD option. A future
+#       contributor reverting community to a standalone slot would cause this
+#       test to fail.
+# HOW:  Set community_pickup unit_cost to a large value to make any leakage
+#       obvious (the test would otherwise pass trivially with unit_cost = 0).
+# ---------------------------------------------------------------------------
+test_that("community pickup with zero MMD enrolment has no effect or cost", {
+  with_hiv_params(LIVE_PARAMS_RETENTION)
+  override_ltfu_rates()
+  
+  ig_new <- intervention_groups
+  ig_new$treatment_monitoring$interventions$community_pickup$efficacy  <- 0.15
+  ig_new$treatment_monitoring$interventions$community_pickup$unit_cost <- -50  # large magnitude
+  with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
+  
+  ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
+                            yield_multipliers = list())
+  pops <- calculate_populations(ctx)
+  
+  interv <- zero_interventions()
+  interv$community_pickup <- 50    # all MMD coverages stay at 0
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  expect_equal(result$ltfu_prevented, 0)
+  # No DSD enrolment -> no cost adjustment; art_provision_cost is gross only.
+  expected_art_cost <- result$end_on_art * 200
+  expect_lte(abs(result$art_provision_cost - expected_art_cost), 200)
 })
 
 # ---------------------------------------------------------------------------
@@ -230,21 +379,21 @@ test_that("two DSD interventions contribute additively to ltfu_retained_frac", {
 test_that("ltfu_retained_frac is capped at 1.0", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
-
+  
   ig_new <- override_retention("mmd_3month", efficacy = 2.0, unit_cost = 0)
   with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
-
+  
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
                             yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$mmd_3month <- 100   # 100% coverage
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Capped to 1,425.6 -> 1426 (round)
   expect_lte(abs(result$ltfu_prevented - 1426), 1)
 })
@@ -263,21 +412,21 @@ test_that("ltfu_retained_frac is capped at 1.0", {
 test_that("DSD interventions do not reduce unstable LTFU", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
-
+  
   ig_new <- override_retention("mmd_3month", efficacy = 0.10, unit_cost = 0)
   with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
-
+  
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
                             yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$mmd_3month <- 50
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # ltfu_new_unstable = 3,600 × 0.14 = 504. Unaffected by DSD coverage.
   expect_close(result$unsuppressed_ltfu, 504)
 })
@@ -303,21 +452,21 @@ test_that("DSD interventions do not reduce unstable LTFU", {
 test_that("DSD cost flows to art_provision_cost as end_on_art × 200 + dsd_adj", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
-
+  
   ig_new <- override_retention("mmd_3month", efficacy = 0.10, unit_cost = 12)
   with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
-
+  
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
                             yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$mmd_3month <- 50
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # No testing / tracking interventions enabled -> intervention cost ≈ 0
   expect_close(result$total_intervention_cost, 0)
   # DSD cost lands in art_provision_cost. 32,400 × 0.50 = 16,200; × 12 = 194,400.
@@ -343,21 +492,21 @@ test_that("DSD cost flows to art_provision_cost as end_on_art × 200 + dsd_adj",
 test_that("DSD with negative unit_cost reduces art_provision_cost", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
-
+  
   ig_new <- override_retention("mmd_3month", efficacy = 0.10, unit_cost = -12)
   with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
-
+  
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
                             yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$mmd_3month <- 50
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   expect_close(result$total_intervention_cost, 0)
   # end_on_art ≈ 36,000 so end_on_art × 200 ≈ 7,200,000 >> 194,400 -> floor not hit.
   expected_art_cost <- result$end_on_art * 200 - 194400
@@ -380,17 +529,17 @@ test_that("DSD with negative unit_cost reduces art_provision_cost", {
 test_that("art_provision_cost floored at 0 with warning when DSD savings exceed gross", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
-
+  
   ig_new <- override_retention("mmd_3month", efficacy = 0.10, unit_cost = -1e6)
   with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
-
+  
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
                             yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$mmd_3month <- 50
-
+  
   expect_warning(
     result <- calculate_scenario_outcomes(
       ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
@@ -398,6 +547,63 @@ test_that("art_provision_cost floored at 0 with warning when DSD savings exceed 
     "art_provision_cost floored to 0"
   )
   expect_equal(result$art_provision_cost, 0)
+})
+
+# ---------------------------------------------------------------------------
+# 5.6f Combined MMD + community pickup cost reflects the override split
+# ---------------------------------------------------------------------------
+# WHAT: With c3 = 0.40, c6 = 0.50, cpu = 0.30, uc_3 = 10, uc_6 = 20,
+#       uc_cpu = -5 (community delivery cheaper than facility):
+#       stable_n          = 32,400
+#       mmd_only_cost     = (1 - 0.30) × 32,400 ×
+#                           (0.40·10 + 0.50·20)
+#                         = 0.70 × 32,400 × 14
+#                         = 0.70 × 453,600       = 317,520
+#       community_cost    = 0.30 × 0.90 × 32,400 × (-5)
+#                         = 0.30 × 0.90 × 32,400 × (-5)
+#                         = 0.27 × 32,400 × (-5)
+#                         = 8,748 × (-5)         = -43,740
+#       dsd_cost_adjust   = 317,520 + (-43,740)  = 273,780
+#       art_provision_cost = end_on_art × 200 + 273,780
+# WHY:  Locks the combined cost formula. Independent verification that:
+#         - cost path mirrors the effect path (same bucket weights)
+#         - community cost replaces (not adds to) MMD cost on the override share
+#         - mixed-sign unit costs combine correctly
+# HOW:  Override unit_cost and efficacy = 0 on all three so the effect path is
+#       irrelevant; assertion is purely on art_provision_cost. Allow ±200 for
+#       the dual-rounding gap documented in test 9.7.
+# ---------------------------------------------------------------------------
+test_that("combined MMD + community pickup cost matches the override split", {
+  with_hiv_params(LIVE_PARAMS_RETENTION)
+  override_ltfu_rates()
+  
+  ig_new <- intervention_groups
+  ig_new$treatment_monitoring$interventions$mmd_3month$efficacy        <- 0
+  ig_new$treatment_monitoring$interventions$mmd_3month$unit_cost       <- 10
+  ig_new$treatment_monitoring$interventions$mmd_6month$efficacy        <- 0
+  ig_new$treatment_monitoring$interventions$mmd_6month$unit_cost       <- 20
+  ig_new$treatment_monitoring$interventions$community_pickup$efficacy  <- 0
+  ig_new$treatment_monitoring$interventions$community_pickup$unit_cost <- -5
+  with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
+  
+  ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
+                            yield_multipliers = list())
+  pops <- calculate_populations(ctx)
+  
+  interv <- zero_interventions()
+  interv$mmd_3month       <- 40
+  interv$mmd_6month       <- 50
+  interv$community_pickup <- 30
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # No testing/tracking enabled -> intervention cost ≈ 0
+  expect_close(result$total_intervention_cost, 0)
+  expected_dsd_adj   <- 317520 + (-43740)          # = 273,780
+  expected_art_cost  <- result$end_on_art * 200 + expected_dsd_adj
+  expect_lte(abs(result$art_provision_cost - expected_art_cost), 200)
 })
 
 # ---------------------------------------------------------------------------
@@ -420,26 +626,107 @@ test_that("art_provision_cost floored at 0 with warning when DSD savings exceed 
 test_that("tracking_tracing operates on (prevalent + net incident) LTFU pool", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
-
+  
   # Override tracking_tracing params
   ig_new <- intervention_groups
   ig_new$retention_support$interventions$tracking_tracing$efficacy  <- 0.50
   ig_new$retention_support$interventions$tracking_tracing$unit_cost <- 0
   with_intervention_groups(list(retention_support = ig_new$retention_support))
-
+  
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
                             yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$tracking_tracing <- 40
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # 10,929.6 × 0.40 × 0.50 = 2,185.92 (+ 0 spontaneous since rate = 0)
   expect_lte(abs(result$ltfu_reengaged - 2186), 1)
+})
+
+# ---------------------------------------------------------------------------
+# 5.7b State-based suppression_delta: retention raises end_suppressed AND
+#      reduces FOI infections (no perverse +infections-from-retention)
+# ---------------------------------------------------------------------------
+# WHAT: Under the state-based suppression_delta formulation
+# (suppression_delta = end_suppressed - baseline_end_suppressed), turning
+# on stable-client retention must:
+#   (1) raise end_suppressed in the retention run vs the no-retention run, AND
+#   (2) yield end_new_infections that are LESS THAN OR EQUAL TO the
+#       no-retention run (never strictly greater).
+# WHY:  Regression guard for the +infections-from-retention bug observed in
+#       Botswana (cpu 0% → 50% giving +15 infections) and Malawi (cpu 5% →
+#       80% giving +232 infections). Both arose because the prior event-flow
+#       suppression_delta (additional_suppressed - baseline_additional_suppressed)
+#       undercredited stable retention — retention raised end_suppressed in
+#       the cascade but the FOI pathway saw it as a NET LOSS of suppression
+#       (because the shrunk LTFU pool produced less re-engagement). The
+#       state-based formulation makes whatever moves end_suppressed feed FOI
+#       symmetrically, so retention can never paradoxically increase
+#       infections.
+# HOW:  Two runs with identical context and tracking, differing only in
+#       mmd_3month (Run A: 0%, Run B: 50%). Pass Run A as the baseline for
+#       Run B by supplying baseline_end_suppressed = result_a$end_suppressed.
+#       Use efficacy = 0.10 so retention effect is non-trivial. Assertions:
+#         - result_b$end_suppressed > result_a$end_suppressed
+#         - result_b$end_new_infections <= result_a$end_new_infections
+#       (Equality would obtain if retention had zero efficacy or the
+#       suppression_delta was clamped; strict-less-than is the typical case.)
+# ---------------------------------------------------------------------------
+test_that("state-based suppression_delta: retention does not raise infections", {
+  with_hiv_params(LIVE_PARAMS_RETENTION)
+  override_ltfu_rates()
+  
+  ig_new <- intervention_groups
+  ig_new$treatment_monitoring$interventions$mmd_3month$efficacy        <- 0.10
+  ig_new$treatment_monitoring$interventions$mmd_3month$unit_cost       <- 0
+  ig_new$retention_support$interventions$tracking_tracing$efficacy     <- 0.50
+  ig_new$retention_support$interventions$tracking_tracing$unit_cost    <- 0
+  with_intervention_groups(list(
+    treatment_monitoring = ig_new$treatment_monitoring,
+    retention_support    = ig_new$retention_support
+  ))
+  
+  ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
+                            yield_multipliers = list())
+  pops <- calculate_populations(ctx)
+  
+  # Run A — baseline of this test: tracking only, no MMD
+  interv_a <- zero_interventions()
+  interv_a$tracking_tracing <- 40
+  result_a <- calculate_scenario_outcomes(
+    ctx, interv_a, pops, is_baseline = TRUE, baseline_interventions = interv_a
+  )
+  
+  # Run B — scenario: tracking + 50% MMD-3
+  interv_b <- zero_interventions()
+  interv_b$tracking_tracing <- 40
+  interv_b$mmd_3month       <- 50
+  result_b <- calculate_scenario_outcomes(
+    ctx, interv_b, pops,
+    is_baseline                    = FALSE,
+    baseline_interventions         = interv_a,
+    baseline_additional_suppressed = result_a$additional_suppressed,
+    baseline_end_suppressed        = result_a$end_suppressed
+  )
+  
+  # Sanity: retention is doing something in run B
+  expect_equal(result_a$ltfu_prevented, 0)
+  expect_lte(abs(result_b$ltfu_prevented - 71), 1)
+  
+  # State-based assertion 1: end_suppressed rises in run B vs run A
+  expect_gt(result_b$end_suppressed, result_a$end_suppressed)
+  
+  # State-based assertion 2: infections do NOT rise (the key regression guard)
+  # Under the prior event-flow formulation, end_new_infections would rise here
+  # because additional_suppressed dropped (re-engagement pool shrank). Under
+  # the state-based formulation, end_suppressed went UP, so FOI must see
+  # equal-or-fewer infections.
+  expect_lte(result_b$end_new_infections, result_a$end_new_infections)
 })
 
 # ---------------------------------------------------------------------------
@@ -455,23 +742,23 @@ test_that("tracking_tracing operates on (prevalent + net incident) LTFU pool", {
 test_that("tracking cost = (pool × coverage) × unit_cost (pre-efficacy)", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
-
+  
   ig_new <- intervention_groups
   ig_new$retention_support$interventions$tracking_tracing$efficacy  <- 0.50
   ig_new$retention_support$interventions$tracking_tracing$unit_cost <- 15
   with_intervention_groups(list(retention_support = ig_new$retention_support))
-
+  
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
                             yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$tracking_tracing <- 40
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # 10,929.6 × 0.40 × 15 = 65,577.6 -> 65,578 after round
   expect_lte(abs(result$total_intervention_cost - 65578), 2)
 })
@@ -499,17 +786,17 @@ test_that("spontaneous re-engagement = gross pool × rate", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   # Override JUST the spontaneous rate (overriding the on.exit-restored value)
   override_ltfu_rates(spontaneous = 0.10)
-
+  
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
                             yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()   # no tracking, no testing, no DSD
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # 10,929.6 × 0.10 = 1,092.96
   expect_lte(abs(result$ltfu_reengaged - 1093), 1)
 })
@@ -528,17 +815,17 @@ test_that("spontaneous re-engagement = gross pool × rate", {
 test_that("zero spontaneous rate produces zero spontaneous flow", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()  # spontaneous = 0 by default
-
+  
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
                             yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()   # no tracking, no testing, no DSD
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   expect_close(result$ltfu_reengaged, 0)
 })
 
@@ -557,21 +844,21 @@ test_that("zero spontaneous rate produces zero spontaneous flow", {
 test_that("100% DSD coverage on stable does not reduce unstable LTFU", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
-
+  
   ig_new <- override_retention("mmd_3month", efficacy = 2.0, unit_cost = 0)
   with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
-
+  
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
                             yield_multipliers = list())
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$mmd_3month <- 100
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # ltfu_new_unstable = 3,600 × 0.14 = 504, unchanged
   expect_close(result$unsuppressed_ltfu, 504)
   # ltfu_prevented_stable saturates the stable flow

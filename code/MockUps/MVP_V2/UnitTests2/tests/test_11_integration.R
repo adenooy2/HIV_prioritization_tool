@@ -60,8 +60,8 @@ LIVE_MORT_I <- list(
   treated = 0.0051, suppressed = 0.0051,
   ahd_new = 0.144, ahd_established = 0.028, ahd_untreated = 0.254,
   prop_ahd = list(undiagnosed = 0.154, diagnosed_not_art = 0.209,
-                   new_initiations = 0.209, established_treated = 0.295,
-                   established_supp = 0.043)
+                  new_initiations = 0.209, established_treated = 0.295,
+                  established_supp = 0.043)
 )
 
 zero_interventions <- function() {
@@ -128,29 +128,30 @@ int_ctx <- function() {
 test_that("every diff field is populated when fed real simulator output", {
   with_hiv_params(LIVE_PARAMS_INTEG)
   override_integ_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$linkage_rate <- 0.9
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 0
   ig_new$testing$interventions$test_facility_general$linkage_cost <- 0
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   pops <- calculate_populations(int_ctx())
-
+  
   base_interv <- zero_interventions()
   scen_interv <- zero_interventions()
   scen_interv$test_facility_general <- 10000
-
+  
   baseline <- calculate_scenario_outcomes(int_ctx(), base_interv, pops,
                                           is_baseline = TRUE,
                                           baseline_interventions = base_interv)
   scenario <- calculate_scenario_outcomes(int_ctx(), scen_interv, pops,
                                           is_baseline = FALSE,
-                                          baseline_interventions = base_interv)
-
+                                          baseline_interventions = base_interv,
+                                          baseline_end_suppressed = baseline$end_suppressed)
+  
   d <- calculate_scenario_difference(scenario, baseline)
-
+  
   expected_keys <- c(
     "diff_diagnosed", "diff_on_art", "diff_suppressed",
     "diff_tests_performed", "diff_positive_tests", "diff_new_diagnoses",
@@ -184,16 +185,16 @@ test_that("every diff field is populated when fed real simulator output", {
 test_that("self-comparison of real simulator output yields all-zero diffs", {
   with_hiv_params(LIVE_PARAMS_INTEG)
   override_integ_globals()
-
+  
   pops <- calculate_populations(int_ctx())
   interv <- zero_interventions()
-
+  
   result <- calculate_scenario_outcomes(int_ctx(), interv, pops,
                                         is_baseline = TRUE,
                                         baseline_interventions = interv)
-
+  
   d <- calculate_scenario_difference(result, result)
-
+  
   expect_close(d$diff_diagnosed,           0)
   expect_close(d$diff_on_art,              0)
   expect_close(d$diff_suppressed,          0)
@@ -227,29 +228,30 @@ test_that("self-comparison of real simulator output yields all-zero diffs", {
 test_that("scale-up scenario produces coherent positive signs", {
   with_hiv_params(LIVE_PARAMS_INTEG)
   override_integ_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$linkage_rate <- 0.9
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 5
   ig_new$testing$interventions$test_facility_general$linkage_cost <- 10
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   pops <- calculate_populations(int_ctx())
-
+  
   base_interv <- zero_interventions()
   scen_interv <- zero_interventions()
   scen_interv$test_facility_general <- 10000
-
+  
   baseline <- calculate_scenario_outcomes(int_ctx(), base_interv, pops,
                                           is_baseline = TRUE,
                                           baseline_interventions = base_interv)
   scenario <- calculate_scenario_outcomes(int_ctx(), scen_interv, pops,
                                           is_baseline = FALSE,
-                                          baseline_interventions = base_interv)
-
+                                          baseline_interventions = base_interv,
+                                          baseline_end_suppressed = baseline$end_suppressed)
+  
   d <- calculate_scenario_difference(scenario, baseline)
-
+  
   expect_gt(d$diff_tests_performed,    0)
   expect_gt(d$diff_new_diagnoses,      0)
   expect_gt(d$diff_art_initiations,    0)
@@ -277,29 +279,30 @@ test_that("scale-up scenario produces coherent positive signs", {
 test_that("scale-down scenario inverts signs and routes cost gap to savings", {
   with_hiv_params(LIVE_PARAMS_INTEG)
   override_integ_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$linkage_rate <- 0.9
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 5
   ig_new$testing$interventions$test_facility_general$linkage_cost <- 10
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   pops <- calculate_populations(int_ctx())
-
+  
   base_interv <- zero_interventions()
   base_interv$test_facility_general <- 10000
   scen_interv <- zero_interventions()  # nothing in scenario
-
+  
   baseline <- calculate_scenario_outcomes(int_ctx(), base_interv, pops,
                                           is_baseline = TRUE,
                                           baseline_interventions = base_interv)
   scenario <- calculate_scenario_outcomes(int_ctx(), scen_interv, pops,
                                           is_baseline = FALSE,
-                                          baseline_interventions = base_interv)
-
+                                          baseline_interventions = base_interv,
+                                          baseline_end_suppressed = baseline$end_suppressed)
+  
   d <- calculate_scenario_difference(scenario, baseline)
-
+  
   expect_lt(d$diff_tests_performed,    0)
   expect_lt(d$diff_new_diagnoses,      0)
   expect_lt(d$diff_intervention_cost,  0)
@@ -320,29 +323,30 @@ test_that("scale-down scenario inverts signs and routes cost gap to savings", {
 test_that("real-output cost identity: diff_total = diff_intervention + diff_art_provision", {
   with_hiv_params(LIVE_PARAMS_INTEG)
   override_integ_globals()
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$linkage_rate <- 0.9
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 5
   ig_new$testing$interventions$test_facility_general$linkage_cost <- 10
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   pops <- calculate_populations(int_ctx())
-
+  
   base_interv <- zero_interventions()
   scen_interv <- zero_interventions()
   scen_interv$test_facility_general <- 10000
-
+  
   baseline <- calculate_scenario_outcomes(int_ctx(), base_interv, pops,
                                           is_baseline = TRUE,
                                           baseline_interventions = base_interv)
   scenario <- calculate_scenario_outcomes(int_ctx(), scen_interv, pops,
                                           is_baseline = FALSE,
-                                          baseline_interventions = base_interv)
-
+                                          baseline_interventions = base_interv,
+                                          baseline_end_suppressed = baseline$end_suppressed)
+  
   d <- calculate_scenario_difference(scenario, baseline)
-
+  
   # Use a small tolerance for floating-point sum (multiple round() layers
   # in the source: each of total_cost, total_intervention_cost, and
   # art_provision_cost is independently rounded, and we then take diffs

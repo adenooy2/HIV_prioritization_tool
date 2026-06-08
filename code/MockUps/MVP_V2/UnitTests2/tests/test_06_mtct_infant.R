@@ -752,7 +752,8 @@ test_that("acute-BF infant infections are independent of EID coverage", {
                                          baseline_interventions = interv_no_eid)
   res_yes <- calculate_scenario_outcomes(ctx, interv_with_eid, pops,
                                          is_baseline = FALSE,
-                                         baseline_interventions = interv_no_eid)
+                                         baseline_interventions = interv_no_eid,
+                                         baseline_end_suppressed = res_no$end_suppressed)
   
   expect_equal(res_no$end_infant_infections_acute_bf,
                res_yes$end_infant_infections_acute_bf)
