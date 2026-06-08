@@ -428,7 +428,8 @@ server <- function(input, output, session) {
       anc_multiplier    = preset$context$anc_multiplier,   # ANC/adult HIV prev ratio, from CSV
       percent_on_art_pregnant = preset$context$percent_on_art_pregnant,
       use_mortality_calibration = preset$context$use_mortality_calibration,  # per-country mortality calibration flag
-      art_cost_standard = preset$context$art_cost_standard   # per-country ART unit cost (USD/PY); NULL/NA falls back to global in logic
+      art_cost_standard = preset$context$art_cost_standard,   # per-country ART unit cost (USD/PY); NULL/NA falls back to global in logic
+      cost_overrides_test = preset$context$cost_overrides_test  # named list of country-specific test unit cost overrides; absent/NULL means use global defaults
     ))
   }, ignoreInit = FALSE)
   
@@ -480,7 +481,12 @@ server <- function(input, output, session) {
       # Country-specific ART unit cost. NULL when no preset selected (e.g.
       # Custom Country) -- the logic file's `%||% ART_COST_STANDARD` fallback
       # then uses the global Excel/intervention_params value.
-      art_cost_standard = if (!is.null(cc)) cc$art_cost_standard else NULL
+      art_cost_standard = if (!is.null(cc)) cc$art_cost_standard else NULL,
+      # Country-specific test unit cost overrides (named list, keyed by
+      # intervention_key). NULL when no preset selected; in that case the
+      # logic file's `context$cost_overrides_test[[int_key]] %||% intervention$unit_cost`
+      # lookup safely returns NULL and falls back to the global value.
+      cost_overrides_test = if (!is.null(cc)) cc$cost_overrides_test else NULL
     )
   })
   

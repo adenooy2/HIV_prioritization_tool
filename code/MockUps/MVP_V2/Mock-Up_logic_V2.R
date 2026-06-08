@@ -714,6 +714,32 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
             ART_COST_STANDARD
           }
         },
+        # Country-specific test unit costs (USD per test administered).
+        # Each value falls back to the global intervention_params$unit_cost
+        # for the corresponding intervention_key if the CSV column is missing,
+        # blank, NA, or negative. See basic_hiv_data.csv columns prefixed `cost_*`.
+        # Stored as a named list keyed by intervention_key so the cost-charge
+        # site can look up via context$cost_overrides_test[[int_key]].
+        # Covers the 9 modalities for which country costing data is commonly
+        # available: 5 general HTS modalities, 2 HIVST, ANC and PNC HIV testing.
+        # EID, VL, and CD4 deliberately excluded — keep global default.
+        cost_overrides_test = {
+          test_cost_keys <- c("test_network", "test_facility_general", "test_index",
+                              "test_community", "test_kpsti",
+                              "hivst_facility", "hivst_community",
+                              "anc_hiv_testing", "pnc_hiv_testing")
+          test_cost_out <- list()
+          for (key_name in test_cost_keys) {
+            csv_col <- paste0("cost_", key_name)
+            if (!is.null(row[[csv_col]])) {
+              parsed_val <- suppressWarnings(as.numeric(as.character(row[[csv_col]])))
+              if (!is.na(parsed_val) && parsed_val >= 0) {
+                test_cost_out[[key_name]] <- parsed_val
+              }
+            }
+          }
+          test_cost_out  # named list; absent keys mean "use global default"
+        },
         
         percent_suppressed = row$percent_suppressed,
         aids_deaths_per_year = row$aids_deaths_per_year,
@@ -1660,12 +1686,18 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         
         # Unit cost charged here (per test administered, including implicit
         # no-ops). Linkage cost is charged post-loop after caps are applied.
+        # Country-specific unit cost override applied via context$cost_overrides_test;
+        # falls back to intervention$unit_cost when no override is supplied for int_key.
+        unit_cost_eff <- context$cost_overrides_test[[int_key]] %||% intervention$unit_cost
         total_intervention_cost <- total_intervention_cost +
-          number_reached * intervention$unit_cost
+          number_reached * unit_cost_eff
       } else {
-        # ANC/PNC: unit cost per test only; linkage cost charged in post-loop block
+        # ANC/PNC: unit cost per test only; linkage cost charged in post-loop block.
+        # Country-specific override via context$cost_overrides_test (anc_hiv_testing,
+        # pnc_hiv_testing). Falls back to intervention$unit_cost when absent.
+        unit_cost_eff <- context$cost_overrides_test[[int_key]] %||% intervention$unit_cost
         total_intervention_cost <- total_intervention_cost +
-          number_reached * intervention$unit_cost
+          number_reached * unit_cost_eff
       }
       
       # ── ANC HIV testing: route newly diagnosed HIV+ pregnant women into PMTCT cascade ──
