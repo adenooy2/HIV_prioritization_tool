@@ -59,7 +59,7 @@ ui <- page_sidebar(
         $('.disabled-input input').attr('readonly', true);
       });
     ")),
-  title = "HIV Intervention Impact Calculator",
+  title = "Tier-Plus - HIV Intervention Impact Calculator",
   sidebar = sidebar(
     width = 300,
     selectInput(
