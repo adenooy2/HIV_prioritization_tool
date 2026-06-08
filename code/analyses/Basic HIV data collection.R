@@ -188,8 +188,8 @@ basic_data$use_mortality_calibration[basic_data$country=="South Africa"]="TRUE"
 
 ######breastfeeding duration
 
-basic_data$bf_duration_months=NA
-basic_data$bf_duration_months[basic_data$country=="South Africa"]=3
+# basic_data$bf_duration_months=NA
+# basic_data$bf_duration_months[basic_data$country=="South Africa"]=3
 
 
 ######country specific costs
@@ -200,6 +200,8 @@ basic_data=left_join(basic_data,costs)
 sub_countries2=c("Botswana","Côte d'Ivoire","Eswatini","Ghana","Kenya","Lesotho","Malawi","Mozambique","Nigeria","South Africa","United Republic of Tanzania","Uganda","Zambia","Zimbabwe")
 
 basic_data=basic_data %>% filter(country%in%sub_countries2)
+
+
 write.csv(basic_data,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/basic_hiv_data.csv")
 
 

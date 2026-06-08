@@ -426,7 +426,8 @@ server <- function(input, output, session) {
       current_diagnoses = preset$context$current_diagnoses,
       anc_multiplier    = preset$context$anc_multiplier,   # ANC/adult HIV prev ratio, from CSV
       percent_on_art_pregnant = preset$context$percent_on_art_pregnant,
-      use_mortality_calibration = preset$context$use_mortality_calibration   # per-country mortality calibration flag
+      use_mortality_calibration = preset$context$use_mortality_calibration,  # per-country mortality calibration flag
+      art_cost_standard = preset$context$art_cost_standard   # per-country ART unit cost (USD/PY); NULL/NA falls back to global in logic
     ))
   }, ignoreInit = FALSE)
   
@@ -474,7 +475,11 @@ server <- function(input, output, session) {
       yield_multipliers = if (!is.null(cc)) cc$yield_multipliers else NULL,
       current_diagnoses = if (!is.null(cc)) cc$current_diagnoses else NULL,
       anc_multiplier    = if (!is.null(cc)) cc$anc_multiplier    else NULL,
-      use_mortality_calibration = if (!is.null(cc)) cc$use_mortality_calibration else FALSE
+      use_mortality_calibration = if (!is.null(cc)) cc$use_mortality_calibration else FALSE,
+      # Country-specific ART unit cost. NULL when no preset selected (e.g.
+      # Custom Country) -- the logic file's `%||% ART_COST_STANDARD` fallback
+      # then uses the global Excel/intervention_params value.
+      art_cost_standard = if (!is.null(cc)) cc$art_cost_standard else NULL
     )
   })
   

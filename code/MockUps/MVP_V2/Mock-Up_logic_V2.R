@@ -702,6 +702,18 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
           val <- as.numeric(row$percent_on_art_pregnant)
           if (is.na(val)) as.numeric(row$percent_on_art) else val
         },
+        # Country-specific ART unit cost (USD per person-year on ART).
+        # Falls back to the global ART_COST_STANDARD (from hiv_params /
+        # intervention_params Excel) if the column is missing, blank, or
+        # negative. See basic_hiv_data.csv `art_cost_standard` column.
+        art_cost_standard = {
+          if (!is.null(row$art_cost_standard)) {
+            val <- suppressWarnings(as.numeric(as.character(row$art_cost_standard)))
+            if (is.na(val) || val < 0) ART_COST_STANDARD else val
+          } else {
+            ART_COST_STANDARD
+          }
+        },
         
         percent_suppressed = row$percent_suppressed,
         aids_deaths_per_year = row$aids_deaths_per_year,
@@ -2657,14 +2669,15 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # CALCULATE COSTS
   # ========================================================================
   
-  art_provision_cost <- end_on_art * ART_COST_STANDARD + dsd_cost_adjustment
+  art_cost_unit <- context$art_cost_standard %||% ART_COST_STANDARD
+  art_provision_cost <- end_on_art * art_cost_unit + dsd_cost_adjustment
   if (art_provision_cost < 0) {
     warning(sprintf(
       paste0("art_provision_cost floored to 0: DSD savings (%.0f) exceeded ",
              "standard ART provision cost (%.0f × %.0f = %.0f). ",
              "Check DSD unit costs in intervention_params."),
-      -dsd_cost_adjustment, end_on_art, ART_COST_STANDARD,
-      end_on_art * ART_COST_STANDARD
+      -dsd_cost_adjustment, end_on_art, art_cost_unit,
+      end_on_art * art_cost_unit
     ))
     art_provision_cost <- 0
   }

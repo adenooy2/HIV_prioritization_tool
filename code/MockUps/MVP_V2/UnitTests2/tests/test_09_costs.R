@@ -21,6 +21,8 @@
 #   9.5  ANC HIV testing unit cost separate from linkage cost
 #   9.6  Sum-across-branches: multi-intervention cost = sum of individual costs
 #   9.7  art_provision_cost = end_on_art × 200
+#   9.7b art_provision_cost uses context$art_cost_standard when supplied
+#   9.7c art_provision_cost falls back to ART_COST_STANDARD when context absent
 #   9.8  total_cost = total_intervention_cost + art_provision_cost
 #   9.9  Zero-intervention scenario: total_intervention_cost = 0
 #   9.10 PNC VL testing unit cost
@@ -424,6 +426,76 @@ test_that("art_provision_cost = end_on_art × ART_COST_STANDARD with no DSD (wit
   expect_lte(abs(result$art_provision_cost - result$end_on_art * ART_COST_STANDARD), 200)
   # Specific value check: within ±200 of 33,843 × 200 = 6,768,600
   expect_lte(abs(result$art_provision_cost - 33843 * 200), 200)
+})
+
+# ---------------------------------------------------------------------------
+# 9.7b art_provision_cost uses context$art_cost_standard when supplied
+# ---------------------------------------------------------------------------
+# WHAT: When context$art_cost_standard is set (country-specific override from
+#       basic_hiv_data.csv), the cost calc uses that value rather than the
+#       global ART_COST_STANDARD.
+#
+# WHY: Country-specific ART unit costs were introduced so the model reflects
+#      real per-country ART provision costs (range ~$100-$220 across the
+#      14-country CSV) instead of a single global figure. Silent regression
+#      (e.g. a future refactor that forgets the context override) would
+#      reintroduce uniform costing.
+#
+# HOW: Override base_ctx() with art_cost_standard = 150 (vs global = 200 set
+#      in fixture). end_on_art ≈ 33,843 (from test 8.2), so:
+#        - Expected art_provision_cost ≈ 33,843 × 150 = 5,076,450
+#        - Expected gap vs global ≈ 33,843 × 50 = 1,692,150  (well > 1000)
+# ---------------------------------------------------------------------------
+test_that("art_provision_cost uses context$art_cost_standard when supplied", {
+  with_hiv_params(LIVE_PARAMS_COSTS)
+  override_cost_globals()
+  
+  ctx <- base_ctx()
+  ctx$art_cost_standard <- 150  # country-specific override
+  
+  pops <- calculate_populations(ctx)
+  interv <- zero_interventions()
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # Country-specific value is used (±150 for independent rounding of
+  # end_on_art and art_provision_cost)
+  expect_lte(abs(result$art_provision_cost - result$end_on_art * 150), 150)
+  # And the global is NOT used: gap should be ~1.7M, well above 1000
+  expect_gt(abs(result$art_provision_cost - result$end_on_art * 200), 1000)
+})
+
+# ---------------------------------------------------------------------------
+# 9.7c art_provision_cost falls back to ART_COST_STANDARD when context absent
+# ---------------------------------------------------------------------------
+# WHAT: When context$art_cost_standard is NULL (legacy CSVs without the
+#       column, or the column blank/NA), the global ART_COST_STANDARD is used.
+#
+# WHY: Backwards compatibility. CSVs predating the art_cost_standard column
+#      must behave exactly as before. This is functionally similar to test
+#      9.7 but kept separate so a future contributor changing the fallback
+#      path triggers an explicit, named failure.
+#
+# HOW: Use base_ctx() (no art_cost_standard field), confirm precondition,
+#      verify art_provision_cost matches end_on_art × 200.
+# ---------------------------------------------------------------------------
+test_that("art_provision_cost falls back to ART_COST_STANDARD when context value absent", {
+  with_hiv_params(LIVE_PARAMS_COSTS)
+  override_cost_globals()
+  
+  ctx <- base_ctx()
+  expect_null(ctx$art_cost_standard)  # confirm precondition
+  
+  pops <- calculate_populations(ctx)
+  interv <- zero_interventions()
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  expect_lte(abs(result$art_provision_cost - result$end_on_art * 200), 200)
 })
 
 # ---------------------------------------------------------------------------
