@@ -75,7 +75,16 @@ LIVE_PARAMS_MTCT <- list(
   # Tests 6.5/6.6 use full-duration NVP (ratio=1.0) to keep arithmetic
   # unchanged. Test 6.13 explicitly tests partial-duration scaling.
   bf_duration_months               = 18,
-  nvp_prophylaxis_duration_months  = 18
+  nvp_prophylaxis_duration_months  = 18,
+  # Acute-BF pathway (incident maternal infection during pregnancy/BF).
+  # Turned OFF (=0) for tests 6.1-6.13 because their arithmetic and headers
+  # document only the prevalent-cohort cascade. The acute-BF pathway is
+  # exercised in dedicated tests 6.14-6.16 below, which override this
+  # parameter back to its live default (0.28).
+  # IMPORTANT: do not flip this on globally without auditing every assertion
+  # in this file — many tests assert end_infant_infections values that would
+  # silently shift by the fixture's acute-BF contribution (~61).
+  acute_bf_transmission            = 0
 )
 
 zero_interventions <- function() {
@@ -652,4 +661,130 @@ test_that("6-week NVP (1.5m / 18m) scales efficacy to 8.3% of raw", {
   expect_lte(abs(result$infant_infections_averted - 6), 1)
   # Must be substantially higher than full-duration case (0)
   expect_gt(result$end_infant_infections, 60)
+})
+
+# ============================================================================
+# ACUTE-BF PATHWAY (incident maternal HIV infection during pregnancy/BF)
+# ----------------------------------------------------------------------------
+# These tests turn ON acute_bf_transmission (zeroed by LIVE_PARAMS_MTCT for
+# tests 6.1-6.13 above) and verify the new pathway's contribution to
+# paediatric infections. The pathway adds infections that bypass EID entirely
+# because the mother was HIV-negative at the ANC test and her infant is never
+# flagged as HIV-exposed.
+#
+# Fixture-derived expected values (LIVE_PARAMS_MTCT + acute_bf_transmission = 0.28):
+#   total_population        = 1,000,000
+#   birth_rate              = 25 (per 1000)
+#   new_infections_per_year = 5,000
+#   bf_duration_months      = 18
+#   multiplier              = (3 + 18) / 12 = 1.75
+#   percent_maternal_bf_inf = (1e6 × 25/1000 × 1.75) / 1e6 = 0.04375
+#   maternal_infections_bf  = 0.04375 × 5,000 = 218.75 -> rounded 219
+#   infant_inf_acute_bf     = 218.75 × 0.28   = 61.25  -> rounded 61
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# 6.14 Acute-BF pathway: maternal/infant counts match hand-derived formula
+# ---------------------------------------------------------------------------
+# WHAT: Verifies the full formula chain from fixture inputs to reported
+#       acute-BF outputs.
+# WHY: Locks the formula end-to-end so future refactors of the multiplier,
+#      denominator choice, or rounding can't silently drift the numbers.
+#      The multiplier (3 + bf_duration_months)/12 makes the test sensitive
+#      to BF duration assumptions, which is intentional — a change to that
+#      assumption is a model change and should fail this test.
+# HOW: Enable acute_bf_transmission = 0.28 (live default) via modifyList.
+#      No interventions. Read acute components from result.
+# ---------------------------------------------------------------------------
+test_that("acute-BF formula produces expected fixture values", {
+  params <- modifyList(LIVE_PARAMS_MTCT, list(acute_bf_transmission = 0.28))
+  with_hiv_params(params)
+  override_mtct_globals()
+  
+  ctx <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
+                              yield_multipliers = list())
+  pops <- calculate_populations(ctx)
+  interv <- zero_interventions()
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # Cascade component unchanged at 76 (baseline_infant_infections rounded)
+  expect_close(result$end_infant_infections_cascade,  76)
+  # Acute-BF component: 218.75 × 0.28 = 61.25 -> 61
+  expect_lte(abs(result$end_infant_infections_acute_bf - 61), 1)
+  # Maternal incident infections in pregnancy/BF: 218.75 -> 219
+  expect_lte(abs(result$maternal_infections_bf - 219), 1)
+  # Total reported = cascade + acute-BF
+  expect_lte(abs(result$end_infant_infections - 137), 1)
+  # end_total_infections invariant: must hold within ±1 due to rounding
+  # non-distributivity (LHS rounds sum, RHS sums rounds).
+  expect_lte(abs(result$end_total_infections -
+                   (result$end_new_infections + result$end_infant_infections)), 1)
+})
+
+# ---------------------------------------------------------------------------
+# 6.15 Acute-BF pathway is INDEPENDENT of EID coverage
+# ---------------------------------------------------------------------------
+# WHAT: EID at zero vs full coverage must not change end_infant_infections_acute_bf.
+# WHY: Mothers in this pathway were HIV-negative at ANC, so infants are never
+#      flagged HIV-exposed and never enter EID. The acute-BF count must be
+#      structurally invariant to EID coverage. Conversely, the cascade
+#      component MAY change with EID (it affects diagnosis, not infections,
+#      so should not — but this test deliberately doesn't constrain that).
+# HOW: Run with no EID and with substantial EID coverage; compare acute components.
+# ---------------------------------------------------------------------------
+test_that("acute-BF infant infections are independent of EID coverage", {
+  params <- modifyList(LIVE_PARAMS_MTCT, list(acute_bf_transmission = 0.28))
+  with_hiv_params(params)
+  override_mtct_globals()
+  
+  ctx  <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
+                               yield_multipliers = list())
+  pops <- calculate_populations(ctx)
+  
+  interv_no_eid   <- zero_interventions()
+  interv_with_eid <- modifyList(interv_no_eid, list(eid = 1000))
+  
+  res_no  <- calculate_scenario_outcomes(ctx, interv_no_eid,   pops,
+                                         is_baseline = TRUE,
+                                         baseline_interventions = interv_no_eid)
+  res_yes <- calculate_scenario_outcomes(ctx, interv_with_eid, pops,
+                                         is_baseline = FALSE,
+                                         baseline_interventions = interv_no_eid)
+  
+  expect_equal(res_no$end_infant_infections_acute_bf,
+               res_yes$end_infant_infections_acute_bf)
+  expect_equal(res_no$maternal_infections_bf,
+               res_yes$maternal_infections_bf)
+})
+
+# ---------------------------------------------------------------------------
+# 6.16 Acute-BF off-switch: acute_bf_transmission = 0 zeros the pathway
+# ---------------------------------------------------------------------------
+# WHAT: Setting acute_bf_transmission = 0 (the LIVE_PARAMS_MTCT default for
+#       this file) yields zero acute-BF infant infections, even though the
+#       maternal incidence count itself may be non-zero (it depends only on
+#       birth_rate, BF duration, and new_infections_per_year).
+# WHY: Regression guard — if a refactor accidentally hard-codes a non-zero
+#      default for acute_bf_transmission, this test catches it.
+# ---------------------------------------------------------------------------
+test_that("acute_bf_transmission = 0 zeros out infant infections from pathway", {
+  with_hiv_params(LIVE_PARAMS_MTCT)   # acute_bf_transmission = 0
+  override_mtct_globals()
+  
+  ctx  <- make_fixture_context()
+  pops <- calculate_populations(ctx)
+  interv <- zero_interventions()
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  expect_equal(result$end_infant_infections_acute_bf, 0)
+  # maternal_infections_bf is intentionally still computed (depends on
+  # demographics and new infections, not on transmission probability):
+  # 218.75 -> 219. This is informative regardless of acute_bf_transmission.
+  expect_lte(abs(result$maternal_infections_bf - 219), 1)
 })
