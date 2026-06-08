@@ -1840,13 +1840,19 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
             community_term <- cpu * mmd_sum * (cpu_def$efficacy %||% 0)
             ltfu_retained_frac <- ltfu_retained_frac + mmd_only_term + community_term
             
-            # Combined cost adjustment (people × unit_cost).
-            mmd_only_cost <- (1 - cpu) * stable_n * (
+            # Combined cost adjustment.
+            # unit_cost is interpreted as a FRACTIONAL change relative to the
+            # country-specific art_cost_standard (negative = saving, positive =
+            # premium). e.g. unit_cost = -0.08 -> DSD costs 8% less than facility
+            # standard care for that person-year. Range trusted to Excel input.
+            dsd_art_cost_unit <- context$art_cost_standard %||% ART_COST_STANDARD
+            mmd_only_cost <- (1 - cpu) * stable_n * dsd_art_cost_unit * (
               c3  * (mmd3_def$unit_cost  %||% 0) +
                 c6  * (mmd6_def$unit_cost  %||% 0) +
                 c12 * (mmd12_def$unit_cost %||% 0)
             )
-            community_cost <- cpu * mmd_sum * stable_n * (cpu_def$unit_cost %||% 0)
+            community_cost <- cpu * mmd_sum * stable_n * dsd_art_cost_unit *
+              (cpu_def$unit_cost %||% 0)
             dsd_cost_adjustment <- dsd_cost_adjustment + mmd_only_cost + community_cost
             
             dsd_bundle_done <- TRUE
