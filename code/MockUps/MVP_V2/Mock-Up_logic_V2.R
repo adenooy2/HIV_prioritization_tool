@@ -2531,7 +2531,6 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # post-dates the ANC test, so without late-pregnancy or PNC retesting they
   # remain undiagnosed and untreated through the breastfeeding period. Acute
   # maternal infection carries substantially elevated MTCT risk (Johnson et al.
-  # 2012, UNAIDS Reference Group: ~28% postnatal transmission per acute case).
   #
   # Approach: estimate the share of new adult infections that occur in women
   # currently pregnant/breastfeeding using their time-at-risk in that state,

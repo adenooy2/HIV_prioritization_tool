@@ -274,14 +274,14 @@ baseline_data$community_pickup[is.na(baseline_data$community_pickup)==TRUE]=5
 
 
 ######### FIND
-baseline_data$tracking_tracing[is.na(baseline_data$tracking_tracing)==TRUE]=80
+baseline_data$tracking_tracing[is.na(baseline_data$tracking_tracing)==TRUE]=70
 baseline_data$adherence_counseling[is.na(baseline_data$adherence_counseling)]=50
 
 baseline_data$anc_hiv_testing[is.na(baseline_data$anc_hiv_testing)==TRUE]=70
 baseline_data$pnc_hiv_testing[is.na(baseline_data$pnc_hiv_testing)==TRUE]=40
 
 baseline_data$anc_vl_testing[is.na(baseline_data$anc_vl_testing)==TRUE]=70
-baseline_data$pnc_vl_testing[is.na(baseline_data$pnc_vl_testing)==TRUE]=80
+baseline_data$pnc_vl_testing[is.na(baseline_data$pnc_vl_testing)==TRUE]=20
 
 #baseline_data$pep[is.na(baseline_data$pep)==TRUE]=100000
 baseline_data$infant_prophylaxis[is.na(baseline_data$infant_prophylaxis)==TRUE]=90

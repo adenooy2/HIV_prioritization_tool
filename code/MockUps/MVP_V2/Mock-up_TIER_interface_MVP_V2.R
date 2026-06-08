@@ -87,14 +87,13 @@ ui <- page_sidebar(
       div(
         style = "max-width: 900px; padding: 12px 4px; line-height: 1.5;",
         
-        h3("HIV Prioritisation Tool — User Guide"),
+        h3("TIER-Plus — User Guide"),
         p(em("A decision-support tool for trade-off analysis in HIV service planning")),
         
-        h4("What the tool is for"),
-        p("This tool is built to help decision makers and planners think through trade-offs when choosing between HIV service investments. It takes a current programme picture and lets the user vary the volume of any intervention to see how cascade outcomes (people diagnosed, on ART, suppressed), new infections, deaths, and total cost are likely to move in response."),
-        p("It is a global prioritisation tool. To remain usable across country contexts and tractable for rapid scenario comparison, it deliberately simplifies the underlying epidemiology: it runs a single-year calculation, applies a fixed force-of-infection structure with four risk strata, and uses globally-derived efficacy parameters that are not country-calibrated in the way a full transmission model would be."),
-        p(strong("Important: "), "the tool is ", em("indicative and illustrative"),
-          " of the direction and rough magnitude of impact of different choices. While effort has gone into the underlying parameters and identities, outputs will not be 100% accurate. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decision supported by this tool."),
+        h4("What is Tier-Plus"),
+        p("TIER-Plus is an extension of the original TIER prioritization tool. It aims to enable stakeholders to compare outcome and cost trade-offs across HIV interventions though an accessible, interactive platform.  It takes a current programme picture and lets the user vary the volume of interventions to compare how cascade outcomes, new infections, deaths, and total cost are expected to move in response."),
+        p(strong("Important: Tier-Plus is intended as a support tool for prioritization conversations. "), "As such, the tool is ", em("indicative "),
+          " of the direction and rough magnitude of impact of different choices. To make the tool quick and easy to use, and applicable across many contexts, it does not have the full complexity of other modelling tools. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decisions supported by this tool."),
         
         h4("How to use the tool"),
         tags$ol(
@@ -112,7 +111,7 @@ ui <- page_sidebar(
         ),
         
         h4("What the baseline scenario coverage represents"),
-        p("Baseline coverage values should reflect what was actually delivered in the most recent completed year — i.e. the volumes the programme achieved, not its targets, plans or guidelines. The baseline serves two purposes: (1) it calibrates the model so the simulated epidemic matches the observed one, and (2) it is the reference point against which each scenario is compared. If baseline values are too optimistic, scale-up scenarios will look weaker than they should, and scale-down scenarios will look worse than they should."),
+        p("Baseline coverage values should reflect what was delivered in the most recent year. It serves as a reference point against which alternative scenarios can be compared - i.e if we had the same implementation as last year what impact can we expect and how might this differ with alternative services. Additionally, baseline data is incoporated for model calibration, and hence serves an important purppose." ),
         p("All numerical inputs are annual counts of people reached / units delivered, except where the input is explicitly described as a percentage."),
         
         h4("Intervention definitions and data requirements"),
