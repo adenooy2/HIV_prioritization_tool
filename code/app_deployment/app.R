@@ -141,7 +141,8 @@ ui <- page_sidebar(
         tags$ul(
           tags$li(strong("Routine VL monitoring — "), "Percentage of people on ART receiving routine viral load testing."),
           tags$li(strong("ANC and PNC VL testing — "), "Coverage of pregnant and postpartum women living with HIV who receive viral load testing."),
-          tags$li(strong("Multi-month dispensing / DSD (3-month, 6-month, 12-month, ART pick-ups) — "), "Number of stable ART clients enrolled in differentiated service delivery."),
+          tags$li(strong("Multi-month dispensing (3-month, 6-month, 12-month) — "), "Percentage of stable ART clients enrolled in MMD (categories are mutually exclusive; the three must sum to ≤100%)."),
+          tags$li(strong("Community ART pick-up — "), "Percentage of MMD-enrolled clients receiving refills via community pickup instead of facility, applied equally across MMD-3/6/12. Has no effect when MMD enrolment is zero."),
           tags$li(strong("Enhanced Adherence Counselling (EAC) — "), "Percentage of individuals identified as unsuppressed (through a recent viral load)."),
           tags$li(strong("Tracking and tracing — "), "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool.")
         ),
@@ -334,7 +335,7 @@ server <- function(input, output, session) {
     mmd_3month            = "Number / percentage of stable ART clients enrolled in 3-month multi-month dispensing.",
     mmd_6month            = "Number / percentage of stable ART clients enrolled in 6-month multi-month dispensing.",
     mmd_12month           = "Number / percentage of stable ART clients enrolled in 12-month multi-month dispensing.",
-    community_pickup      = "Number / percentage of stable ART clients using community-based ART pick-up.",
+    community_pickup      = "Percentage of MMD-enrolled stable clients receiving refills via community pickup (overrides MMD facility-pickup mode for that share, equally across MMD-3/6/12). Has no effect if MMD enrolment is 0%.",
     
     # Retention support
     adherence_counseling  = "Percentage of individuals identified as unsuppressed (through a recent viral load) receiving Enhanced Adherence Counselling (EAC).",
@@ -426,7 +427,8 @@ server <- function(input, output, session) {
       anc_multiplier    = preset$context$anc_multiplier,   # ANC/adult HIV prev ratio, from CSV
       percent_on_art_pregnant = preset$context$percent_on_art_pregnant,
       use_mortality_calibration = preset$context$use_mortality_calibration,  # per-country mortality calibration flag
-      art_cost_standard = preset$context$art_cost_standard   # per-country ART unit cost (USD/PY); NULL/NA falls back to global in logic
+      art_cost_standard = preset$context$art_cost_standard,   # per-country ART unit cost (USD/PY); NULL/NA falls back to global in logic
+      cost_overrides_test = preset$context$cost_overrides_test  # named list of country-specific test unit cost overrides; absent/NULL means use global defaults
     ))
   }, ignoreInit = FALSE)
   
@@ -478,7 +480,12 @@ server <- function(input, output, session) {
       # Country-specific ART unit cost. NULL when no preset selected (e.g.
       # Custom Country) -- the logic file's `%||% ART_COST_STANDARD` fallback
       # then uses the global Excel/intervention_params value.
-      art_cost_standard = if (!is.null(cc)) cc$art_cost_standard else NULL
+      art_cost_standard = if (!is.null(cc)) cc$art_cost_standard else NULL,
+      # Country-specific test unit cost overrides (named list, keyed by
+      # intervention_key). NULL when no preset selected; in that case the
+      # logic file's `context$cost_overrides_test[[int_key]] %||% intervention$unit_cost`
+      # lookup safely returns NULL and falls back to the global value.
+      cost_overrides_test = if (!is.null(cc)) cc$cost_overrides_test else NULL
     )
   })
   
@@ -642,20 +649,17 @@ server <- function(input, output, session) {
       mmd3 <- input$baseline_mmd_3month
       mmd6 <- input$baseline_mmd_6month
       mmd12 <- input$baseline_mmd_12month
-      cpu  <- input$baseline_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
-          max_mmd3 <- max(0, 100 - mmd6 - mmd12 - cpu)
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd3 <- max(0, 100 - mmd6 - mmd12)
           updateNumericInput(session, "baseline_mmd_3month", 
                              value = round(max_mmd3, 1),
                              max = 100)
           showNotification(
             paste0("Baseline: 3-month MMD capped at ", round(max_mmd3, 1), 
-                   "% (total DSD cannot exceed 100%)"),
+                   "% (MMD enrolment cannot exceed 100%)"),
             type = "warning",
             duration = 4
           )
@@ -670,20 +674,17 @@ server <- function(input, output, session) {
       mmd3 <- input$baseline_mmd_3month
       mmd6 <- input$baseline_mmd_6month
       mmd12 <- input$baseline_mmd_12month
-      cpu  <- input$baseline_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
-          max_mmd6 <- max(0, 100 - mmd3 - mmd12 - cpu)
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd6 <- max(0, 100 - mmd3 - mmd12)
           updateNumericInput(session, "baseline_mmd_6month", 
                              value = round(max_mmd6, 1),
                              max = 100)
           showNotification(
             paste0("Baseline: 6-month MMD capped at ", round(max_mmd6, 1), 
-                   "% (total DSD cannot exceed 100%)"),
+                   "% (MMD enrolment cannot exceed 100%)"),
             type = "warning",
             duration = 4
           )
@@ -698,20 +699,17 @@ server <- function(input, output, session) {
       mmd3 <- input$baseline_mmd_3month
       mmd6 <- input$baseline_mmd_6month
       mmd12 <- input$baseline_mmd_12month
-      cpu  <- input$baseline_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
-          max_mmd12 <- max(0, 100 - mmd3 - mmd6 - cpu)
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd12 <- max(0, 100 - mmd3 - mmd6)
           updateNumericInput(session, "baseline_mmd_12month", 
                              value = round(max_mmd12, 1),
                              max = 100)
           showNotification(
             paste0("Baseline: 12-month MMD capped at ", round(max_mmd12, 1), 
-                   "% (total DSD cannot exceed 100%)"),
+                   "% (MMD enrolment cannot exceed 100%)"),
             type = "warning",
             duration = 4
           )
@@ -723,23 +721,20 @@ server <- function(input, output, session) {
   # Baseline DSD Validation - Community pick-up
   observe({
     isolate({
-      mmd3 <- input$baseline_mmd_3month
-      mmd6 <- input$baseline_mmd_6month
-      mmd12 <- input$baseline_mmd_12month
-      cpu  <- input$baseline_community_pickup
+      # Community pickup is independent of the MMD sum constraint.
+      # MMD-3/6/12 must sum to <= 100% (mutually exclusive enrolment),
+      # but community pickup is a delivery mode layered onto MMD
+      # enrolment and is capped at 100% on its own.
+      cpu <- input$baseline_community_pickup
       
-      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
-          max_cpu <- max(0, 100 - mmd3 - mmd6 - mmd12)
+      if (!is.null(cpu) && !is.na(cpu)) {
+        if (cpu > 100) {
+          max_cpu <- 100
           updateNumericInput(session, "baseline_community_pickup",
-                             value = round(max_cpu, 1),
+                             value = max_cpu,
                              max = 100)
           showNotification(
-            paste0("Baseline: Community pick-up capped at ", round(max_cpu, 1),
-                   "% (total DSD cannot exceed 100%)"),
+            paste0("Baseline: Community pick-up capped at 100%"),
             type = "warning",
             duration = 4
           )
@@ -891,14 +886,11 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario1_mmd_3month
       mmd6 <- input$scenario1_mmd_6month
       mmd12 <- input$scenario1_mmd_12month
-      cpu  <- input$scenario1_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
-          max_mmd3 <- max(0, 100 - mmd6 - mmd12 - cpu)
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd3 <- max(0, 100 - mmd6 - mmd12)
           updateNumericInput(session, "scenario1_mmd_3month", 
                              value = round(max_mmd3, 1),
                              max = 100)
@@ -917,14 +909,11 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario1_mmd_3month
       mmd6 <- input$scenario1_mmd_6month
       mmd12 <- input$scenario1_mmd_12month
-      cpu  <- input$scenario1_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
-          max_mmd6 <- max(0, 100 - mmd3 - mmd12 - cpu)
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd6 <- max(0, 100 - mmd3 - mmd12)
           updateNumericInput(session, "scenario1_mmd_6month", 
                              value = round(max_mmd6, 1),
                              max = 100)
@@ -943,14 +932,11 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario1_mmd_3month
       mmd6 <- input$scenario1_mmd_6month
       mmd12 <- input$scenario1_mmd_12month
-      cpu  <- input$scenario1_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
-          max_mmd12 <- max(0, 100 - mmd3 - mmd6 - cpu)
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd12 <- max(0, 100 - mmd3 - mmd6)
           updateNumericInput(session, "scenario1_mmd_12month", 
                              value = round(max_mmd12, 1),
                              max = 100)
@@ -966,19 +952,17 @@ server <- function(input, output, session) {
   
   observe({
     isolate({
-      mmd3 <- input$scenario1_mmd_3month
-      mmd6 <- input$scenario1_mmd_6month
-      mmd12 <- input$scenario1_mmd_12month
-      cpu  <- input$scenario1_community_pickup
+      # Community pickup is independent of the MMD sum constraint.
+      # MMD-3/6/12 must sum to <= 100% (mutually exclusive enrolment),
+      # but community pickup is a delivery mode layered onto MMD
+      # enrolment and is capped at 100% on its own.
+      cpu <- input$scenario1_community_pickup
       
-      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
-          max_cpu <- max(0, 100 - mmd3 - mmd6 - mmd12)
+      if (!is.null(cpu) && !is.na(cpu)) {
+        if (cpu > 100) {
+          max_cpu <- 100
           updateNumericInput(session, "scenario1_community_pickup",
-                             value = round(max_cpu, 1),
+                             value = max_cpu,
                              max = 100)
           showNotification(
             paste0("Scenario 1: Community pick-up capped at ", round(max_cpu, 1), "%"),
@@ -1131,14 +1115,11 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario2_mmd_3month
       mmd6 <- input$scenario2_mmd_6month
       mmd12 <- input$scenario2_mmd_12month
-      cpu  <- input$scenario2_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
-          max_mmd3 <- max(0, 100 - mmd6 - mmd12 - cpu)
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd3 <- max(0, 100 - mmd6 - mmd12)
           updateNumericInput(session, "scenario2_mmd_3month", 
                              value = round(max_mmd3, 1),
                              max = 100)
@@ -1157,14 +1138,11 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario2_mmd_3month
       mmd6 <- input$scenario2_mmd_6month
       mmd12 <- input$scenario2_mmd_12month
-      cpu  <- input$scenario2_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
-          max_mmd6 <- max(0, 100 - mmd3 - mmd12 - cpu)
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd6 <- max(0, 100 - mmd3 - mmd12)
           updateNumericInput(session, "scenario2_mmd_6month", 
                              value = round(max_mmd6, 1),
                              max = 100)
@@ -1183,14 +1161,11 @@ server <- function(input, output, session) {
       mmd3 <- input$scenario2_mmd_3month
       mmd6 <- input$scenario2_mmd_6month
       mmd12 <- input$scenario2_mmd_12month
-      cpu  <- input$scenario2_community_pickup
       
       if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
-          max_mmd12 <- max(0, 100 - mmd3 - mmd6 - cpu)
+          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12)) {
+        if (mmd3 + mmd6 + mmd12 > 100) {
+          max_mmd12 <- max(0, 100 - mmd3 - mmd6)
           updateNumericInput(session, "scenario2_mmd_12month", 
                              value = round(max_mmd12, 1),
                              max = 100)
@@ -1206,19 +1181,17 @@ server <- function(input, output, session) {
   
   observe({
     isolate({
-      mmd3 <- input$scenario2_mmd_3month
-      mmd6 <- input$scenario2_mmd_6month
-      mmd12 <- input$scenario2_mmd_12month
-      cpu  <- input$scenario2_community_pickup
+      # Community pickup is independent of the MMD sum constraint.
+      # MMD-3/6/12 must sum to <= 100% (mutually exclusive enrolment),
+      # but community pickup is a delivery mode layered onto MMD
+      # enrolment and is capped at 100% on its own.
+      cpu <- input$scenario2_community_pickup
       
-      if (!is.null(mmd3) && !is.null(mmd6) && !is.null(mmd12) &&
-          !is.null(cpu)  &&
-          !is.na(mmd3)  && !is.na(mmd6)  && !is.na(mmd12) &&
-          !is.na(cpu)) {
-        if (mmd3 + mmd6 + mmd12 + cpu > 100) {
-          max_cpu <- max(0, 100 - mmd3 - mmd6 - mmd12)
+      if (!is.null(cpu) && !is.na(cpu)) {
+        if (cpu > 100) {
+          max_cpu <- 100
           updateNumericInput(session, "scenario2_community_pickup",
-                             value = round(max_cpu, 1),
+                             value = max_cpu,
                              max = 100)
           showNotification(
             paste0("Scenario 2: Community pick-up capped at ", round(max_cpu, 1), "%"),
@@ -1526,12 +1499,12 @@ server <- function(input, output, session) {
     if (is.null(mmd3) || is.null(mmd6) || is.null(mmd12) ||
         is.null(cpu)) return(NULL)
     
-    total <- mmd3 + mmd6 + mmd12 + cpu
+    total <- mmd3 + mmd6 + mmd12
     color <- ifelse(total > 100, "red", ifelse(total > 90, "orange", "green"))
     
     tags$div(
       style = paste0("color: ", color, "; font-weight: bold;"),
-      paste0(round(total, 1), "% of stable clients")
+      paste0(round(total, 1), "% of stable clients on MMD")
     )
   })
   
@@ -1544,12 +1517,12 @@ server <- function(input, output, session) {
     if (is.null(mmd3) || is.null(mmd6) || is.null(mmd12) ||
         is.null(cpu)) return(NULL)
     
-    total <- mmd3 + mmd6 + mmd12 + cpu
+    total <- mmd3 + mmd6 + mmd12
     color <- ifelse(total > 100, "red", ifelse(total > 90, "orange", "green"))
     
     tags$div(
       style = paste0("color: ", color, "; font-weight: bold;"),
-      paste0(round(total, 1), "% of stable clients")
+      paste0(round(total, 1), "% of stable clients on MMD")
     )
   })
   
@@ -1562,12 +1535,12 @@ server <- function(input, output, session) {
     if (is.null(mmd3) || is.null(mmd6) || is.null(mmd12) ||
         is.null(cpu)) return(NULL)
     
-    total <- mmd3 + mmd6 + mmd12 + cpu
+    total <- mmd3 + mmd6 + mmd12 
     color <- ifelse(total > 100, "red", ifelse(total > 90, "orange", "green"))
     
     tags$div(
       style = paste0("color: ", color, "; font-weight: bold;"),
-      paste0(round(total, 1), "% of stable clients")
+      paste0(round(total, 1), "% of stable clients on MMD")
     )
   })
   
@@ -1680,6 +1653,7 @@ server <- function(input, output, session) {
     calculate_scenario_outcomes(context(), scenario, populations(),
                                 baseline_interventions          = baseline_input_values(),
                                 baseline_additional_suppressed  = outcomes_baseline()$additional_suppressed,
+                                baseline_end_suppressed         = outcomes_baseline()$end_suppressed,
                                 mortality_calibration_factor    = outcomes_baseline()$mortality_calibration_factor)
   })
   
@@ -1690,6 +1664,7 @@ server <- function(input, output, session) {
     calculate_scenario_outcomes(context(), scenario, populations(),
                                 baseline_interventions          = baseline_input_values(),
                                 baseline_additional_suppressed  = outcomes_baseline()$additional_suppressed,
+                                baseline_end_suppressed         = outcomes_baseline()$end_suppressed,
                                 mortality_calibration_factor    = outcomes_baseline()$mortality_calibration_factor)
   })
   

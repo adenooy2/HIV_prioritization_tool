@@ -714,6 +714,32 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
             ART_COST_STANDARD
           }
         },
+        # Country-specific test unit costs (USD per test administered).
+        # Each value falls back to the global intervention_params$unit_cost
+        # for the corresponding intervention_key if the CSV column is missing,
+        # blank, NA, or negative. See basic_hiv_data.csv columns prefixed `cost_*`.
+        # Stored as a named list keyed by intervention_key so the cost-charge
+        # site can look up via context$cost_overrides_test[[int_key]].
+        # Covers the 9 modalities for which country costing data is commonly
+        # available: 5 general HTS modalities, 2 HIVST, ANC and PNC HIV testing.
+        # EID, VL, and CD4 deliberately excluded — keep global default.
+        cost_overrides_test = {
+          test_cost_keys <- c("test_network", "test_facility_general", "test_index",
+                              "test_community", "test_kpsti",
+                              "hivst_facility", "hivst_community",
+                              "anc_hiv_testing", "pnc_hiv_testing")
+          test_cost_out <- list()
+          for (key_name in test_cost_keys) {
+            csv_col <- paste0("cost_", key_name)
+            if (!is.null(row[[csv_col]])) {
+              parsed_val <- suppressWarnings(as.numeric(as.character(row[[csv_col]])))
+              if (!is.na(parsed_val) && parsed_val >= 0) {
+                test_cost_out[[key_name]] <- parsed_val
+              }
+            }
+          }
+          test_cost_out  # named list; absent keys mean "use global default"
+        },
         
         percent_suppressed = row$percent_suppressed,
         aids_deaths_per_year = row$aids_deaths_per_year,
@@ -1395,6 +1421,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
                                         is_baseline                  = FALSE,
                                         baseline_interventions        = NULL,
                                         baseline_additional_suppressed = 0,
+                                        baseline_end_suppressed       = NULL,
                                         mortality_calibration_factor   = NULL) {
   
   # Initialize outcome counters
@@ -1454,6 +1481,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   deferred_tracking_unit_cost <- 0 # unit cost for cost calculation against full pool
   total_intervention_cost <- 0
   dsd_cost_adjustment <- 0
+  dsd_bundle_done     <- FALSE  # one-shot guard for the DSD bundle calculation
+  # (MMD-3/6/12 + community pickup are processed
+  # jointly on the first DSD key encountered)
   tests_performed <- 0
   
   # Base test yield: use country prior-year average from CSV if available;
@@ -1656,12 +1686,18 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         
         # Unit cost charged here (per test administered, including implicit
         # no-ops). Linkage cost is charged post-loop after caps are applied.
+        # Country-specific unit cost override applied via context$cost_overrides_test;
+        # falls back to intervention$unit_cost when no override is supplied for int_key.
+        unit_cost_eff <- context$cost_overrides_test[[int_key]] %||% intervention$unit_cost
         total_intervention_cost <- total_intervention_cost +
-          number_reached * intervention$unit_cost
+          number_reached * unit_cost_eff
       } else {
-        # ANC/PNC: unit cost per test only; linkage cost charged in post-loop block
+        # ANC/PNC: unit cost per test only; linkage cost charged in post-loop block.
+        # Country-specific override via context$cost_overrides_test (anc_hiv_testing,
+        # pnc_hiv_testing). Falls back to intervention$unit_cost when absent.
+        unit_cost_eff <- context$cost_overrides_test[[int_key]] %||% intervention$unit_cost
         total_intervention_cost <- total_intervention_cost +
-          number_reached * intervention$unit_cost
+          number_reached * unit_cost_eff
       }
       
       # ── ANC HIV testing: route newly diagnosed HIV+ pregnant women into PMTCT cascade ──
@@ -1770,10 +1806,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         # Two combination rules depending on whether interventions can overlap:
         #
         # ADDITIVE — DSD options (eligible_pop == "on_art_stable"):
-        #   mmd_3month / mmd_6month / mmd_12month / community_pickup
-        #   are mutually exclusive — the UI enforces they sum to ≤100% of on_art_stable,
-        #   so no person can be enrolled in two DSD slots. Simple addition is correct:
-        #     ltfu_retained_frac += coverage_frac * efficacy
+        #   mmd_3month / mmd_6month / mmd_12month are mutually exclusive
+        #   (UI enforces c3+c6+c12 <= 100%) and add directly into
+        #   ltfu_retained_frac. Community pickup is NOT additive — it is a
+        #   delivery mode that OVERRIDES the MMD facility-pickup mode for a
+        #   fraction `cpu` of MMD-enrolled clients, applied equally across
+        #   the three MMD categories. The four interventions are therefore
+        #   processed jointly as a bundle (see special-case below).
         #
         # MULTIPLICATIVE — overlapping interventions (eligible_pop == "on_art"):
         #   None currently — kept for future overlapping retention interventions
@@ -1787,13 +1826,72 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         # below, would let DSD coverage of stable patients spuriously reduce
         # unstable LTFU.
         if (intervention$eligible_pop == "on_art_stable") {
-          coverage_frac <- ifelse(
-            populations$on_art_stable > 0,
-            number_reached / populations$on_art_stable,
-            0
-          )
-          # Mutually exclusive DSD: additive
-          ltfu_retained_frac <- ltfu_retained_frac + coverage_frac * intervention$efficacy
+          # ── DSD bundle (MMD-3/6/12 + community pickup) ───────────────────
+          # Resulting buckets, as fractions of on_art_stable:
+          #   MMD-3 only : c3·(1-cpu)         eff = eff_3 ,  cost = uc_3
+          #   MMD-6 only : c6·(1-cpu)         eff = eff_6 ,  cost = uc_6
+          #   MMD-12 only: c12·(1-cpu)        eff = eff_12,  cost = uc_12
+          #   Community  : (c3+c6+c12)·cpu    eff = eff_cpu, cost = uc_cpu
+          #   No DSD     : 1 - (c3+c6+c12)    (no effect, no cost)
+          #
+          # NB: cpu > 0 with mmd_sum = 0 yields zero effect and zero cost
+          # by design — community pickup is a delivery mode layered on MMD
+          # enrolment, not a standalone DSD option.
+          #
+          # Processed on the first DSD/community key encountered in the
+          # loop; subsequent keys are no-op'd via dsd_bundle_done.
+          if (!isTRUE(dsd_bundle_done)) {
+            stable_n <- populations$on_art_stable
+            
+            mmd3_def  <- all_interventions$mmd_3month
+            mmd6_def  <- all_interventions$mmd_6month
+            mmd12_def <- all_interventions$mmd_12month
+            cpu_def   <- all_interventions$community_pickup
+            
+            c3   <- (interventions$mmd_3month       %||% 0) / 100
+            c6   <- (interventions$mmd_6month       %||% 0) / 100
+            c12  <- (interventions$mmd_12month      %||% 0) / 100
+            cpu  <- (interventions$community_pickup %||% 0) / 100
+            
+            # Defensive caps (UI already enforces these). If mmd_sum > 1,
+            # rescale c3/c6/c12 proportionally so the bucket fractions
+            # remain non-negative and sum correctly.
+            if ((c3 + c6 + c12) > 1) {
+              scale <- 1 / (c3 + c6 + c12)
+              c3 <- c3 * scale; c6 <- c6 * scale; c12 <- c12 * scale
+            }
+            mmd_sum <- c3 + c6 + c12
+            cpu     <- min(cpu, 1)
+            
+            # Combined retained-fraction contribution.
+            mmd_only_term <- (1 - cpu) * (
+              c3  * (mmd3_def$efficacy  %||% 0) +
+                c6  * (mmd6_def$efficacy  %||% 0) +
+                c12 * (mmd12_def$efficacy %||% 0)
+            )
+            community_term <- cpu * mmd_sum * (cpu_def$efficacy %||% 0)
+            ltfu_retained_frac <- ltfu_retained_frac + mmd_only_term + community_term
+            
+            # Combined cost adjustment.
+            # unit_cost is interpreted as a FRACTIONAL change relative to the
+            # country-specific art_cost_standard (negative = saving, positive =
+            # premium). e.g. unit_cost = -0.08 -> DSD costs 8% less than facility
+            # standard care for that person-year. Range trusted to Excel input.
+            dsd_art_cost_unit <- context$art_cost_standard %||% ART_COST_STANDARD
+            mmd_only_cost <- (1 - cpu) * stable_n * dsd_art_cost_unit * (
+              c3  * (mmd3_def$unit_cost  %||% 0) +
+                c6  * (mmd6_def$unit_cost  %||% 0) +
+                c12 * (mmd12_def$unit_cost %||% 0)
+            )
+            community_cost <- cpu * mmd_sum * stable_n * dsd_art_cost_unit *
+              (cpu_def$unit_cost %||% 0)
+            dsd_cost_adjustment <- dsd_cost_adjustment + mmd_only_cost + community_cost
+            
+            dsd_bundle_done <- TRUE
+          }
+          # Skip the default per-intervention cost path below for DSD keys
+          # (cost already applied above as part of the bundle).
+          next
         } else {
           # Overlapping interventions (none currently): multiplicative
           coverage_frac <- ifelse(
@@ -1809,10 +1907,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       # Cost: prevention interventions charged here against on_art-based reach.
       # Tracking/tracing is deferred — its cost is charged later against the
       # full LTFU pool (prevalent + net incident), matching the deferred reach.
-      if (intervention$eligible_pop == "on_art_stable") {
-        dsd_cost_adjustment <- dsd_cost_adjustment +
-          number_reached * intervention$unit_cost
-      } else if (intervention$eligible_pop != "ltfu") {
+      # DSD bundle (eligible_pop == "on_art_stable") handled above via `next`.
+      if (intervention$eligible_pop != "ltfu" &&
+          intervention$eligible_pop != "on_art_stable") {
         total_intervention_cost <- total_intervention_cost +
           number_reached * intervention$unit_cost
       }
@@ -2316,18 +2413,45 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Prevention loop below is COSTS ONLY — FOI handles all infection impact.
   # ========================================================================
   
-  # suppression_delta = MARGINAL change in suppression above the baseline
-  # treatment programme. Positive when a scenario scales suppression above
-  # baseline (reduces infectious pressure); NEGATIVE when a scenario scales
-  # testing/VL/linkage down below baseline (raises infectious pressure and
-  # therefore infections). At baseline this is zero by construction.
-  # β was calibrated using the observed cascade state (percent_suppressed),
-  # which already reflects the baseline programme, so only marginal change
+  # suppression_delta = MARGINAL change in END-OF-YEAR suppressed PLHIV between
+  # the scenario and baseline. Positive when a scenario raises end_suppressed
+  # above baseline (reduces infectious pressure → fewer new infections);
+  # NEGATIVE when a scenario lowers end_suppressed (e.g. cutting testing or
+  # VL → fewer people suppressed → more new infections). At baseline this is
+  # zero by construction.
+  #
+  # β was calibrated using the observed baseline cascade state (which already
+  # reflects the baseline programme), so only the marginal end-state change
   # is applied here — preventing double-counting.
+  #
+  # WHY STATE-BASED rather than event-flow (additional_suppressed delta):
+  # The event-flow approach undercredited stable-client retention, because
+  # retention generates no new "event" — a retained stable patient stays
+  # continuously suppressed, contributing to end_suppressed but not to
+  # additional_suppressed. It also caused a perverse +infections-from-
+  # retention result: more retention shrinks the LTFU pool that re-engagement
+  # acts on, reducing additional_suppressed and (paradoxically) raising FOI
+  # even though end_suppressed went up. Switching to a state-based delta
+  # makes whatever moves end_suppressed (retention, testing, EAC, mortality
+  # reductions) feed FOI symmetrically. Each person can only be counted once
+  # in end_suppressed, so no double-counting risk.
+  #
+  # Edge case: baseline_end_suppressed defaults to NULL so callers can be
+  # added incrementally. When NULL and !is_baseline, fall back to 0 (treats
+  # the scenario as if baseline had no suppression — wrong direction, but
+  # the caller in this app always supplies the value, so this path is a
+  # defensive fallback only).
   suppression_delta <- if (is_baseline) {
     0
+  } else if (!is.null(baseline_end_suppressed)) {
+    end_suppressed - baseline_end_suppressed   # allow negative
   } else {
-    additional_suppressed - baseline_additional_suppressed   # allow negative
+    # Defensive fallback if caller forgot to pass baseline_end_suppressed
+    warning("baseline_end_suppressed not provided to calculate_scenario_outcomes(); ",
+            "FOI suppression_delta defaulting to 0 (scenario will reproduce baseline ",
+            "infections regardless of suppression change). Update the caller to pass ",
+            "outcomes_baseline()$end_suppressed.")
+    0
   }
   
   # Pass efficacies from intervention_params into FOI so they stay in sync

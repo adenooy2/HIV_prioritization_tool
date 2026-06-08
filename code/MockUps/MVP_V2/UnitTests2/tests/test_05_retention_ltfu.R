@@ -435,25 +435,29 @@ test_that("DSD interventions do not reduce unstable LTFU", {
 # 5.6 DSD cost applies to ALL stable clients reached (not just retained)
 # ---------------------------------------------------------------------------
 # WHAT: DSD costs flow into art_provision_cost (NOT total_intervention_cost),
-#       as a (typically negative) adjustment to end_on_art × ART_COST_STANDARD.
-#       For DSD interventions, the adjustment is number_reached × unit_cost,
-#       where number_reached is the full coverage × eligible (here 50% × 32,400
+#       as a FRACTIONAL adjustment to end_on_art × ART_COST_STANDARD:
+#           dsd_cost_adjustment = number_reached × ART_COST_STANDARD × unit_cost
+#       where unit_cost is a fraction of standard ART cost (positive = premium,
+#       negative = saving). E.g. unit_cost = 0.08 → DSD costs 8% more per
+#       person-year than facility standard care for each enrolled stable client.
+#       number_reached is the full coverage × eligible (here 50% × 32,400
 #       = 16,200), regardless of retained frac.
-# WHY:  Captures that you pay for delivering DSD to all enrolled stable
-#       clients, not just those who would otherwise have been LTFU. And that
-#       this adjusts ART provision cost rather than adding intervention cost.
-# HOW:  Override mmd_3month$unit_cost = 12 (positive; tests the formula
-#       mechanism — sign convention is tested separately in 5.6b).
-#       Coverage 50% of 32,400 stable patients.
+# WHY:  Captures that (a) you pay the adjustment on all enrolled stable
+#       clients, not just those who would otherwise have been LTFU; (b) the
+#       adjustment lands in art_provision_cost rather than total_intervention_cost;
+#       and (c) the semantic is fractional, not absolute USD.
+# HOW:  Override mmd_3month$unit_cost = 0.08 (positive premium; sign convention
+#       is locked separately in 5.6b).
+#       Coverage 50% of 32,400 stable patients = 16,200 reached.
 #       Identity 1: total_intervention_cost ≈ 0 (no testing, no tracking).
-#       Identity 2: art_provision_cost == end_on_art × 200 + 16,200 × 12
-#                                     == end_on_art × 200 + 194,400
+#       Identity 2: art_provision_cost == end_on_art × 200 + 16,200 × 200 × 0.08
+#                                     == end_on_art × 200 + 259,200
 # ---------------------------------------------------------------------------
 test_that("DSD cost flows to art_provision_cost as end_on_art × 200 + dsd_adj", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
   
-  ig_new <- override_retention("mmd_3month", efficacy = 0.10, unit_cost = 12)
+  ig_new <- override_retention("mmd_3month", efficacy = 0.10, unit_cost = 0.08)
   with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
   
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
@@ -469,10 +473,11 @@ test_that("DSD cost flows to art_provision_cost as end_on_art × 200 + dsd_adj",
   
   # No testing / tracking interventions enabled -> intervention cost ≈ 0
   expect_close(result$total_intervention_cost, 0)
-  # DSD cost lands in art_provision_cost. 32,400 × 0.50 = 16,200; × 12 = 194,400.
-  # end_on_art × 200 is the gross; DSD adds 194,400 on top (positive unit_cost).
+  # DSD cost lands in art_provision_cost. 32,400 × 0.50 = 16,200 reached;
+  # × 200 (ART_COST_STANDARD) × 0.08 (unit_cost as fraction) = 259,200.
+  # end_on_art × 200 is the gross; DSD adds 259,200 on top (positive unit_cost).
   # Allow ±200 for the dual-rounding gap documented in test 9.7.
-  expected_art_cost <- result$end_on_art * 200 + 194400
+  expected_art_cost <- result$end_on_art * 200 + 259200
   expect_lte(abs(result$art_provision_cost - expected_art_cost), 200)
 })
 
@@ -482,18 +487,20 @@ test_that("DSD cost flows to art_provision_cost as end_on_art × 200 + dsd_adj",
 # ---------------------------------------------------------------------------
 # WHAT: In production, DSD unit_cost in intervention_params is NEGATIVE — DSD
 #       enrolment reduces ART provision cost relative to facility standard care.
-#       Same formula as 5.6 with a flipped sign.
+#       Same fractional formula as 5.6 with a flipped sign.
 # WHY:  Locks the sign convention. If someone refactors and accidentally takes
 #       abs() or clamps unit_cost >= 0, this test catches it.
-# HOW:  mmd_3month$unit_cost = -12. Coverage 50% × 32,400 = 16,200.
-#       dsd_cost_adjustment = 16,200 × (-12) = -194,400.
-#       art_provision_cost = end_on_art × 200 - 194,400 (assuming no floor hit).
+# HOW:  mmd_3month$unit_cost = -0.08 (8% saving vs facility standard ART).
+#       Coverage 50% × 32,400 = 16,200 reached.
+#       dsd_cost_adjustment = 16,200 × 200 × (-0.08) = -259,200.
+#       art_provision_cost = end_on_art × 200 - 259,200 (floor not hit since
+#       end_on_art × 200 ≈ 7.2M >> 259,200).
 # ---------------------------------------------------------------------------
 test_that("DSD with negative unit_cost reduces art_provision_cost", {
   with_hiv_params(LIVE_PARAMS_RETENTION)
   override_ltfu_rates()
   
-  ig_new <- override_retention("mmd_3month", efficacy = 0.10, unit_cost = -12)
+  ig_new <- override_retention("mmd_3month", efficacy = 0.10, unit_cost = -0.08)
   with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
   
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
@@ -508,8 +515,8 @@ test_that("DSD with negative unit_cost reduces art_provision_cost", {
   )
   
   expect_close(result$total_intervention_cost, 0)
-  # end_on_art ≈ 36,000 so end_on_art × 200 ≈ 7,200,000 >> 194,400 -> floor not hit.
-  expected_art_cost <- result$end_on_art * 200 - 194400
+  # end_on_art ≈ 36,000 so end_on_art × 200 ≈ 7,200,000 >> 259,200 -> floor not hit.
+  expected_art_cost <- result$end_on_art * 200 - 259200
   expect_gt(expected_art_cost, 0)  # sanity: floor should not trigger
   expect_lte(abs(result$art_provision_cost - expected_art_cost), 200)
 })
@@ -521,8 +528,8 @@ test_that("DSD with negative unit_cost reduces art_provision_cost", {
 #       Negative result triggers a warning and floor.
 # WHY:  Catches config errors where DSD unit costs are entered with
 #       implausibly large magnitudes.
-# HOW:  Force unit_cost = -1e6 so 16,200 × (-1e6) = -1.62e10 vastly exceeds
-#       end_on_art × 200 ≈ 7.2e6. Expect:
+# HOW:  Force unit_cost = -1e6 so 16,200 × 200 × (-1e6) = -3.24e12 vastly
+#       exceeds end_on_art × 200 ≈ 7.2e6. Expect:
 #         art_provision_cost == 0
 #         A warning is emitted.
 # ---------------------------------------------------------------------------
@@ -552,23 +559,23 @@ test_that("art_provision_cost floored at 0 with warning when DSD savings exceed 
 # ---------------------------------------------------------------------------
 # 5.6f Combined MMD + community pickup cost reflects the override split
 # ---------------------------------------------------------------------------
-# WHAT: With c3 = 0.40, c6 = 0.50, cpu = 0.30, uc_3 = 10, uc_6 = 20,
-#       uc_cpu = -5 (community delivery cheaper than facility):
+# WHAT: With c3 = 0.40, c6 = 0.50, cpu = 0.30,
+#       uc_3 = 0.10, uc_6 = 0.20, uc_cpu = -0.05 (community delivery
+#       5% cheaper than facility standard ART), art_cost_standard = 200:
 #       stable_n          = 32,400
-#       mmd_only_cost     = (1 - 0.30) × 32,400 ×
-#                           (0.40·10 + 0.50·20)
-#                         = 0.70 × 32,400 × 14
-#                         = 0.70 × 453,600       = 317,520
-#       community_cost    = 0.30 × 0.90 × 32,400 × (-5)
-#                         = 0.30 × 0.90 × 32,400 × (-5)
-#                         = 0.27 × 32,400 × (-5)
-#                         = 8,748 × (-5)         = -43,740
-#       dsd_cost_adjust   = 317,520 + (-43,740)  = 273,780
-#       art_provision_cost = end_on_art × 200 + 273,780
+#       mmd_only_cost     = (1 - 0.30) × 32,400 × 200 ×
+#                           (0.40·0.10 + 0.50·0.20)
+#                         = 0.70 × 32,400 × 200 × 0.14
+#                         = 0.70 × 907,200            = 635,040
+#       community_cost    = 0.30 × 0.90 × 32,400 × 200 × (-0.05)
+#                         = 0.27 × 32,400 × (-10)
+#                         = 8,748 × (-10)             = -87,480
+#       dsd_cost_adjust   = 635,040 + (-87,480)       = 547,560
+#       art_provision_cost = end_on_art × 200 + 547,560
 # WHY:  Locks the combined cost formula. Independent verification that:
 #         - cost path mirrors the effect path (same bucket weights)
 #         - community cost replaces (not adds to) MMD cost on the override share
-#         - mixed-sign unit costs combine correctly
+#         - mixed-sign unit costs combine correctly under the fractional semantic
 # HOW:  Override unit_cost and efficacy = 0 on all three so the effect path is
 #       irrelevant; assertion is purely on art_provision_cost. Allow ±200 for
 #       the dual-rounding gap documented in test 9.7.
@@ -579,11 +586,11 @@ test_that("combined MMD + community pickup cost matches the override split", {
   
   ig_new <- intervention_groups
   ig_new$treatment_monitoring$interventions$mmd_3month$efficacy        <- 0
-  ig_new$treatment_monitoring$interventions$mmd_3month$unit_cost       <- 10
+  ig_new$treatment_monitoring$interventions$mmd_3month$unit_cost       <- 0.10
   ig_new$treatment_monitoring$interventions$mmd_6month$efficacy        <- 0
-  ig_new$treatment_monitoring$interventions$mmd_6month$unit_cost       <- 20
+  ig_new$treatment_monitoring$interventions$mmd_6month$unit_cost       <- 0.20
   ig_new$treatment_monitoring$interventions$community_pickup$efficacy  <- 0
-  ig_new$treatment_monitoring$interventions$community_pickup$unit_cost <- -5
+  ig_new$treatment_monitoring$interventions$community_pickup$unit_cost <- -0.05
   with_intervention_groups(list(treatment_monitoring = ig_new$treatment_monitoring))
   
   ctx  <- retention_context(test_yield = 0.05, prior_year_tests = NULL,
@@ -601,7 +608,7 @@ test_that("combined MMD + community pickup cost matches the override split", {
   
   # No testing/tracking enabled -> intervention cost ≈ 0
   expect_close(result$total_intervention_cost, 0)
-  expected_dsd_adj   <- 317520 + (-43740)          # = 273,780
+  expected_dsd_adj   <- 635040 + (-87480)          # = 547,560
   expected_art_cost  <- result$end_on_art * 200 + expected_dsd_adj
   expect_lte(abs(result$art_provision_cost - expected_art_cost), 200)
 })

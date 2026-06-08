@@ -678,7 +678,7 @@ test_that("PNC VL testing cost = number_reached × unit_cost", {
 #       -> rounded in result list                            = 518,174
 #
 #   Step 5 -- DSD adjustment (charged to art_provision_cost, NOT above):
-#     dsd_cost_adjustment = 16,200 * 10                      = 162,000
+#     dsd_cost_adjustment = 16,200 * 200 * 0.05            = 162,000
 #     art_provision_cost = end_on_art * 200 + 162,000
 #       -> (result$art_provision_cost - result$end_on_art * 200) ~ 162,000
 #         (allow +/- 200 because both fields round independently; observed
@@ -719,8 +719,9 @@ test_that("full multi-intervention baseline: total_intervention_cost = 518,174 a
   ig_new$testing$interventions$test_community$linkage_rate        <- 0.70
   ig_new$testing$interventions$test_community$efficacy            <- 1.0
   
-  # Treatment monitoring (DSD)
-  ig_new$treatment_monitoring$interventions$mmd_3month$unit_cost <- 10
+  # Treatment monitoring (DSD) -- unit_cost is FRACTIONAL (0.05 = 5% premium
+  # over standard ART cost per person-year, not absolute USD)
+  ig_new$treatment_monitoring$interventions$mmd_3month$unit_cost <- 0.05
   ig_new$treatment_monitoring$interventions$mmd_3month$efficacy  <- 0.5
   
   # Retention support (tracking)
@@ -762,9 +763,9 @@ test_that("full multi-intervention baseline: total_intervention_cost = 518,174 a
   #     tolerance interpretation; matches the style of tests 9.3, 9.7, 9.8.
   expect_lte(abs(result$total_intervention_cost - 518174), 1)
   
-  # (b) DSD adjustment = 162,000 (mmd_3month * unit_cost). Observed delta ~ 36,
-  #     within +/- 200 tolerance to absorb independent rounding of end_on_art
-  #     and art_provision_cost in the result list.
+  # (b) DSD adjustment = 162,000 (16,200 × 200 × 0.05; unit_cost is fractional).
+  #     Observed delta ~ 36, within +/- 200 tolerance to absorb independent
+  #     rounding of end_on_art and art_provision_cost in the result list.
   expect_lte(
     abs((result$art_provision_cost - result$end_on_art * ART_COST_STANDARD) - 162000),
     200
@@ -775,5 +776,117 @@ test_that("full multi-intervention baseline: total_intervention_cost = 518,174 a
   expect_lte(
     abs(result$total_cost - (result$total_intervention_cost + result$art_provision_cost)),
     2
+  )
+})
+
+# ---------------------------------------------------------------------------
+# 9.13 Country-specific test unit cost override (cost_overrides_test)
+# ---------------------------------------------------------------------------
+# WHAT: context$cost_overrides_test is a named list (key = intervention_key,
+#       value = override unit cost in USD). When a key matches the loop's
+#       int_key, the override replaces intervention$unit_cost at the cost-
+#       charge site. Absent keys (NULL %||%) fall back to intervention$unit_cost.
+#
+# WHY:  Latent-fragility guard. If a future refactor changes the lookup key
+#       (e.g. from int_key to intervention$name), moves the override branch
+#       past the cost line, or breaks the %||% fallback for partial overrides,
+#       this test fails immediately rather than the override silently being
+#       ignored or all costs being overwritten.
+#
+# HOW:  Three sub-checks:
+#       (a) test_facility_general (general HTS path): exact delta in absolute
+#           USD; override raises unit cost from 4 to 9, applied to 10,000 tests.
+#           Expected delta = 10000 × (9 - 4) = 50,000.
+#       (b) anc_hiv_testing (ANC/PNC else-branch): cost scales linearly with
+#           the override; uses ratio test (override_cost / unit_cost) so we
+#           don't have to hardcode number_reached.
+#       (c) Partial override (only hivst_facility supplied) leaves
+#           test_facility_general cost unchanged — confirms per-key %||% fallback.
+# ---------------------------------------------------------------------------
+test_that("cost_overrides_test replaces intervention$unit_cost at the testing cost site", {
+  with_hiv_params(LIVE_PARAMS_COSTS)
+  override_cost_globals()
+  
+  ig_new <- intervention_groups
+  # Set known unit costs and zero linkage cost to isolate unit-cost effect.
+  # efficacy/linkage_rate kept at defaults — irrelevant to cost arithmetic.
+  ig_new$testing$interventions$test_facility_general$unit_cost    <- 4
+  ig_new$testing$interventions$test_facility_general$linkage_cost <- 0
+  ig_new$testing$interventions$anc_hiv_testing$unit_cost          <- 3
+  ig_new$testing$interventions$anc_hiv_testing$linkage_cost       <- 0
+  with_intervention_groups(list(testing = ig_new$testing))
+  
+  pops <- calculate_populations(base_ctx())
+  
+  # --- (a) test_facility_general: general HTS path -------------------------
+  interv_fac <- zero_interventions()
+  interv_fac$test_facility_general <- 10000
+  
+  ctx_nofix    <- base_ctx()
+  ctx_override <- modifyList(
+    base_ctx(),
+    list(cost_overrides_test = list(test_facility_general = 9))
+  )
+  
+  r_fac_nofix    <- calculate_scenario_outcomes(
+    ctx_nofix,    interv_fac, pops,
+    is_baseline = TRUE, baseline_interventions = interv_fac
+  )
+  r_fac_override <- calculate_scenario_outcomes(
+    ctx_override, interv_fac, pops,
+    is_baseline = TRUE, baseline_interventions = interv_fac
+  )
+  
+  # Override raises unit cost from 4 to 9; same number_reached in both runs.
+  # Expected delta = 10000 × (9 - 4) = 50,000.
+  expect_lte(
+    abs((r_fac_override$total_intervention_cost -
+           r_fac_nofix$total_intervention_cost) - 50000),
+    5
+  )
+  
+  # --- (b) anc_hiv_testing: ANC/PNC else-branch path -----------------------
+  interv_anc <- zero_interventions()
+  interv_anc$anc_hiv_testing <- 80   # 80% coverage of pregnant_hiv_testable
+  
+  ctx_anc_override <- modifyList(
+    base_ctx(),
+    list(cost_overrides_test = list(anc_hiv_testing = 7))
+  )
+  
+  r_anc_nofix    <- calculate_scenario_outcomes(
+    base_ctx(),       interv_anc, pops,
+    is_baseline = TRUE, baseline_interventions = interv_anc
+  )
+  r_anc_override <- calculate_scenario_outcomes(
+    ctx_anc_override, interv_anc, pops,
+    is_baseline = TRUE, baseline_interventions = interv_anc
+  )
+  
+  # We avoid hardcoding number_reached (= pregnant_hiv_testable × 0.80).
+  # Instead, derive nominal cost at unit_cost = 1 from the unfixed run
+  # (where unit_cost = 3) and scale up to the override (= 7).
+  nominal_at_unit_1      <- r_anc_nofix$total_intervention_cost / 3
+  expected_override_cost <- nominal_at_unit_1 * 7
+  expect_lte(
+    abs(r_anc_override$total_intervention_cost - expected_override_cost),
+    5
+  )
+  
+  # --- (c) Partial override leaves unrelated keys untouched ---------------
+  # Supplying an override for hivst_facility must NOT change the cost for
+  # test_facility_general (different int_key). Confirms per-key %||% lookup.
+  ctx_partial <- modifyList(
+    base_ctx(),
+    list(cost_overrides_test = list(hivst_facility = 99))
+  )
+  r_fac_partial <- calculate_scenario_outcomes(
+    ctx_partial, interv_fac, pops,
+    is_baseline = TRUE, baseline_interventions = interv_fac
+  )
+  expect_lte(
+    abs(r_fac_partial$total_intervention_cost -
+          r_fac_nofix$total_intervention_cost),
+    5
   )
 })
