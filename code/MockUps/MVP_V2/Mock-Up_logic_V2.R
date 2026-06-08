@@ -2523,6 +2523,39 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   end_infant_infections     <- max(0, baseline_infant_infections - infant_prophy_reduction)
   infant_infections_averted <- infant_prophy_reduction
   
+  # ========================================================================
+  # ACUTE MATERNAL INFECTION DURING BREASTFEEDING (incident pathway)
+  # ========================================================================
+  # Women who acquire HIV during pregnancy or breastfeeding are NOT captured
+  # by the prevalent-cohort PMTCT cascade above. Their seroconversion typically
+  # post-dates the ANC test, so without late-pregnancy or PNC retesting they
+  # remain undiagnosed and untreated through the breastfeeding period. Acute
+  # maternal infection carries substantially elevated MTCT risk (Johnson et al.
+  # 2012, UNAIDS Reference Group: ~28% postnatal transmission per acute case).
+  #
+  # Approach: estimate the share of new adult infections that occur in women
+  # currently pregnant/breastfeeding using their time-at-risk in that state,
+  # approximated as births × 1.75 woman-years (0.75 yr pregnancy + 1.0 yr BF).
+  # NOTE: the 1.0 yr BF here is a steady-state cohort weight specific to this
+  # calculation; the existing hiv_params$bf_duration_months (default 18) drives
+  # NVP efficacy duration scaling above and is a different quantity.
+  #
+  # These infections are MISSED BY EID: the mother was HIV-negative at ANC, so
+  # her infant is not flagged as HIV-exposed and never enters the EID program.
+  # They are routed directly to infant_untreated downstream.
+  percent_maternal_bf_inf    <- (context$total_population * context$birth_rate / 1000 * (3+hiv_params$bf_duration_months)/12) /
+    context$total_population
+  maternal_infections_bf     <- percent_maternal_bf_inf * context$new_infections_per_year
+  infant_infections_acute_bf <- maternal_infections_bf *
+    (hiv_params$acute_bf_transmission %||% 0.28)
+  
+  # ── DEBUG: acute-BF pathway diagnostic (console only) ─────────────────────
+  if (populations$hiv_exposed_infants > 0 || infant_infections_acute_bf > 0) {
+    cat(sprintf(
+      "[MTCT-ACUTE] preg_bf_share=%.3f  maternal_inf_bf=%.0f  infant_inf_acute=%.0f\n",
+      percent_maternal_bf_inf, maternal_infections_bf, infant_infections_acute_bf))
+  }
+  
   # ── DEBUG: implied MTCT rate vs published (console only) ──────────────────
   # Implied final MTCT rate = infant infections / HIV-exposed infants. This is
   # the model's analogue of a published country final transmission rate (the
@@ -2597,7 +2630,10 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   infant_on_art        <- eid_infants_diagnosed * eid_linkage_rate
   infant_suppressed    <- infant_on_art * infant_supp_rate
   infant_on_art_unsupp <- infant_on_art - infant_suppressed
-  infant_untreated     <- max(0, end_infant_infections - infant_on_art)
+  # Acute-BF infections bypass EID entirely (mother never flagged HIV-exposed),
+  # so they add directly to the untreated infant pool.
+  infant_untreated     <- max(0, end_infant_infections - infant_on_art) +
+    infant_infections_acute_bf
   
   # Deaths by infant treatment group
   infant_deaths_suppressed  <- infant_suppressed    * INFANT_MORTALITY_RATES$suppressed
@@ -2606,9 +2642,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   total_infant_deaths       <- infant_deaths_suppressed + infant_deaths_on_art +
     infant_deaths_untreated
   
-  # Infant deaths averted vs no-EID counterfactual (all infected infants untreated)
+  # Infant deaths averted vs no-EID counterfactual (all infected infants untreated).
+  # Counterfactual includes acute-BF infections (also untreated) so deaths_averted
+  # reflects what EID/PMTCT prevents vs a true no-intervention world.
   infant_deaths_averted <- max(0,
-                               end_infant_infections * INFANT_MORTALITY_RATES$untreated - total_infant_deaths
+                               (end_infant_infections + infant_infections_acute_bf) *
+                                 INFANT_MORTALITY_RATES$untreated - total_infant_deaths
   )
   
   # Wire into adult totals
@@ -2837,8 +2876,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     
     # End-of-year epidemiological outcomes (absolute values)
     end_new_infections = round(end_new_infections),
-    end_infant_infections = round(end_infant_infections),
-    end_total_infections = round(end_new_infections + end_infant_infections),
+    end_infant_infections = round(end_infant_infections + infant_infections_acute_bf),
+    end_infant_infections_cascade  = round(end_infant_infections),
+    end_infant_infections_acute_bf = round(infant_infections_acute_bf),
+    maternal_infections_bf         = round(maternal_infections_bf),
+    end_total_infections = round(end_new_infections + end_infant_infections +
+                                   infant_infections_acute_bf),
     end_deaths = round(end_deaths),
     
     # Costs
