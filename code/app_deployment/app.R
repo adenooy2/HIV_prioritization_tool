@@ -59,7 +59,7 @@ ui <- page_sidebar(
         $('.disabled-input input').attr('readonly', true);
       });
     ")),
-  title = "Tier-Plus - HIV Intervention Impact Calculator",
+  title = "TIER-Plus - HIV Intervention Impact Calculator",
   sidebar = sidebar(
     width = 300,
     selectInput(
@@ -78,7 +78,19 @@ ui <- page_sidebar(
     numericInput("pct_suppressed", "% on ART Suppressed:", value = 82, min = 0, max = 100),
     tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0)),
     p(style = "font-size: 0.85em; color: #666; margin-top: 10px;",
-      "Note: Deaths are calculated by cascade stage and intervention effects.")
+      "Note: Deaths are calculated by cascade stage and intervention effects."),
+    
+    # ---- Feedback link ----
+    hr(),
+    div(
+      style = "font-size: 0.85em; line-height: 1.4;",
+      h6(style = "margin-bottom: 6px;", "Feedback"),
+      p(style = "color: #595959; margin-bottom: 6px;",
+        "Found a bug or have a suggestion?"),
+      actionLink("open_feedback",
+                 label = tagList(icon("comment-dots"), " Share feedback"),
+                 style = "color: #2563eb;")
+    )
   ),
   
   navset_card_tab(
@@ -1677,7 +1689,29 @@ server <- function(input, output, session) {
     calculate_scenario_difference(outcomes_scenario2(), outcomes_baseline())
   })
   
-  
+  # ---- Feedback modal ----
+  observeEvent(input$open_feedback, {
+    showModal(modalDialog(
+      title = "Share your feedback",
+      easyClose = TRUE,
+      size = "l",
+      footer = modalButton("Close"),
+      
+      p("Your input helps improve TIER-Plus."),
+      # p(style = "color: #595959; font-size: 0.9em;",
+      #   "If the form does not load, email us at ",
+      #   tags$a(href = "mailto:your.email@example.com?subject=TIER-Plus%20Feedback",
+      #          "your.email@example.com"), "."),
+      tags$iframe(
+        src    = "https://forms.office.com/r/k71dTjF1uy?embed=true",
+        style  = "width: 100%; height: 700px; border: 0; margin-top: 8px;",
+        frameborder  = "0",
+        marginwidth  = "0",
+        marginheight = "0",
+        "Loading the feedback form…"
+      )
+    ))
+  })
   # # ========================================================================
   # # DEBUG OBSERVER — TEMPORARY
   # # Prints cascade numbers for baseline + scenarios to the R console every
