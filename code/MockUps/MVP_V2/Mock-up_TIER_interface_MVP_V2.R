@@ -59,7 +59,14 @@ ui <- page_sidebar(
         $('.disabled-input input').attr('readonly', true);
       });
     ")),
-  title = "TIER-Plus - HIV Intervention Impact Calculator",
+  title = tags$div(
+    style = "display: flex; align-items: center; gap: 16px;",
+    tags$img(src = "IAS-logo.png", height = "60px", alt = "IAS logo"),
+    tags$span(
+      "TIER-Plus - HIV Intervention Impact Calculator",
+      style = "font-size: 24px; font-weight: 600;"
+    )
+  ),
   sidebar = sidebar(
     width = 300,
     selectInput(
@@ -88,7 +95,12 @@ ui <- page_sidebar(
         "Found a bug or have a suggestion?"),
       actionLink("open_feedback",
                  label = tagList(icon("comment-dots"), " Share feedback"),
-                 style = "color: #2563eb;")
+                 style = "color: #2563eb;"),
+      p(style = "color: #595959; margin-top: 8px; margin-bottom: 0;",
+        icon("envelope"), " ",
+        tags$a(href = "mailto:dsd@iasociety.org?subject=TIER-Plus%20Contact",
+               "dsd@iasociety.org",
+               style = "color: #2563eb;"))
     )
   ),
   

@@ -702,6 +702,19 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
           val <- as.numeric(row$percent_on_art_pregnant)
           if (is.na(val)) as.numeric(row$percent_on_art) else val
         },
+        # Country-specific breastfeeding duration (months). Drives NVP
+        # efficacy duration scaling and the acute-BF maternal infection
+        # window. Falls back to hiv_params$bf_duration_months (default 18)
+        # if the column is missing, blank, NA, or non-positive.
+        # Source: basic_hiv_data.csv `bf_duration_months` column.
+        bf_duration_months = {
+          if (!is.null(row$bf_duration_months)) {
+            val <- suppressWarnings(as.numeric(as.character(row$bf_duration_months)))
+            if (is.na(val) || val <= 0) NULL else val
+          } else {
+            NULL
+          }
+        },
         # Country-specific ART unit cost (USD per person-year on ART).
         # Falls back to the global ART_COST_STANDARD (from hiv_params /
         # intervention_params Excel) if the column is missing, blank, or
@@ -2638,7 +2651,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   #
   # Example: 54% efficacy, 6-week NVP (1.5m), 18m breastfeeding
   #   -> 0.54 * (1.5/18) = 0.045 effective efficacy
-  nvp_bf_months     <- hiv_params$bf_duration_months              %||% 18
+  nvp_bf_months     <- context$bf_duration_months %||% hiv_params$bf_duration_months %||% 18
   nvp_prophy_months <- hiv_params$nvp_prophylaxis_duration_months %||% 1.5
   nvp_raw_eff       <- all_interventions$infant_prophylaxis$efficacy %||% 0
   nvp_eff_adjusted  <- nvp_raw_eff * min(1, nvp_prophy_months / nvp_bf_months)
@@ -2666,7 +2679,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # These infections are MISSED BY EID: the mother was HIV-negative at ANC, so
   # her infant is not flagged as HIV-exposed and never enters the EID program.
   # They are routed directly to infant_untreated downstream.
-  percent_maternal_bf_inf    <- (context$total_population * context$birth_rate / 1000 * (3+hiv_params$bf_duration_months)/12) /
+  bf_months_for_window       <- context$bf_duration_months %||% hiv_params$bf_duration_months %||% 18
+  percent_maternal_bf_inf    <- (context$total_population * context$birth_rate / 1000 * (3 + bf_months_for_window) / 12) /
     context$total_population
   maternal_infections_bf     <- percent_maternal_bf_inf * context$new_infections_per_year
   infant_infections_acute_bf <- maternal_infections_bf *

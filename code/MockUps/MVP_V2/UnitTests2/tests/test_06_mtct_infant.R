@@ -789,3 +789,45 @@ test_that("acute_bf_transmission = 0 zeros out infant infections from pathway", 
   # 218.75 -> 219. This is informative regardless of acute_bf_transmission.
   expect_lte(abs(result$maternal_infections_bf - 219), 1)
 })
+
+# ---------------------------------------------------------------------------
+# 6.17 Country-specific bf_duration_months overrides hiv_params for NVP scaling
+# ---------------------------------------------------------------------------
+# WHAT: When context$bf_duration_months is set (from CSV), it overrides
+#       hiv_params$bf_duration_months in the NVP efficacy scaling.
+# WHY:  Regression guard for the country-specific BF duration fallback chain.
+#       If the lookup ever silently drops back to hiv_params, partial-duration
+#       countries will be miscalculated.
+# HOW:  hiv_params$bf_duration_months = 18, context$bf_duration_months = 9,
+#       nvp_prophylaxis_duration_months = 1.5, raw_eff = 1.0, cov = 100%.
+#       nvp_eff_adjusted = 1.0 × min(1, 1.5/9) = 0.1667
+#       reduction = 76 × 0.1667 = 12.67 -> 13
+#       end_infant_inf = 76 - 13 = 63
+# ---------------------------------------------------------------------------
+test_that("country bf_duration_months overrides hiv_params for NVP scaling", {
+  with_hiv_params(modifyList(LIVE_PARAMS_MTCT, list(
+    nvp_prophylaxis_duration_months = 1.5,
+    bf_duration_months              = 18   # global fallback — should NOT be used
+  )))
+  override_mtct_globals()
+  
+  ig_new <- intervention_groups
+  ig_new$prevention$interventions$infant_prophylaxis$efficacy  <- 1.0
+  ig_new$prevention$interventions$infant_prophylaxis$unit_cost <- 0
+  with_intervention_groups(list(prevention = ig_new$prevention))
+  
+  ctx <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
+                              yield_multipliers = list())
+  ctx$bf_duration_months <- 9   # country-specific override
+  
+  pops <- calculate_populations(ctx)
+  interv <- zero_interventions()
+  interv$infant_prophylaxis <- 100
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # nvp_eff_adjusted = 1.5/9 = 0.1667; reduction ≈ 13; end_infant_inf ≈ 63
+  expect_lte(abs(result$end_infant_infections - 63), 1)
+})
