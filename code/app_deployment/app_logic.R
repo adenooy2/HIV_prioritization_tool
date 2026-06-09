@@ -2508,17 +2508,17 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
                          sep = "_")
     
     last <- get0("last_fp", envir = .last_diag_country, ifnotfound = "")
-    if (fingerprint != last) {
-      cat("\n=== BASELINE FOI ROUNDTRIP ===\n")
-      cat("input new_infections_per_year:", context$new_infections_per_year, "\n")
-      cat("computed foi_result$new_infections:", foi_result$new_infections, "\n")
-      cat("ratio computed/input:", foi_result$new_infections / context$new_infections_per_year, "\n")
-      cat("rr_high used:", define_strata_params(context)$rr_high, "\n")
-      cat("prop_high_risk used:", define_strata_params(context)$prop_high_risk, "\n")
-      cat("frac_high (calib):", foi_result$diagnostics$frac_infections_high_risk, "\n")
-      cat("==============================\n\n")
-      assign("last_fp", fingerprint, envir = .last_diag_country)
-    }
+    # if (fingerprint != last) {
+    #   cat("\n=== BASELINE FOI ROUNDTRIP ===\n")
+    #   cat("input new_infections_per_year:", context$new_infections_per_year, "\n")
+    #   cat("computed foi_result$new_infections:", foi_result$new_infections, "\n")
+    #   cat("ratio computed/input:", foi_result$new_infections / context$new_infections_per_year, "\n")
+    #   cat("rr_high used:", define_strata_params(context)$rr_high, "\n")
+    #   cat("prop_high_risk used:", define_strata_params(context)$prop_high_risk, "\n")
+    #   cat("frac_high (calib):", foi_result$diagnostics$frac_infections_high_risk, "\n")
+    #   cat("==============================\n\n")
+    #   assign("last_fp", fingerprint, envir = .last_diag_country)
+    # }
   }
   
   end_new_infections <- foi_result$new_infections
@@ -2686,55 +2686,55 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   infant_infections_acute_bf <- maternal_infections_bf *
     (hiv_params$acute_bf_transmission %||% 0.28)
   
-  # ── DEBUG: acute-BF pathway diagnostic (console only) ─────────────────────
-  if (populations$hiv_exposed_infants > 0 || infant_infections_acute_bf > 0) {
-    cat(sprintf(
-      "[MTCT-ACUTE] preg_bf_share=%.3f  maternal_inf_bf=%.0f  infant_inf_acute=%.0f\n",
-      percent_maternal_bf_inf, maternal_infections_bf, infant_infections_acute_bf))
-  }
+  # # ── DEBUG: acute-BF pathway diagnostic (console only) ─────────────────────
+  # if (populations$hiv_exposed_infants > 0 || infant_infections_acute_bf > 0) {
+  #   cat(sprintf(
+  #     "[MTCT-ACUTE] preg_bf_share=%.3f  maternal_inf_bf=%.0f  infant_inf_acute=%.0f\n",
+  #     percent_maternal_bf_inf, maternal_infections_bf, infant_infections_acute_bf))
+  # }
   
-  # ── DEBUG: implied MTCT rate vs published (console only) ──────────────────
-  # Implied final MTCT rate = infant infections / HIV-exposed infants. This is
-  # the model's analogue of a published country final transmission rate (the
-  # % of HIV-exposed infants infected through pregnancy/delivery/breastfeeding),
-  # so it can be eyeballed against UNAIDS/UNICEF country figures. Baseline is
-  # the pre-prophylaxis (maternal-cascade-only) rate. Denominator-consistent
-  # with the published rate (both use HIV-exposed infants). Print only.
-  if (populations$hiv_exposed_infants > 0) {
-    cat(sprintf(
-      "[MTCT] implied final rate: %.2f%%  (baseline %.2f%%)  | %.0f / %.0f exposed infants\n",
-      100 * end_infant_infections      / populations$hiv_exposed_infants,
-      100 * baseline_infant_infections / populations$hiv_exposed_infants,
-      end_infant_infections,
-      populations$hiv_exposed_infants))
-  } else {
-    cat("[MTCT] implied rate: n/a (no HIV-exposed infants)\n")
-  }
-  
-  # ── DEBUG: MTCT composition breakdown (console only) ──────────────────────
-  # Localises a suspicious implied rate. Two suspects:
-  #   (1) cascade composition — if mtct_supp dominates, baseline collapses
-  #       because suppressed mothers carry the lowest transmission rate;
-  #   (2) the three MTCT_RATES inputs themselves (placeholder / mis-scaled).
-  # Shares are over hiv_exposed_infants so they should sum to ~100%.
-  if (populations$hiv_exposed_infants > 0) {
-    .hei <- populations$hiv_exposed_infants
-    cat(sprintf(
-      "[MTCT]   buckets: supp=%.0f (%.1f%%)  unsupp=%.0f (%.1f%%)  no_art=%.0f (%.1f%%)\n",
-      mtct_supp,   100 * mtct_supp   / .hei,
-      mtct_unsupp, 100 * mtct_unsupp / .hei,
-      mtct_no_art, 100 * mtct_no_art / .hei))
-    cat(sprintf(
-      "[MTCT]   rates: supp=%.4f  unsupp=%.4f  no_art=%.4f\n",
-      MTCT_RATES$on_art_suppressed,
-      MTCT_RATES$on_art_unsuppressed,
-      MTCT_RATES$not_on_art))
-    cat(sprintf(
-      "[MTCT]   prophylaxis: cov_frac=%.3f  efficacy=%.3f  reduction=%.0f infections\n",
-      infant_prophy_cov_frac,
-      all_interventions$infant_prophylaxis$efficacy %||% 0,
-      infant_prophy_reduction))
-  }
+  # # ── DEBUG: implied MTCT rate vs published (console only) ──────────────────
+  # # Implied final MTCT rate = infant infections / HIV-exposed infants. This is
+  # # the model's analogue of a published country final transmission rate (the
+  # # % of HIV-exposed infants infected through pregnancy/delivery/breastfeeding),
+  # # so it can be eyeballed against UNAIDS/UNICEF country figures. Baseline is
+  # # the pre-prophylaxis (maternal-cascade-only) rate. Denominator-consistent
+  # # with the published rate (both use HIV-exposed infants). Print only.
+  # if (populations$hiv_exposed_infants > 0) {
+  #   cat(sprintf(
+  #     "[MTCT] implied final rate: %.2f%%  (baseline %.2f%%)  | %.0f / %.0f exposed infants\n",
+  #     100 * end_infant_infections      / populations$hiv_exposed_infants,
+  #     100 * baseline_infant_infections / populations$hiv_exposed_infants,
+  #     end_infant_infections,
+  #     populations$hiv_exposed_infants))
+  # } else {
+  #   cat("[MTCT] implied rate: n/a (no HIV-exposed infants)\n")
+  # }
+  # 
+  # # ── DEBUG: MTCT composition breakdown (console only) ──────────────────────
+  # # Localises a suspicious implied rate. Two suspects:
+  # #   (1) cascade composition — if mtct_supp dominates, baseline collapses
+  # #       because suppressed mothers carry the lowest transmission rate;
+  # #   (2) the three MTCT_RATES inputs themselves (placeholder / mis-scaled).
+  # # Shares are over hiv_exposed_infants so they should sum to ~100%.
+  # if (populations$hiv_exposed_infants > 0) {
+  #   .hei <- populations$hiv_exposed_infants
+  #   cat(sprintf(
+  #     "[MTCT]   buckets: supp=%.0f (%.1f%%)  unsupp=%.0f (%.1f%%)  no_art=%.0f (%.1f%%)\n",
+  #     mtct_supp,   100 * mtct_supp   / .hei,
+  #     mtct_unsupp, 100 * mtct_unsupp / .hei,
+  #     mtct_no_art, 100 * mtct_no_art / .hei))
+  #   cat(sprintf(
+  #     "[MTCT]   rates: supp=%.4f  unsupp=%.4f  no_art=%.4f\n",
+  #     MTCT_RATES$on_art_suppressed,
+  #     MTCT_RATES$on_art_unsuppressed,
+  #     MTCT_RATES$not_on_art))
+  #   cat(sprintf(
+  #     "[MTCT]   prophylaxis: cov_frac=%.3f  efficacy=%.3f  reduction=%.0f infections\n",
+  #     infant_prophy_cov_frac,
+  #     all_interventions$infant_prophylaxis$efficacy %||% 0,
+  #     infant_prophy_reduction))
+  # }
   
   # Step 5: Finalise EID diagnosis count and costs.
   # Cost applies to ALL HIV-exposed infants tested (hiv_exposed_infants x coverage),

@@ -58,7 +58,14 @@ ui <- page_sidebar(
         $('.disabled-input input').attr('readonly', true);
       });
     ")),
-  title = "TIER-Plus - HIV Intervention Impact Calculator",
+  title = tags$div(
+    style = "display: flex; align-items: center; gap: 16px;",
+    tags$img(src = "IAS-logo.png", height = "60px", alt = "IAS logo"),
+    tags$span(
+      "TIER-Plus - HIV Intervention Impact Calculator",
+      style = "font-size: 24px; font-weight: 600;"
+    )
+  ),
   sidebar = sidebar(
     width = 300,
     selectInput(
@@ -87,7 +94,12 @@ ui <- page_sidebar(
         "Found a bug or have a suggestion?"),
       actionLink("open_feedback",
                  label = tagList(icon("comment-dots"), " Share feedback"),
-                 style = "color: #2563eb;")
+                 style = "color: #2563eb;"),
+      p(style = "color: #595959; margin-top: 8px; margin-bottom: 0;",
+        icon("envelope"), " ",
+        tags$a(href = "mailto:dsd@iasociety.org?subject=TIER-Plus%20Contact",
+               "dsd@iasociety.org",
+               style = "color: #2563eb;"))
     )
   ),
   
@@ -128,40 +140,40 @@ ui <- page_sidebar(
         
         h5(strong("Prevention")),
         tags$ul(
-          tags$li(strong("Oral PrEP — "), "Number of individuals currently receiving and/or initiated on oral PrEP."),
-          tags$li(strong("Long-acting PrEP (lenacapavir) — "), "Number of individuals currently receiving and/or initiated on long-acting injectable PrEP."),
-          tags$li(strong("Condoms — "), "Total number of condoms distributed in the year."),
-          tags$li(strong("VMMC — "), "Voluntary medical male circumcisions performed in the year."),
-          tags$li(strong("Infant prophylaxis — "), "Percentage of HIV-exposed infants receiving HIV prophylaxis (e.g. NVP) to reduce vertical transmission.")
+          tags$li(strong("Oral PrEP: "), "Number of individuals currently receiving and/or initiated on oral PrEP."),
+          tags$li(strong("Long-acting PrEP (lenacapavir): "), "Number of individuals currently receiving and/or initiated on long-acting injectable PrEP."),
+          tags$li(strong("Condoms: "), "Total number of condoms distributed in the year."),
+          tags$li(strong("VMMC: "), "Voluntary medical male circumcisions performed in the year."),
+          tags$li(strong("Infant prophylaxis: "), "Percentage of HIV-exposed infants receiving HIV prophylaxis (e.g. NVP) to reduce vertical transmission.")
         ),
         
         h5(strong("Testing and diagnosis")),
         tags$ul(
-          tags$li(strong("Facility-based testing (general) — "), "Number of HIV tests performed at health facilities (excl. ANC)."),
-          tags$li(strong("Community testing — "), "Number of HIV tests performed in community settings."),
-          tags$li(strong("Index testing — "), "Number of tests conducted among partners of newly-diagnosed people living with HIV."),
+          tags$li(strong("Facility-based testing (general): "), "Number of HIV tests performed at health facilities (excl. ANC)."),
+          tags$li(strong("Community testing: "), "Number of HIV tests performed in community settings."),
+          tags$li(strong("Index testing: "), "Number of tests conducted among partners of newly-diagnosed people living with HIV."),
           tags$li(strong("Key populations: "), "Number of HIV tests performed among key populations or through STI services (excluding adolescents)."),
           tags$li(strong("Facility HIVST: "), "Number of HIV self-tests distributed at facilities."),
           tags$li(strong("Community HIVST: "), "Number of HIV self-tests distributed in the community."),
-          tags$li(strong("Early Infant Diagnosis (EID) — "), "Percentage of HIV-exposed infants receiving HIV testing."),
-          tags$li(strong("ANC HIV testing — "), "Percentage of pregnant women receiving ANC HIV testing."),
-          tags$li(strong("PNC HIV testing — "), "Percentage of postpartum women (not known to be living with HIV) receiving PNC HIV testing.")
+          tags$li(strong("Early Infant Diagnosis (EID): "), "Percentage of HIV-exposed infants receiving HIV testing."),
+          tags$li(strong("ANC HIV testing: "), "Percentage of pregnant women receiving ANC HIV testing."),
+          tags$li(strong("PNC HIV testing: "), "Percentage of postpartum women (not known to be living with HIV) receiving PNC HIV testing.")
         ),
         
         h5(strong("Treatment, retention and monitoring")),
         tags$ul(
-          tags$li(strong("Routine VL monitoring — "), "Percentage of people on ART receiving routine viral load testing."),
-          tags$li(strong("ANC and PNC VL testing — "), "Coverage of pregnant and postpartum women living with HIV who receive viral load testing."),
-          tags$li(strong("Multi-month dispensing (3-month, 6-month, 12-month) — "), "Percentage of stable ART clients enrolled in MMD (categories are mutually exclusive; the three must sum to ≤100%)."),
-          tags$li(strong("Community ART pick-up — "), "Percentage of MMD-enrolled clients receiving refills via community pickup instead of facility, applied equally across MMD-3/6/12. Has no effect when MMD enrolment is zero."),
-          tags$li(strong("Enhanced Adherence Counselling (EAC) — "), "Percentage of individuals identified as unsuppressed (through a recent viral load)."),
-          tags$li(strong("Tracking and tracing — "), "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool.")
+          tags$li(strong("Routine VL monitoring: "), "Percentage of people on ART receiving routine viral load testing."),
+          tags$li(strong("ANC and PNC VL testing: "), "Coverage of pregnant and postpartum women living with HIV who receive viral load testing."),
+          tags$li(strong("Multi-month dispensing (3-month, 6-month, 12-month): "), "Percentage of stable ART clients enrolled in MMD (categories are mutually exclusive; the three must sum to ≤100%)."),
+          tags$li(strong("Community ART pick-up: "), "Percentage of MMD-enrolled clients receiving refills via community pickup instead of facility, applied equally across MMD-3/6/12. Has no effect when MMD enrolment is zero."),
+          tags$li(strong("Enhanced Adherence Counselling (EAC):"), "Percentage of individuals identified as unsuppressed (through a recent viral load)."),
+          tags$li(strong("Tracking and tracing: "), "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool.")
         ),
         
         h5(strong("Advanced HIV disease")),
         tags$ul(
-          tags$li(strong("CD4 testing — "), "Coverage of CD4 testing among individuals initiating ART to identify advanced disease. Required to ", tags$q("unlock"), " the AHD package."),
-          tags$li(strong("AHD package — "), "Number of AHD-diagnosed clients receiving the package of care.")
+          tags$li(strong("CD4 testing: "), "Coverage of CD4 testing among individuals initiating ART."),
+          tags$li(strong("AHD package: "), "Number of AHD-diagnosed clients receiving the package of care.")
         ),
         
         h4("What the tool does not do"),
@@ -173,7 +185,7 @@ ui <- page_sidebar(
         ),
         
         hr(),
-        p(em("Use the tool to compare directions and trade-offs. Use country processes and validated models for the exact numbers in your plan."),
+        p(em("Use the tool to compare directions and trade-offs. Use country processes for the exact numbers in your plan."),
           style = "color: #595959; text-align: center;")
       )
     ),
@@ -205,8 +217,8 @@ ui <- page_sidebar(
         tags$span(style = "color: #78350f; font-size: 0.9em;",
                   "This tool is ",
                   tags$em("indicative"),
-                  " of the direction and rough magnitude of impact of different choices. Outputs are not 100% accurate and only treatment and included intervention costs are incorporated. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, supported (not replaced) by this tool. ",
-                  "Percentages (95-95-95 targets) can also be misleading when patient numbers change \u2014 always check the absolute population numbers in the cascade chart and epidemiological outcomes before drawing conclusions."
+                  " of the direction and rough magnitude of impact of different choices. Outputs may not be accurate to exact numbers and changes to the percentage 95-95-95 targets should be interpreted in conjunction with the absolute change in the number of people in each group. Costs are limited to treatment and included intervention costs only. As a result, many indirect and other programme costs are excluded. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, supported (but not replaced) by this tool."
+                  
         )
       ),
       div(
@@ -439,7 +451,8 @@ server <- function(input, output, session) {
       percent_on_art_pregnant = preset$context$percent_on_art_pregnant,
       use_mortality_calibration = preset$context$use_mortality_calibration,  # per-country mortality calibration flag
       art_cost_standard = preset$context$art_cost_standard,   # per-country ART unit cost (USD/PY); NULL/NA falls back to global in logic
-      cost_overrides_test = preset$context$cost_overrides_test  # named list of country-specific test unit cost overrides; absent/NULL means use global defaults
+      cost_overrides_test = preset$context$cost_overrides_test,  # named list of country-specific test unit cost overrides; absent/NULL means use global defaults
+      bf_duration_months = preset$context$bf_duration_months  # country-specific BF duration (months); NULL falls back to hiv_params in logic
     ))
   }, ignoreInit = FALSE)
   
@@ -496,7 +509,11 @@ server <- function(input, output, session) {
       # intervention_key). NULL when no preset selected; in that case the
       # logic file's `context$cost_overrides_test[[int_key]] %||% intervention$unit_cost`
       # lookup safely returns NULL and falls back to the global value.
-      cost_overrides_test = if (!is.null(cc)) cc$cost_overrides_test else NULL
+      cost_overrides_test = if (!is.null(cc)) cc$cost_overrides_test else NULL,
+      # Country-specific breastfeeding duration in months. NULL when no preset
+      # selected or when the CSV column is missing/blank -- logic file's
+      # `%||% hiv_params$bf_duration_months %||% 18` chain handles the fallback.
+      bf_duration_months = if (!is.null(cc)) cc$bf_duration_months else NULL
     )
   })
   
