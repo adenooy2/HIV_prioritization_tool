@@ -68,19 +68,19 @@ test_that("new_diagnoses + re_engagement does not exceed positive_tests", {
                        testing_art_init_supp = 0.90,
                        new_diagnoses_cap_prop = 0.95,
                        average_linkage_cap = 1.0))
-
+  
   ctx <- make_fixture_context(prop_retesting = 0.30, test_yield = 0.05)
   pops <- calculate_populations(ctx)
-
+  
   # Override one testing modality with known parameters
   new_groups <- override_test_modality("test_facility_general",
                                        efficacy = 1.0, unit_cost = 5,
                                        linkage_rate = 0.8, linkage_cost = 10)
   with_intervention_groups(list(testing = new_groups$testing))
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 10000
-
+  
   result <- calculate_scenario_outcomes(
     context = ctx,
     interventions = interv,
@@ -88,7 +88,7 @@ test_that("new_diagnoses + re_engagement does not exceed positive_tests", {
     is_baseline = TRUE,
     baseline_interventions = interv
   )
-
+  
   expect_gte(result$positive_tests + 1,
              result$new_diagnoses + result$re_engagement)
 })
@@ -115,7 +115,7 @@ test_that("yield dilution = 1.0 when total tests are below threshold", {
                        testing_art_init_supp = 0.90,
                        new_diagnoses_cap_prop = 0.95,
                        average_linkage_cap = 1.0))
-
+  
   # Override the testing modality with deterministic parameters
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
@@ -123,7 +123,7 @@ test_that("yield dilution = 1.0 when total tests are below threshold", {
   ig_new$testing$interventions$test_facility_general$linkage_rate <- 0.8
   ig_new$testing$interventions$test_facility_general$linkage_cost <- 10
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   ctx <- make_fixture_context(
     test_yield       = 0.05,
     prior_year_tests = 100000,
@@ -131,15 +131,15 @@ test_that("yield dilution = 1.0 when total tests are below threshold", {
     yield_multipliers = list()
   )
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 10000
-
+  
   result <- calculate_scenario_outcomes(
     context = ctx, interventions = interv, populations = pops,
     is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Expected positive_tests = 10,000 × 0.05 × 1.0 = 500
   # Of which prop_new_dx (0.70) become new diagnoses
   expect_close(result$positive_tests, 500)
@@ -167,14 +167,14 @@ test_that("yield dilution applies half-yield formula above threshold", {
                        testing_art_init_supp = 0.90,
                        new_diagnoses_cap_prop = 0.95,
                        average_linkage_cap = 1.0))
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 5
   ig_new$testing$interventions$test_facility_general$linkage_rate <- 0.8
   ig_new$testing$interventions$test_facility_general$linkage_cost <- 10
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   ctx <- make_fixture_context(
     test_yield       = 0.05,
     prior_year_tests = 10000,
@@ -182,15 +182,15 @@ test_that("yield dilution applies half-yield formula above threshold", {
     yield_multipliers = list()
   )
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 20000
-
+  
   result <- calculate_scenario_outcomes(
     context = ctx, interventions = interv, populations = pops,
     is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Expected: 20,000 × 0.05 × 0.75 × 1.0 = 750 positive tests
   expect_close(result$positive_tests, 750)
   expect_close(result$new_diagnoses,  750 * 0.70)
@@ -198,33 +198,32 @@ test_that("yield dilution applies half-yield formula above threshold", {
 })
 
 # ---------------------------------------------------------------------------
-# 3.4 Index testing is exempt from yield dilution
+# 3.4 Index testing IS subject to yield dilution (same as other modalities)
 # ---------------------------------------------------------------------------
-# WHAT: test_index uses modality_dilution = 1.0 regardless of total volume.
-# WHY:  Index contacts remain high-yield no matter how big the general
-#       programme is — contact pool quality doesn't degrade with general volume.
-# HOW:  Run BOTH test_facility_general (subject to dilution) and test_index
-#       (exempt) above threshold. Verify positive_tests from index uses full
-#       yield while facility_general uses diluted yield.
-#       Setup: prior_year_tests = 10,000; facility = 20,000, index = 1,000.
-#       Index pop cap = 2 × new_infections_per_year = 2 × 5,000 = 10,000
-#         -> index volume 1,000 is well under cap; not bound.
-#       Dilution denominator EXCLUDES index (per loop note line 1411).
-#         total_planned (excluding index) = 20,000.
-#         factor = (10,000 + 5,000) / 20,000 = 0.75.
+# WHAT: test_index uses the same yield_dilution_factor as facility/community
+#       testing; it also contributes to the dilution denominator.
+# WHY:  As of [this change] index testing is no longer treated as exempt from
+#       saturation — contact pools degrade alongside the broader programme
+#       when total testing volume exceeds prior-year throughput.
+# HOW:  Setup: prior_year_tests = 10,000; facility = 20,000, index = 1,000.
+#       Dilution denominator INCLUDES index now:
+#         total_planned = 20,000 + 1,000 = 21,000.
+#         factor = (10,000 + (21,000 - 10,000) × 0.5) / 21,000
+#                = 15,500 / 21,000 ≈ 0.738095…
 #       Expected positive_tests:
-#         facility: 20,000 × 0.05 × 0.75 × 1.0 = 750
-#         index:    1,000  × 0.05 × 1.00 × 1.0 = 50
-#         total:    800
+#         (20,000 + 1,000) × 0.05 × 0.738095… × 1.0
+#         = 21,000 × 0.05 × 15,500 / 21,000
+#         = 1,050 × 15,500 / 21,000
+#         = 775.0  (exact)
 # ---------------------------------------------------------------------------
-test_that("index testing is exempt from yield dilution", {
+test_that("index testing is subject to yield dilution like other modalities", {
   with_hiv_params(list(sexually_active_frac = SAFR,
                        prop_retest_default = 0.30,
                        testing_reengagement_cap_frac = 0.45,
                        testing_art_init_supp = 0.90,
                        new_diagnoses_cap_prop = 0.95,
                        average_linkage_cap = 1.0))
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 5
@@ -235,7 +234,7 @@ test_that("index testing is exempt from yield dilution", {
   ig_new$testing$interventions$test_index$linkage_rate <- 0.8
   ig_new$testing$interventions$test_index$linkage_cost <- 10
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   ctx <- make_fixture_context(
     test_yield       = 0.05,
     prior_year_tests = 10000,
@@ -243,49 +242,47 @@ test_that("index testing is exempt from yield dilution", {
     yield_multipliers = list()
   )
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 20000
   interv$test_index            <- 1000
-
+  
   result <- calculate_scenario_outcomes(
     context = ctx, interventions = interv, populations = pops,
     is_baseline = TRUE, baseline_interventions = interv
   )
-
-  # Expected: 750 (facility, diluted) + 50 (index, full) = 800
-  expect_close(result$positive_tests, 800)
+  
+  # Expected: 21,000 × 0.05 × (15,500 / 21,000) = 775.0
+  expect_close(result$positive_tests, 775)
 })
 
 # ---------------------------------------------------------------------------
-# 3.5 Index testing capped at 2 × new_infections_per_year
+# 3.5 Index testing volume is NOT capped (regression guard)
 # ---------------------------------------------------------------------------
-# WHAT: number_reached for test_index is capped at 2 × new_infections_per_year.
-# WHY:  Contact pool of incident cases is finite — cannot meaningfully exceed
-#       2x infections in practice.
-# HOW:  new_infections_per_year = 5,000 -> index cap = 10,000.
-#       Request 15,000 -> only 10,000 should be processed.
-#       Yield = 0.05, efficacy = 1.0. Index is exempt from dilution.
-#         positive_tests = 10,000 × 0.05 × 1.0 = 500
-#       tests_performed counts the CAPPED volume (per line 1464 `number_reached`
-#       is reassigned, then used for tests_performed accumulation).
-#         tests_performed = 10,000
+# WHAT: number_reached for test_index is bounded only by the eligible
+#       population — there is no programmatic 2× new-infections cap.
+# WHY:  Guard against re-introduction of the old finite-contact-pool cap.
+#       The cap was removed alongside subjecting index to yield dilution.
+# HOW:  new_infections_per_year = 5,000 (would have implied old cap = 10,000).
+#       Request 15,000 with dilution disabled (prior_year_tests = NULL).
+#         tests_performed should be 15,000 — not 10,000.
+#         positive_tests   = 15,000 × 0.05 × 1.0 × 1.0 = 750
 # ---------------------------------------------------------------------------
-test_that("index testing capped at 2 × new_infections_per_year", {
+test_that("index testing volume is not capped by new_infections_per_year", {
   with_hiv_params(list(sexually_active_frac = SAFR,
                        prop_retest_default = 0.30,
                        testing_reengagement_cap_frac = 0.45,
                        testing_art_init_supp = 0.90,
                        new_diagnoses_cap_prop = 0.95,
                        average_linkage_cap = 1.0))
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_index$efficacy     <- 1.0
   ig_new$testing$interventions$test_index$unit_cost    <- 5
   ig_new$testing$interventions$test_index$linkage_rate <- 0.8
   ig_new$testing$interventions$test_index$linkage_cost <- 10
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   ctx <- make_fixture_context(
     new_infections_per_year = 5000,
     test_yield              = 0.05,
@@ -294,17 +291,17 @@ test_that("index testing capped at 2 × new_infections_per_year", {
     yield_multipliers       = list()
   )
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
-  interv$test_index <- 15000   # 50% over the cap
-
+  interv$test_index <- 15000   # would have been clipped to 10,000 under old cap
+  
   result <- calculate_scenario_outcomes(
     context = ctx, interventions = interv, populations = pops,
     is_baseline = TRUE, baseline_interventions = interv
   )
-
-  expect_close(result$tests_performed, 10000)  # capped
-  expect_close(result$positive_tests,  500)    # 10,000 × 0.05 × 1.0
+  
+  expect_close(result$tests_performed, 15000)  # uncapped
+  expect_close(result$positive_tests,  750)    # 15,000 × 0.05 × 1.0 × 1.0
 })
 
 # ---------------------------------------------------------------------------
@@ -327,14 +324,14 @@ test_that("country yield_multipliers scale the base yield", {
                        testing_art_init_supp = 0.90,
                        new_diagnoses_cap_prop = 0.95,
                        average_linkage_cap = 1.0))
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 5
   ig_new$testing$interventions$test_facility_general$linkage_rate <- 0.8
   ig_new$testing$interventions$test_facility_general$linkage_cost <- 10
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   ctx_baseline <- make_fixture_context(
     test_yield       = 0.05,
     prior_year_tests = NULL,
@@ -342,20 +339,20 @@ test_that("country yield_multipliers scale the base yield", {
     yield_multipliers = list(test_facility_general = 1.0)
   )
   pops <- calculate_populations(ctx_baseline)
-
+  
   ctx_doubled <- ctx_baseline
   ctx_doubled$yield_multipliers <- list(test_facility_general = 2.0)
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 10000
-
+  
   r1 <- calculate_scenario_outcomes(ctx_baseline, interv, pops,
                                     is_baseline = TRUE,
                                     baseline_interventions = interv)
   r2 <- calculate_scenario_outcomes(ctx_doubled, interv, pops,
                                     is_baseline = TRUE,
                                     baseline_interventions = interv)
-
+  
   # Doubling mult doubles positive_tests (10,000 × 0.05 × 1.0 = 500 vs 1,000)
   expect_close(r1$positive_tests, 500)
   expect_close(r2$positive_tests, 1000)
@@ -384,14 +381,14 @@ test_that("testing modality cost = unit × tests + linkage_cost × linked", {
                        testing_art_init_supp = 0.90,
                        new_diagnoses_cap_prop = 0.95,
                        average_linkage_cap = 1.0))
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 5
   ig_new$testing$interventions$test_facility_general$linkage_rate <- 0.8
   ig_new$testing$interventions$test_facility_general$linkage_cost <- 10
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   ctx <- make_fixture_context(
     test_yield       = 0.05,
     prior_year_tests = NULL,
@@ -399,15 +396,15 @@ test_that("testing modality cost = unit × tests + linkage_cost × linked", {
     yield_multipliers = list()
   )
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 10000
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops,
     is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Expected linkage cost (per POSITIVE, not per linked):
   #   positives = 10,000 × 0.05 = 500
   #   linkage cost = 500 × 10 = 5,000
@@ -446,14 +443,14 @@ test_that("anc_hiv_testing routes into PMTCT cascade exclusively", {
                        new_diagnoses_cap_prop = 0.95,
                        pmtct_cascade_supp_discount = 0.90,
                        average_linkage_cap = 1.0))
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$anc_hiv_testing$efficacy     <- 1.0
   ig_new$testing$interventions$anc_hiv_testing$unit_cost    <- 0
   ig_new$testing$interventions$anc_hiv_testing$linkage_rate <- 1.0
   ig_new$testing$interventions$anc_hiv_testing$linkage_cost <- 0
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   ctx <- make_fixture_context(
     test_yield       = 0.05,
     prior_year_tests = NULL,
@@ -461,15 +458,15 @@ test_that("anc_hiv_testing routes into PMTCT cascade exclusively", {
     yield_multipliers = list()
   )
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$anc_hiv_testing <- 100   # 100% coverage
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops,
     is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # The PMTCT yield should produce ~125 new diagnoses (= pregnant_undiagnosed).
   # Tolerance ±1 for round() inside the function.
   expect_lte(abs(result$new_diagnoses - 125), 1)
@@ -507,7 +504,7 @@ test_that("testing_reengagement_cap binds when retest volume exceeds LTFU pool",
                        new_diagnoses_cap_prop = 0.95,
                        average_linkage_cap = 1.0,
                        prop_on_art_stable_diff = 0))
-
+  
   # Override LTFU rates so ltfu_new is deterministic (matches test 1.9 setup)
   old_stable   <- ANNUAL_LTFU_RATE_STABLE
   old_unstable <- ANNUAL_LTFU_RATE_UNSTABLE
@@ -517,14 +514,14 @@ test_that("testing_reengagement_cap binds when retest volume exceeds LTFU pool",
     assign("ANNUAL_LTFU_RATE_STABLE",   old_stable,   envir = .GlobalEnv)
     assign("ANNUAL_LTFU_RATE_UNSTABLE", old_unstable, envir = .GlobalEnv)
   }, add = TRUE)
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 0
   ig_new$testing$interventions$test_facility_general$linkage_rate <- 1.0
   ig_new$testing$interventions$test_facility_general$linkage_cost <- 0
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   ctx <- make_fixture_context(
     test_yield       = 0.10,
     prior_year_tests = NULL,
@@ -532,15 +529,15 @@ test_that("testing_reengagement_cap binds when retest volume exceeds LTFU pool",
     yield_multipliers = list()
   )
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 1000000   # pathological volume
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops,
     is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Expected: re_engagement = 11,340 × 0.45 = 5,103 (within rounding ±1)
   expect_lte(abs(result$re_engagement - 5103), 1)
 })
@@ -564,14 +561,14 @@ test_that("new_diagnoses is capped at undiagnosed × cap_prop", {
                        testing_art_init_supp = 0.90,
                        new_diagnoses_cap_prop = 0.95,
                        average_linkage_cap = 1.0))
-
+  
   ig_new <- intervention_groups
   ig_new$testing$interventions$test_facility_general$efficacy     <- 1.0
   ig_new$testing$interventions$test_facility_general$unit_cost    <- 0
   ig_new$testing$interventions$test_facility_general$linkage_rate <- 1.0
   ig_new$testing$interventions$test_facility_general$linkage_cost <- 0
   with_intervention_groups(list(testing = ig_new$testing))
-
+  
   ctx <- make_fixture_context(
     test_yield       = 0.10,
     prior_year_tests = NULL,
@@ -579,15 +576,15 @@ test_that("new_diagnoses is capped at undiagnosed × cap_prop", {
     yield_multipliers = list()
   )
   pops <- calculate_populations(ctx)
-
+  
   interv <- zero_interventions()
   interv$test_facility_general <- 1000000
-
+  
   result <- calculate_scenario_outcomes(
     ctx, interv, pops,
     is_baseline = TRUE, baseline_interventions = interv
   )
-
+  
   # Cap: 5,000 × 0.95 = 4,750
   expect_lte(abs(result$new_diagnoses - 4750), 1)
 })
