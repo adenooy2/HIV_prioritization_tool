@@ -174,7 +174,7 @@ ui <- page_sidebar(
         ),
         
         hr(),
-        p(em("Use the tool to compare directions and trade-offs. Use country processes and validated models for the exact numbers in your plan."),
+        p(em("Use the tool to compare directions and trade-offs. Use country processes for the exact numbers in your plan."),
           style = "color: #595959; text-align: center;")
       )
     ),
@@ -206,8 +206,8 @@ ui <- page_sidebar(
         tags$span(style = "color: #78350f; font-size: 0.9em;",
                   "This tool is ",
                   tags$em("indicative"),
-                  " of the direction and rough magnitude of impact of different choices. Outputs are not 100% accurate and only treatment and included intervention costs are incorporated. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, supported (not replaced) by this tool. ",
-                  "Percentages (95-95-95 targets) can also be misleading when patient numbers change \u2014 always check the absolute population numbers in the cascade chart and epidemiological outcomes before drawing conclusions."
+                  " of the direction and rough magnitude of impact of different choices. Outputs may not be accurate to exact numbers and changes to the percentage 95-95-95 targets should be interpreted in conjunction with the absolute change in the number of people in each group. Costs are limited to treatment and included intervention costs only. As a result, many indirect and other programme costs are excluded. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, supported (but not replaced) by this tool."
+                  
         )
       ),
       div(
