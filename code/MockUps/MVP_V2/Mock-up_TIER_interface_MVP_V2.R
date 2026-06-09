@@ -83,27 +83,33 @@ ui <- page_sidebar(
     numericInput("pct_diagnosed", "% of PLHIV Diagnosed:", value = 85, min = 0, max = 100),  
     numericInput("pct_on_art", "% Diagnosed on ART:", value = 78, min = 0, max = 100),
     numericInput("pct_suppressed", "% on ART Suppressed:", value = 82, min = 0, max = 100),
-    tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0)),
+    tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0))
     
     
-    # ---- Feedback link ----
-    #hr(),
-    div(
-      style = "font-size: 0.85em; line-height: 1.4;",
-      h6(style = "margin-bottom: 6px;", "Feedback"),
-      p(style = "color: #595959; margin-bottom: 6px;",
-        "Found a bug or have a suggestion?"),
-      actionLink("open_feedback",
-                 label = tagList(icon("comment-dots"), " Share feedback"),
-                 style = "color: #2563eb;"),
-      p(style = "color: #595959; margin-top: 8px; margin-bottom: 0;",
-        icon("envelope"), " ",
-        tags$a(href = "mailto:dsd@iasociety.org?subject=TIER-Plus%20Contact",
-               "dsd@iasociety.org",
-               style = "color: #2563eb;"))
+  ),
+  # ---- Feedback strip (above tabs) ----
+  div(
+    style = paste(
+      "display: flex;",
+      "justify-content: flex-end;",
+      "align-items: center;",
+      "gap: 18px;",
+      "flex-wrap: wrap;",
+      "padding: 4px 8px 8px 8px;",
+      "font-size: 0.9em;",
+      "color: #595959;"
+    ),
+    span("Found a bug or have a suggestion?"),
+    actionLink("open_feedback",
+               label = tagList(icon("comment-dots"), " Share feedback"),
+               style = "color: #2563eb;"),
+    span(
+      icon("envelope"), " ",
+      tags$a(href = "mailto:dsd@iasociety.org?subject=TIER-Plus%20Contact",
+             "dsd@iasociety.org",
+             style = "color: #2563eb;")
     )
   ),
-  
   navset_card_tab(
     nav_panel(
       "User Guide",
@@ -113,9 +119,9 @@ ui <- page_sidebar(
         h3("TIER-Plus — User Guide"),
         p(em("A decision-support tool for trade-off analysis in HIV service planning")),
         
-        h4("What is Tier-Plus"),
+        h4("What is TIER-Plus"),
         p("TIER-Plus is an extension of the original TIER prioritization tool. It aims to enable stakeholders to compare outcome and cost trade-offs across HIV interventions though an accessible, interactive platform.  It takes a current programme picture and lets the user vary the volume of interventions to compare how cascade outcomes, new acquisitions, deaths, and total cost are expected to move in response."),
-        p(strong("Important: Tier-Plus is intended as a support tool for prioritization conversations. "), "As such, the tool is ", em("indicative "),
+        p(strong("Important: TIER-Plus is intended as a support tool for prioritization conversations. "), "As such, the tool is ", em("indicative "),
           " of the direction and rough magnitude of impact of different choices. To make the tool quick and easy to use, and applicable across many contexts, it does not have the full complexity of other modelling tools. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decisions supported by this tool."),
         
         h4("How to use the tool"),
