@@ -265,30 +265,27 @@ temp=left_join(baseline_data %>% select(country),sub_reg_countries)
 temp=left_join(temp,cd4_data,by="Region")
 
 baseline_data=rows_patch(baseline_data, temp %>% select(country,cd4_testing),unmatched = "ignore")
-##############DSD Assumptions -find
+##############Assumptions - (Moz, Malawi, Zam - where available)
 
 baseline_data$mmd_3month[is.na(baseline_data$mmd_3month)==TRUE]=30
 baseline_data$mmd_6month[is.na(baseline_data$mmd_6month)==TRUE]=60
 baseline_data$mmd_12month[is.na(baseline_data$mmd_12month)==TRUE]=0
-baseline_data$community_pickup[is.na(baseline_data$community_pickup)==TRUE]=5
+baseline_data$community_pickup[is.na(baseline_data$community_pickup)==TRUE]=15
+
+baseline_data$infant_prophylaxis[is.na(baseline_data$infant_prophylaxis)==TRUE]=80
+baseline_data$anc_hiv_testing[is.na(baseline_data$anc_hiv_testing)==TRUE]=95
+baseline_data$pnc_hiv_testing[is.na(baseline_data$pnc_hiv_testing)==TRUE]=20
+baseline_data$vl_monitoring_routine[is.na(baseline_data$vl_monitoring_routine)==TRUE]=75
+baseline_data$tracking_tracing[is.na(baseline_data$tracking_tracing)==TRUE]=90
+baseline_data$adherence_counseling[is.na(baseline_data$adherence_counseling)]=70
 
 
-######### FIND
-baseline_data$tracking_tracing[is.na(baseline_data$tracking_tracing)==TRUE]=70
-baseline_data$adherence_counseling[is.na(baseline_data$adherence_counseling)]=50
+baseline_data$anc_vl_testing[is.na(baseline_data$anc_vl_testing)==TRUE]=75
+baseline_data$pnc_vl_testing[is.na(baseline_data$pnc_vl_testing)==TRUE]=75
 
-baseline_data$anc_hiv_testing[is.na(baseline_data$anc_hiv_testing)==TRUE]=70
-baseline_data$pnc_hiv_testing[is.na(baseline_data$pnc_hiv_testing)==TRUE]=40
+#Other assumptions
 
-baseline_data$anc_vl_testing[is.na(baseline_data$anc_vl_testing)==TRUE]=70
-baseline_data$pnc_vl_testing[is.na(baseline_data$pnc_vl_testing)==TRUE]=20
-
-#baseline_data$pep[is.na(baseline_data$pep)==TRUE]=100000
-baseline_data$infant_prophylaxis[is.na(baseline_data$infant_prophylaxis)==TRUE]=90
-
-baseline_data$vl_monitoring_routine[is.na(baseline_data$vl_monitoring_routine)==TRUE]=70
-
-baseline_data$ahd_package[is.na(baseline_data$ahd_package)==TRUE]=80
+baseline_data$ahd_package[is.na(baseline_data$ahd_package)==TRUE]=35 #https://www.thelancet.com/journals/langlo/article/PIIS2214-109X(25)00020-8/fulltext
 
 ######
 write.csv(baseline_data,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/baseline_testing.csv")

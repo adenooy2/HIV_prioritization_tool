@@ -188,10 +188,9 @@ basic_data$use_mortality_calibration[basic_data$country=="South Africa"]="TRUE"
 
 ######breastfeeding duration
 
-# basic_data$bf_duration_months=NA
-# basic_data$bf_duration_months[basic_data$country=="South Africa"]=3
-
-
+bf_data=read.csv("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/bf_duration.csv")
+bf_data=bf_data %>% select(country, bf_duration_months)
+basic_data=left_join(basic_data,bf_data)
 ######country specific costs
 costs=read_excel(paste(data_dir,"country_costs.xlsx",sep=""))
 

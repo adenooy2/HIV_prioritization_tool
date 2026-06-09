@@ -77,11 +77,10 @@ ui <- page_sidebar(
     numericInput("pct_on_art", "% Diagnosed on ART:", value = 78, min = 0, max = 100),
     numericInput("pct_suppressed", "% on ART Suppressed:", value = 82, min = 0, max = 100),
     tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0)),
-    p(style = "font-size: 0.85em; color: #666; margin-top: 10px;",
-      "Note: Deaths are calculated by cascade stage and intervention effects."),
+    
     
     # ---- Feedback link ----
-    hr(),
+    #hr(),
     div(
       style = "font-size: 0.85em; line-height: 1.4;",
       h6(style = "margin-bottom: 6px;", "Feedback"),

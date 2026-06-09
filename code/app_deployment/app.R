@@ -38,7 +38,6 @@ tryCatch(
 
 
 
-
 # ============================================================================
 # USER INTERFACE
 # ============================================================================
@@ -77,11 +76,10 @@ ui <- page_sidebar(
     numericInput("pct_on_art", "% Diagnosed on ART:", value = 78, min = 0, max = 100),
     numericInput("pct_suppressed", "% on ART Suppressed:", value = 82, min = 0, max = 100),
     tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0)),
-    p(style = "font-size: 0.85em; color: #666; margin-top: 10px;",
-      "Note: Deaths are calculated by cascade stage and intervention effects."),
+    
     
     # ---- Feedback link ----
-    hr(),
+    #hr(),
     div(
       style = "font-size: 0.85em; line-height: 1.4;",
       h6(style = "margin-bottom: 6px;", "Feedback"),
@@ -756,31 +754,6 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$baseline_community_pickup)
   
-  # Baseline Index Testing Validation
-  # Cap at 2x prior-year new infections (finite contact-tracing pool).
-  observe({
-    ctx <- context()
-    if (is.null(ctx$new_infections_per_year) || is.na(ctx$new_infections_per_year)) return()
-    
-    index_cap <- 2 * ctx$new_infections_per_year
-    
-    isolate({
-      val <- input$baseline_test_index
-      if (!is.null(val) && !is.na(val) && val > index_cap) {
-        updateNumericInput(session, "baseline_test_index",
-                           value = round(index_cap),
-                           max   = round(index_cap))
-        showNotification(
-          paste0("Baseline: Index testing capped at ", format(round(index_cap), big.mark = ","),
-                 " (2\u00D7 prior-year new acquisitions: ",
-                 format(round(ctx$new_infections_per_year), big.mark = ","), ")"),
-          type     = "warning",
-          duration = 5
-        )
-      }
-    })
-  }) %>% bindEvent(input$baseline_test_index)
-  
   # ========================================================================
   # SCENARIO 1 INTERVENTION VALIDATION
   # ========================================================================
@@ -987,30 +960,6 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$scenario1_community_pickup)
   
-  # Scenario 1 Index Testing Validation
-  observe({
-    ctx <- context()
-    if (is.null(ctx$new_infections_per_year) || is.na(ctx$new_infections_per_year)) return()
-    
-    index_cap <- 2 * ctx$new_infections_per_year
-    
-    isolate({
-      val <- input$scenario1_test_index
-      if (!is.null(val) && !is.na(val) && val > index_cap) {
-        updateNumericInput(session, "scenario1_test_index",
-                           value = round(index_cap),
-                           max   = round(index_cap))
-        showNotification(
-          paste0("Scenario 1: Index testing capped at ", format(round(index_cap), big.mark = ","),
-                 " (2\u00D7 prior-year new acquisitions: ",
-                 format(round(ctx$new_infections_per_year), big.mark = ","), ")"),
-          type     = "warning",
-          duration = 5
-        )
-      }
-    })
-  }) %>% bindEvent(input$scenario1_test_index)
-  
   # ========================================================================
   # SCENARIO 2 INTERVENTION VALIDATION
   # ========================================================================
@@ -1215,30 +1164,6 @@ server <- function(input, output, session) {
       }
     })
   }) %>% bindEvent(input$scenario2_community_pickup)
-  
-  # Scenario 2 Index Testing Validation
-  observe({
-    ctx <- context()
-    if (is.null(ctx$new_infections_per_year) || is.na(ctx$new_infections_per_year)) return()
-    
-    index_cap <- 2 * ctx$new_infections_per_year
-    
-    isolate({
-      val <- input$scenario2_test_index
-      if (!is.null(val) && !is.na(val) && val > index_cap) {
-        updateNumericInput(session, "scenario2_test_index",
-                           value = round(index_cap),
-                           max   = round(index_cap))
-        showNotification(
-          paste0("Scenario 2: Index testing capped at ", format(round(index_cap), big.mark = ","),
-                 " (2\u00D7 prior-year new acquisitions: ",
-                 format(round(ctx$new_infections_per_year), big.mark = ","), ")"),
-          type     = "warning",
-          duration = 5
-        )
-      }
-    })
-  }) %>% bindEvent(input$scenario2_test_index)
   
   # ========================================================================
   # BASELINE VALUES AND UI GENERATION

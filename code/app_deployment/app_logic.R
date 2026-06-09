@@ -1546,22 +1546,15 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   volume_threshold <- if (!is.null(context$prior_year_tests) && !is.na(context$prior_year_tests))
     context$prior_year_tests * 1 else Inf
   
-  # Index testing: exempt from yield dilution (targeted contacts remain high-yield
-  # regardless of total programme volume) but capped at 2x prior-year new infections
-  # (finite contact pool — cannot meaningfully exceed the contacts of incident cases).
-  index_pop_cap <- if (!is.null(context$new_infections_per_year) &&
-                       !is.na(context$new_infections_per_year))
-    2 * context$new_infections_per_year else Inf
-  
-  # Pre-loop pass: sum total planned tests across all testing modalities,
-  # EXCLUDING index testing so it does not inflate the dilution denominator.
+  # Pre-loop pass: sum total planned tests across ALL testing modalities,
+  # including index testing — index now shares the saturation curve of general
+  # testing and contributes to the dilution denominator.
   total_planned_tests <- 0
   for (int_key_pre in names(all_interventions)) {
     int_pre     <- all_interventions[[int_key_pre]]
     int_val_pre <- interventions[[int_key_pre]]
     if (is.null(int_val_pre) || int_val_pre == 0) next
     if (!("testing" %in% int_pre$outcomes)) next
-    if (int_key_pre == "test_index") next   # exempt: does not saturate general pool
     elig_pre <- populations[[int_pre$eligible_pop]] %||% 0
     n_pre <- if (int_pre$type == "coverage")
       min(elig_pre * (int_val_pre / 100), elig_pre)
@@ -1610,14 +1603,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     
     # Calculate outcomes based on intervention type
     if ("testing" %in% intervention$outcomes) {
-      # Index testing: cap at 2x prior-year infections; never diluted (contact
-      # pool quality does not degrade with general programme volume expansion).
-      if (int_key == "test_index") {
-        number_reached   <- min(number_reached, index_pop_cap)
-        modality_dilution <- 1.0
-      } else {
-        modality_dilution <- yield_dilution_factor
-      }
+      # All testing modalities (including index) share the same yield dilution
+      # factor when total planned volume exceeds prior-year throughput.
+      modality_dilution <- yield_dilution_factor
       
       # Effective yield: country-specific multiplier (from baseline CSV) takes
       # precedence; falls back to intervention params default, then 1.
