@@ -36,6 +36,17 @@ tryCatch(
   }
 )
 
+tryCatch({
+  # Try local Mac path first (for dev), fall back to server-side path
+  tryCatch(
+    source("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/MVP_V2/usage_logger.R"),
+    error = function(e) source("usage_logger.R")
+  )
+  init_log_db()
+}, error = function(e) {
+  message("usage_logger.R not found or failed to init -- logging disabled.")
+})
+
 
 
 # ============================================================================
@@ -82,28 +93,39 @@ ui <- page_sidebar(
     numericInput("pct_diagnosed", "% of PLHIV Diagnosed:", value = 85, min = 0, max = 100),  
     numericInput("pct_on_art", "% Diagnosed on ART:", value = 78, min = 0, max = 100),
     numericInput("pct_suppressed", "% on ART Suppressed:", value = 82, min = 0, max = 100),
-    tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0)),
+    tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0))
     
     
-    # ---- Feedback link ----
-    #hr(),
-    div(
-      style = "font-size: 0.85em; line-height: 1.4;",
-      h6(style = "margin-bottom: 6px;", "Feedback"),
-      p(style = "color: #595959; margin-bottom: 6px;",
-        "Found a bug or have a suggestion?"),
-      actionLink("open_feedback",
-                 label = tagList(icon("comment-dots"), " Share feedback"),
-                 style = "color: #2563eb;"),
-      p(style = "color: #595959; margin-top: 8px; margin-bottom: 0;",
-        icon("envelope"), " ",
-        tags$a(href = "mailto:dsd@iasociety.org?subject=TIER-Plus%20Contact",
-               "dsd@iasociety.org",
-               style = "color: #2563eb;"))
+  ),
+  # ---- Feedback strip (above tabs) ----
+  div(
+    style = paste(
+      "display: flex;",
+      "justify-content: flex-end;",
+      "align-items: center;",
+      "gap: 18px;",
+      "flex-wrap: wrap;",
+      "padding: 4px 8px 8px 8px;",
+      "font-size: 0.9em;",
+      "color: #595959;"
+    ),
+    # span(
+    #   style = "color: #777; font-size: 0.85em; margin-right: auto;",
+    #   em("This app logs anonymised usage data (country of access, scenario inputs, timing). IP addresses are hashed and not stored. No personal or patient data is collected.")
+    # ),
+    span("Found a bug or have a suggestion?"),
+    actionLink("open_feedback",
+               label = tagList(icon("comment-dots"), " Share feedback"),
+               style = "color: #2563eb;"),
+    span(
+      icon("envelope"), " ",
+      tags$a(href = "mailto:dsd@iasociety.org?subject=TIER-Plus%20Contact",
+             "dsd@iasociety.org",
+             style = "color: #2563eb;")
     )
   ),
-  
   navset_card_tab(
+    id = "main_tabs",
     nav_panel(
       "User Guide",
       div(
@@ -112,9 +134,9 @@ ui <- page_sidebar(
         h3("TIER-Plus — User Guide"),
         p(em("A decision-support tool for trade-off analysis in HIV service planning")),
         
-        h4("What is Tier-Plus"),
+        h4("What is TIER-Plus"),
         p("TIER-Plus is an extension of the original TIER prioritization tool. It aims to enable stakeholders to compare outcome and cost trade-offs across HIV interventions though an accessible, interactive platform.  It takes a current programme picture and lets the user vary the volume of interventions to compare how cascade outcomes, new acquisitions, deaths, and total cost are expected to move in response."),
-        p(strong("Important: Tier-Plus is intended as a support tool for prioritization conversations. "), "As such, the tool is ", em("indicative "),
+        p(strong("Important: TIER-Plus is intended as a support tool for prioritization conversations. "), "As such, the tool is ", em("indicative "),
           " of the direction and rough magnitude of impact of different choices. To make the tool quick and easy to use, and applicable across many contexts, it does not have the full complexity of other modelling tools. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decisions supported by this tool."),
         
         h4("How to use the tool"),
@@ -329,6 +351,36 @@ ui <- page_sidebar(
 # ============================================================================
 
 server <- function(input, output, session) {
+  
+  # ========================================================================
+  # USAGE LOGGING STATE
+  # ------------------------------------------------------------------------
+  # Sets up per-session logging state. All variables are safe defaults if
+  # the usage_logger.R module didn't load -- log_enabled gates every call.
+  # ========================================================================
+  log_enabled <- exists("log_session_start")
+  tier_session_id <- if (log_enabled) {
+    digest::digest(paste0(session$token, Sys.time()))
+  } else {
+    NA_character_
+  }
+  tier_session_ip <- if (log_enabled) extract_client_ip(session) else NA_character_
+  tier_session_user_country <- reactiveVal("unknown")
+  tier_session_view_count <- reactiveVal(0L)
+  
+  if (log_enabled) {
+    # Fire session_start row immediately with "unknown" country, so we have
+    # a session record even if geo resolution fails or times out.
+    log_session_start(tier_session_id, tier_session_ip, "unknown")
+    
+    # Resolve country once, after first reactive flush, so app startup is
+    # never blocked by the ipapi.co HTTP call (which has a 2s timeout
+    # internally and can fail silently).
+    observeEvent(TRUE, {
+      country <- resolve_country(tier_session_ip)
+      tier_session_user_country(country)
+    }, once = TRUE, ignoreInit = FALSE)
+  }
   
   # ---- Intervention tooltip text (used in Baseline & Scenarios tabs) ----
   # Keys MUST match the int_key values used in intervention_groups.
@@ -1630,6 +1682,45 @@ server <- function(input, output, session) {
   diff_scenario2 <- reactive({
     calculate_scenario_difference(outcomes_scenario2(), outcomes_baseline())
   })
+  
+  # ========================================================================
+  # USAGE LOGGING: results-view trigger
+  # ------------------------------------------------------------------------
+  # Fires each time the user opens the "Results Comparison" tab. Captures
+  # the current state of both scenarios + baseline, plus the delta from
+  # the first-view snapshot.
+  #
+  # ignoreInit = TRUE: skip the initial reactive flush so we don't log a
+  # spurious "User Guide" tab activation on app load.
+  # ========================================================================
+  observeEvent(input$main_tabs, {
+    if (!log_enabled) return()
+    if (!identical(input$main_tabs, "Results Comparison")) return()
+    
+    tier_session_view_count(tier_session_view_count() + 1L)
+    
+    # Use existing reactive accessors so logged values match the values
+    # the rest of the app is computing with. tryCatch guards against
+    # partial initialisation on first view.
+    s1 <- tryCatch(scenario1_values(),      error = function(e) list())
+    s2 <- tryCatch(scenario2_values(),      error = function(e) list())
+    bv <- tryCatch(baseline_input_values(), error = function(e) list())
+    
+    # delta is no longer computed at log time -- meaningful deltas
+    # (scenario vs baseline) are derived in the analysis script from
+    # the per-row baseline_json, scenario1_json, scenario2_json fields.
+    
+    log_results_view(
+      session_id                = tier_session_id,
+      ip                        = tier_session_ip,
+      user_country              = tier_session_user_country(),
+      model_country             = isolate(input$region) %||% NA_character_,
+      scenario1_inputs          = s1,
+      scenario2_inputs          = s2,
+      baseline_inputs           = bv,
+      view_count                = tier_session_view_count()
+    )
+  }, ignoreInit = TRUE)
   
   # ---- Feedback modal ----
   observeEvent(input$open_feedback, {
