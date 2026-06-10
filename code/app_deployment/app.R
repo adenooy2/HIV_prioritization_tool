@@ -69,6 +69,39 @@ ui <- page_sidebar(
         $('.disabled-input input').attr('readonly', true);
       });
     ")),
+  tags$script(HTML("
+      // Browser-side geo lookup. Calls ipapi.co from the user's browser
+      // (so ipapi sees the real client IP, not the server's). Sends the
+      // resolved country back to Shiny via setInputValue. Fails silently
+      // if blocked or unreachable -- the logger then keeps 'unknown'.
+      $(document).on('shiny:connected', function() {
+        try {
+          fetch('https://ipapi.co/country_name/', {
+            method: 'GET',
+            // 4-second hard timeout via AbortController
+            signal: (function() {
+              var c = new AbortController();
+              setTimeout(function() { c.abort(); }, 4000);
+              return c.signal;
+            })()
+          })
+          .then(function(r) {
+            if (!r.ok) throw new Error('ipapi returned ' + r.status);
+            return r.text();
+          })
+          .then(function(country) {
+            country = (country || '').trim();
+            if (country && country.length > 0 && country.length < 100) {
+              Shiny.setInputValue('user_geo_country', country,
+                                  {priority: 'event'});
+            }
+          })
+          .catch(function(e) {
+            // Silent on any failure -- network, rate-limit, abort, parse, etc.
+          });
+        } catch (e) { /* swallow */ }
+      });
+    ")),
   title = tags$div(
     style = "display: flex; align-items: center; gap: 16px;",
     tags$img(src = "IAS-logo.png", height = "60px", alt = "IAS logo"),
@@ -88,7 +121,7 @@ ui <- page_sidebar(
     hr(),
     h5("Epidemic Parameters (Start of Year)"),
     numericInput("total_pop", "Total Population:", value = 5000000, min = 0),
-    tags$div(class = "disabled-input",numericInput("prevalence", "HIV Prevalence (%):", value = 4.5, min = 0, max = 100, step = 0.1)),
+    tags$div(class = "disabled-input",numericInput("prevalence", "HIV Prevalence among people aged 15+ (%):", value = 4.5, min = 0, max = 100, step = 0.1)),
     tags$div(class = "disabled-input",numericInput("new_infections", "New Acquisitions/Year:", value = 8500, min = 0)),
     numericInput("pct_diagnosed", "% of PLHIV Diagnosed:", value = 85, min = 0, max = 100),  
     numericInput("pct_on_art", "% Diagnosed on ART:", value = 78, min = 0, max = 100),
@@ -113,7 +146,19 @@ ui <- page_sidebar(
     #   style = "color: #777; font-size: 0.85em; margin-right: auto;",
     #   em("This app logs anonymised usage data (country of access, scenario inputs, timing). IP addresses are hashed and not stored. No personal or patient data is collected.")
     # ),
-    span("Found a bug or have a suggestion?"),
+    # TEMP: Validation feedback link — remove after validation period ends
+    span(
+      icon("clipboard-check"), " ",
+      tags$a(
+        href   = "https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=f_74E4DG7kuhFmNZHWvuMmCh7_sn9aVLibTDrfIQKjtURENRUFVMQVRXWldOMkFMMU1MSFBDOVk5Ti4u",
+        target = "_blank",
+        rel    = "noopener noreferrer",
+        "Validation Feedback Form",
+        style  = "color: #2563eb;"
+      )
+    ),
+    # END TEMP
+    #span("Found a bug or have a suggestion?"),
     actionLink("open_feedback",
                label = tagList(icon("comment-dots"), " Share feedback"),
                style = "color: #2563eb;"),
@@ -130,9 +175,29 @@ ui <- page_sidebar(
       "User Guide",
       div(
         style = "max-width: 900px; padding: 12px 4px; line-height: 1.5;",
-        
         h3("TIER-Plus — User Guide"),
         p(em("A decision-support tool for trade-off analysis in HIV service planning")),
+        
+        # YouTube intro video — 16:9 responsive embed within the 900px content column
+        tags$div(
+          style = paste(
+            "position: relative;",
+            "width: 100%;",
+            "max-width: 600px;",         # caps width on wide screens
+            "aspect-ratio: 16 / 9;",
+            "margin: 0 0 16px 0;"        # left-align, space below
+          ),
+          tags$iframe(
+            src = "https://www.youtube.com/embed/BNov1mqELpE",
+            style = "position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;",
+            allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
+            allowfullscreen = NA,
+            title = "TIER-Plus introduction video",
+            loading = "lazy"
+          )
+        ),
+        
+        
         
         h4("What is TIER-Plus"),
         p("TIER-Plus is an extension of the original TIER prioritization tool. It aims to enable stakeholders to compare outcome and cost trade-offs across HIV interventions though an accessible, interactive platform.  It takes a current programme picture and lets the user vary the volume of interventions to compare how cascade outcomes, new acquisitions, deaths, and total cost are expected to move in response."),
@@ -155,7 +220,7 @@ ui <- page_sidebar(
         ),
         
         h4("What the baseline scenario coverage represents"),
-        p("Baseline coverage values should reflect what was delivered in the most recent year. It serves as a reference point against which alternative scenarios can be compared - i.e if we had the same implementation as last year what impact can we expect and how might this differ with alternative services. Additionally, baseline data is incoporated for model calibration, and hence serves an important purppose." ),
+        p("Baseline coverage values should reflect what was delivered in the most recent year. It serves as a reference point against which alternative scenarios can be compared - i.e if we had the same implementation as last year what impact can we expect and how might this differ with alternative services. Additionally, baseline data is incorporated for model calibration, and hence serves an important purpose." ),
         p("All numerical inputs are annual counts of people reached / units delivered, except where the input is explicitly described as a percentage."),
         
         h4("Intervention definitions and data requirements"),
@@ -214,6 +279,8 @@ ui <- page_sidebar(
     
     nav_panel(
       "Baseline Coverage",
+      h4("Adjust baseline coverage values"),
+      p(strong("Note:"),"Baseline coverage values should reflect services that were delivered in the most recent year. Current values were pre-populated using available data (e.g GAM) and literature where relvant. Please review the values below, and update any for which you have more accurate values."),
       uiOutput("baseline_ui")
     ),
     
@@ -369,17 +436,22 @@ server <- function(input, output, session) {
   tier_session_view_count <- reactiveVal(0L)
   
   if (log_enabled) {
-    # Fire session_start row immediately with "unknown" country, so we have
-    # a session record even if geo resolution fails or times out.
+    # Fire session_start row immediately with "unknown" country. The
+    # browser-side JS in the UI calls ipapi.co and posts the resolved
+    # country back via Shiny.setInputValue. We listen for that input
+    # and update tier_session_user_country() when it arrives.
+    # Subsequent results_view rows pick up the resolved country.
+    # The session_start row stays "unknown" by design -- it's logged
+    # before the browser fetch completes (the alternative would be to
+    # delay session_start, adding 200-500ms latency to every session).
     log_session_start(tier_session_id, tier_session_ip, "unknown")
     
-    # Resolve country once, after first reactive flush, so app startup is
-    # never blocked by the ipapi.co HTTP call (which has a 2s timeout
-    # internally and can fail silently).
-    observeEvent(TRUE, {
-      country <- resolve_country(tier_session_ip)
-      tier_session_user_country(country)
-    }, once = TRUE, ignoreInit = FALSE)
+    observeEvent(input$user_geo_country, {
+      country <- input$user_geo_country
+      if (is.character(country) && length(country) == 1 && nzchar(country)) {
+        tier_session_user_country(country)
+      }
+    }, ignoreInit = TRUE, ignoreNULL = TRUE)
   }
   
   # ---- Intervention tooltip text (used in Baseline & Scenarios tabs) ----

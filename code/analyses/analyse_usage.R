@@ -408,26 +408,40 @@ if (nrow(results) == 0) {
 if (nrow(df) == 0) {
   empty_msg("No data yet.")
 } else {
-  uc <- df %>% filter(event_type == "session_start") %>%
-    count(user_country, sort = TRUE)
+  # Resolve per-session country: for each session, prefer a real country
+  # from any results_view row over the "unknown" written on session_start.
+  # "local" (old pre-browser-JS rows) and "unknown" are both treated as
+  # unresolved.
+  resolved <- df %>%
+    mutate(country_clean = ifelse(user_country %in% c("local", "unknown"),
+                                  NA_character_, user_country)) %>%
+    group_by(session_id) %>%
+    summarise(
+      resolved_country = {
+        non_na <- country_clean[!is.na(country_clean)]
+        if (length(non_na) > 0) non_na[1] else "unknown"
+      },
+      .groups = "drop"
+    )
   
-  knitr::kable(uc, col.names = c("Country", "Sessions"),
-               format = "html", table.attr = "class='table table-striped'")
+  uc <- resolved %>%
+    count(resolved_country, sort = TRUE)
   
-  pct_local <- 100 * sum(uc$n[uc$user_country %in% c("local", "unknown")]) / sum(uc$n)
-  if (pct_local > 50) {
-    cat(sprintf(
-      paste0(
-        "<p style='color:#b45309;background:#fef3c7;padding:8px;border-radius:4px;'>",
-        "<strong>Note:</strong> %.0f%% of sessions show 'local' or 'unknown'. ",
-        "This is expected when shiny-server runs without a reverse proxy -- ",
-        "the client IP is rewritten to localhost internally. Geo resolution ",
-        "will populate properly once nginx (or similar) is configured to pass ",
-        "X-Forwarded-For headers.</p>"
-      ),
-      pct_local
-    ))
-  }
+  # Print explicitly so the kable HTML is emitted at this point in the
+  # output stream. Bare kable() at chunk end relies on auto-print, which
+  # doesn't reliably interact with later cat() calls under results='asis'.
+  cat(knitr::kable(uc, col.names = c("Country", "Sessions"),
+                   format = "html", table.attr = "class='table table-striped'"))
+  
+  resolved_pct <- 100 * sum(uc$n[uc$resolved_country != "unknown"]) / sum(uc$n)
+  cat(sprintf("<p style='color:#666;'>Resolved for %.0f%% of sessions (%d of %d). ",
+              resolved_pct,
+              sum(uc$n[uc$resolved_country != "unknown"]),
+              sum(uc$n)))
+  cat("Resolution uses a browser-side ipapi.co lookup; sessions show ",
+      "'unknown' when the lookup is blocked (ad-blockers, strict CSP, or ",
+      "session ended before fetch completed). Country names follow ipapi.co's ",
+      "convention -- some carry the article (e.g. 'The Netherlands').</p>")
 }
 ```
 
@@ -476,11 +490,7 @@ if (nrow(results) == 0) {
         tier_theme
     )
     
-    cat("<h4>Split by scenario</h4>")
-    by_scen <- as.data.frame(sort(table(all_fields), decreasing = TRUE))
-    names(by_scen) <- c("Field", "Times adapted")
-    knitr::kable(by_scen, format = "html",
-                 table.attr = "class='table table-striped'")
+    
   }
 }
 ```
