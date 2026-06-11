@@ -1,348 +1,715 @@
 # ============================================================================
-# usage_logger.R
+# analyse_usage.R
 # ----------------------------------------------------------------------------
-# Lightweight usage logging for TIER.
+# One-shot HTML usage report generator for TIER.
 #
-# Logs two event types to a local SQLite database:
-#   1. session_start  -- one row per Shiny session, with hashed IP and
-#                        geo-resolved user country (via ipapi.co).
-#   2. results_view   -- one row each time the user opens the Results tab.
-#                        Captures the country being modelled (input$region),
-#                        the full state of scenario1 and scenario2 inputs,
-#                        and the delta from a first-view baseline snapshot.
+# Reads the SQLite events table produced by usage_logger.R and produces a
+# self-contained HTML report covering:
 #
-# Design principles
-# -----------------
-#   * Logger MUST NEVER crash the app. Every disk write, every HTTP call,
-#     every JSON encode is wrapped in tryCatch. Failures are silent.
-#   * Logic file (Mock-Up_logic_V2.R) is untouched. Hooks live only in the
-#     interface file.
-#   * SQLite is concurrent-safe -- multiple Shiny sessions can write
-#     simultaneously without corrupting the file (unlike CSV).
-#   * IP addresses are hashed with a salt before storage. Raw IPs are never
-#     written to disk.
-#   * Geo lookup (ipapi.co) has a 2s timeout. If it fails or times out,
-#     user_country is recorded as "unknown" and the app continues normally.
+#   1. Summary stats (date range, totals)
+#   2. Sessions per day
+#   3. Hour-of-day usage pattern
+#   4. Engagement funnel (sessions reaching Results, view_count distribution)
+#   5. Countries modelled (input$region distribution)
+#   6. User country of access (currently mostly "local"/"unknown" until proxy)
+#   7. Most-adapted interventions (parsed from delta_json)
+#   8. Scenario value ranges for top-adapted interventions
 #
-# Storage location
+# USAGE (RStudio):
+#   source("analyse_usage.R")
+#   generate_report("~/Desktop/tier_usage.sqlite")
+#   # Opens the HTML report in your browser automatically.
+#
+# USAGE (terminal):
+#   Rscript analyse_usage.R ~/Desktop/tier_usage.sqlite
+#
+# An optional output path can be specified:
+#   generate_report("~/Desktop/tier_usage.sqlite", "~/Desktop/report.html")
+#
+# Robustness notes
 # ----------------
-# The logger tries paths in this order and uses the first that's writable:
-#   1. /var/log/tier/usage.sqlite        (Linux convention; needs write perms)
-#   2. ~/tier_usage.sqlite                (user home, always writable)
-#   3. tempdir()/tier_usage.sqlite        (last-resort fallback)
-#
-# The chosen path is printed to the Shiny log at startup so the admin knows
-# where to find the file for SCP retrieval.
-#
-# Schema
-# ------
-# Single flat `events` table -- avoids joins for analysis and keeps schema
-# evolution simple. Column names are explicit so the future admin dashboard
-# can build SQL directly against this schema.
-#
-#   event_id        INTEGER PRIMARY KEY AUTOINCREMENT
-#   timestamp       TEXT     -- ISO 8601 UTC
-#   session_id      TEXT     -- hash of session$token (stable within session)
-#   ip_hash         TEXT     -- salted SHA-256 of client IP
-#   user_country    TEXT     -- from ipapi.co, "unknown" on failure
-#   event_type      TEXT     -- "session_start" | "results_view"
-#   model_country   TEXT     -- input$region; NULL for session_start
-#   scenario1_json  TEXT     -- JSON of all intervention values, scenario 1
-#   scenario2_json  TEXT     -- JSON of all intervention values, scenario 2
-#   baseline_json   TEXT     -- JSON of baseline input values
-#   delta_json      TEXT     -- JSON: which fields differ from first-view baseline
-#   view_count      INTEGER  -- N-th time the results tab opened in this session
-#
+#   * Each section checks for sufficient data and shows a placeholder if
+#     empty. The report renders cleanly even on a freshly-created DB with
+#     zero rows.
+#   * delta_json parsing is wrapped in tryCatch -- malformed rows are
+#     skipped, not fatal.
+#   * The report is self-contained (single HTML file) so it can be emailed,
+#     shared, or archived without external dependencies.
 # ============================================================================
 
-suppressWarnings({
-  library(DBI)
-  library(RSQLite)
-  library(digest)
-  library(jsonlite)
-  library(httr)
-})
+# ---------------------------------------------------------------------------
+# Required packages -- print missing list, don't auto-install
+# ---------------------------------------------------------------------------
+.required_pkgs <- c("DBI", "RSQLite", "jsonlite", "dplyr", "ggplot2",
+                    "rmarkdown", "knitr", "scales")
+
+.check_packages <- function() {
+  missing <- .required_pkgs[!sapply(.required_pkgs, requireNamespace, quietly = TRUE)]
+  if (length(missing) > 0) {
+    stop(sprintf(
+      "Missing required packages. Install with:\n  install.packages(c(%s))",
+      paste(sprintf("'%s'", missing), collapse = ", ")
+    ), call. = FALSE)
+  }
+}
 
 # ---------------------------------------------------------------------------
-# Module-level state (set by init_log_db)
+# Main entry point. Takes a path to the SQLite file and (optionally) an
+# output HTML path. Returns the path of the generated HTML file invisibly.
 # ---------------------------------------------------------------------------
-.TIER_LOG_PATH <- NULL
-.TIER_LOG_SALT <- NULL   # salt for IP hashing; generated once per server start
-
-# ---------------------------------------------------------------------------
-# Initialise the log DB. Call once at app startup (top of server function or
-# at file source-time).
-#
-# Returns the path actually used, or NULL if all candidates failed (in which
-# case all subsequent log_* calls are no-ops).
-# ---------------------------------------------------------------------------
-init_log_db <- function(candidate_paths = c("/var/log/tier/usage.sqlite",
-                                            path.expand("~/tier_usage.sqlite"),
-                                            file.path(tempdir(), "tier_usage.sqlite"))) {
+generate_report <- function(sqlite_path,
+                            output_path = NULL,
+                            open_after = interactive()) {
+  .check_packages()
   
-  # Generate per-server-start salt. Restarting the server rotates the salt,
-  # which means the same IP gets a different hash across restarts. This is
-  # intentional -- it limits cross-session linkage.
-  .TIER_LOG_SALT <<- digest(paste(Sys.time(), Sys.getpid(), runif(1)),
-                            algo = "sha256")
+  sqlite_path <- normalizePath(sqlite_path, mustWork = TRUE)
   
-  for (p in candidate_paths) {
-    result <- tryCatch({
-      dir.create(dirname(p), recursive = TRUE, showWarnings = FALSE)
-      con <- dbConnect(SQLite(), p)
-      dbExecute(con, "
-        CREATE TABLE IF NOT EXISTS events (
-          event_id        INTEGER PRIMARY KEY AUTOINCREMENT,
-          timestamp       TEXT NOT NULL,
-          session_id      TEXT NOT NULL,
-          ip_hash         TEXT,
-          user_country    TEXT,
-          event_type      TEXT NOT NULL,
-          model_country   TEXT,
-          scenario1_json  TEXT,
-          scenario2_json  TEXT,
-          baseline_json   TEXT,
-          delta_json      TEXT,
-          view_count      INTEGER
-        )
-      ")
-      # Index for common queries
-      dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_session ON events(session_id)")
-      dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_event_type ON events(event_type)")
-      dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_timestamp ON events(timestamp)")
-      dbDisconnect(con)
-      p
-    }, error = function(e) NULL)
-    
-    if (!is.null(result)) {
-      .TIER_LOG_PATH <<- result
-      message(sprintf("[usage_logger] Logging to: %s", result))
-      return(result)
-    }
+  if (is.null(output_path)) {
+    output_path <- file.path(
+      dirname(sqlite_path),
+      sprintf("tier_usage_report_%s.html", format(Sys.Date(), "%Y%m%d"))
+    )
+  }
+  output_path <- normalizePath(output_path, mustWork = FALSE)
+  
+  # Read the data
+  message("[analyse_usage] Reading: ", sqlite_path)
+  df <- .read_events(sqlite_path)
+  message(sprintf("[analyse_usage] %d rows loaded", nrow(df)))
+  
+  # Generate the report -- writes Rmd to a tempfile and knits it
+  rmd_path <- tempfile(fileext = ".Rmd")
+  writeLines(.report_template(), rmd_path)
+  
+  message("[analyse_usage] Rendering report ...")
+  rmarkdown::render(
+    rmd_path,
+    output_file = basename(output_path),
+    output_dir = dirname(output_path),
+    params = list(events_df = df, sqlite_path = sqlite_path),
+    quiet = TRUE
+  )
+  
+  message("[analyse_usage] Report written to: ", output_path)
+  
+  if (open_after) {
+    utils::browseURL(output_path)
   }
   
-  warning("[usage_logger] Could not initialise log DB at any candidate path. ",
-          "Logging will be disabled for this server session.")
-  return(NULL)
+  invisible(output_path)
 }
 
 # ---------------------------------------------------------------------------
-# Hash an IP address with the server-session salt.
-# Returns NA_character_ if ip is NULL/NA/empty.
+# Read the events table. Returns an empty data.frame with the expected
+# columns if the DB is empty -- so downstream code can always assume the
+# columns exist.
 # ---------------------------------------------------------------------------
-hash_ip <- function(ip) {
-  if (is.null(ip) || is.na(ip) || !nzchar(ip)) return(NA_character_)
-  if (is.null(.TIER_LOG_SALT)) return(NA_character_)
-  digest(paste0(.TIER_LOG_SALT, ip), algo = "sha256")
-}
-
-# ---------------------------------------------------------------------------
-# Extract client IP from Shiny session.
-# Tries X-Forwarded-For first (for reverse-proxy setups), falls back to
-# REMOTE_ADDR. If a comma-separated chain is in X-F-F, takes the first
-# (which is the originating client, per HTTP convention).
-# ---------------------------------------------------------------------------
-extract_client_ip <- function(session) {
-  result <- tryCatch({
-    xff <- session$request$HTTP_X_FORWARDED_FOR
-    if (!is.null(xff) && nzchar(xff)) {
-      # First IP in chain = originating client
-      return(trimws(strsplit(xff, ",", fixed = TRUE)[[1]][1]))
-    }
-    session$request$REMOTE_ADDR %||% NA_character_
-  }, error = function(e) NA_character_)
-  result
-}
-
-# Local null-coalesce so the file is self-contained (interface defines its
-# own %||%, but the logger may run in test contexts where it isn't defined).
-`%||%` <- function(x, y) if (is.null(x)) y else x
-
-# ---------------------------------------------------------------------------
-# Resolve an IP to a country using ipapi.co. Synchronous with a hard 2-second
-# timeout. Returns "unknown" on any failure (timeout, non-200, parse error,
-# missing field, network error).
-#
-# Free tier (no key): ~1,000 requests/day. If the server's IP gets
-# rate-limited, all subsequent calls return "unknown" until reset.
-# This is acceptable -- the app must never block on geo lookup.
-# ---------------------------------------------------------------------------
-resolve_country <- function(ip) {
-  if (is.null(ip) || is.na(ip) || !nzchar(ip)) return("unknown")
-  # Skip private/loopback ranges -- ipapi.co would return an error anyway
-  if (grepl("^(127\\.|10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.)", ip)) {
-    return("local")
+.read_events <- function(sqlite_path) {
+  con <- DBI::dbConnect(RSQLite::SQLite(), sqlite_path)
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  
+  df <- DBI::dbGetQuery(con, "SELECT * FROM events ORDER BY event_id")
+  
+  # If empty, return a stub with the right columns so analyses don't error
+  if (nrow(df) == 0) {
+    df <- data.frame(
+      event_id = integer(), timestamp = character(),
+      session_id = character(), ip_hash = character(),
+      user_country = character(), event_type = character(),
+      model_country = character(), scenario1_json = character(),
+      scenario2_json = character(), baseline_json = character(),
+      delta_json = character(), view_count = integer(),
+      stringsAsFactors = FALSE
+    )
   }
   
-  tryCatch({
-    resp <- httr::GET(
-      sprintf("https://ipapi.co/%s/country_name/", ip),
-      httr::timeout(2)
-    )
-    if (httr::status_code(resp) != 200) return("unknown")
-    country <- httr::content(resp, as = "text", encoding = "UTF-8")
-    country <- trimws(country)
-    if (!nzchar(country) || grepl("error|Error", country)) return("unknown")
-    country
-  }, error = function(e) "unknown")
+  # Parse timestamps into POSIXct (UTC) for downstream use
+  df$timestamp_posix <- tryCatch(
+    as.POSIXct(df$timestamp, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+    error = function(e) rep(as.POSIXct(NA), nrow(df))
+  )
+  
+  df
 }
 
 # ---------------------------------------------------------------------------
-# Write a single row to the events table. Silent on failure.
+# The Rmd template. Inlined as a string so analyse_usage.R is a single file.
+# Each chunk handles its own "no data" case.
 # ---------------------------------------------------------------------------
-.write_event <- function(row) {
-  if (is.null(.TIER_LOG_PATH)) return(invisible(NULL))
-  
+.report_template <- function() {
+  r"---(---
+title: "TIER Usage Report"
+output:
+  html_document:
+    self_contained: true
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float: true
+    toc_depth: 2
+params:
+  events_df: !r data.frame()
+  sqlite_path: ""
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      results = "asis",
+                      fig.width = 8, fig.height = 4)
+library(dplyr)
+library(ggplot2)
+library(jsonlite)
+library(scales)
+
+df <- params$events_df
+
+# Helpers
+empty_msg <- function(text) {
+  cat(sprintf("<p style='color:#888;font-style:italic;'>%s</p>", text))
+}
+
+# -----------------------------------------------------------------------
+# Delta detection: which intervention fields differ from baseline by more
+# than DELTA_THRESHOLD (relative), with a floor to avoid division-by-zero
+# for baselines near zero.
+#
+# Formula: abs(scenario - baseline) / max(abs(baseline), FLOOR) > THRESHOLD
+#
+# Chosen values:
+#   THRESHOLD = 0.05  (5%) -- below this is in the noise of slider drags;
+#                            5% is the smallest move that plausibly reflects
+#                            decision-maker intent.
+#   FLOOR     = 1     -- when baseline is 0 or tiny, require an absolute
+#                        change of at least 0.05 (5% of 1).
+# -----------------------------------------------------------------------
+DELTA_THRESHOLD <- 0.05
+DELTA_FLOOR     <- 1
+
+# Parse a JSON string into a named numeric list, dropping non-numeric or
+# unparseable fields. Returns named numeric vector or empty named numeric.
+parse_inputs_json <- function(j) {
+  if (is.na(j) || !nzchar(j)) return(setNames(numeric(0), character(0)))
   tryCatch({
-    con <- dbConnect(SQLite(), .TIER_LOG_PATH)
-    on.exit(dbDisconnect(con), add = TRUE)
-    
-    dbExecute(con,
-              "INSERT INTO events (
-         timestamp, session_id, ip_hash, user_country, event_type,
-         model_country, scenario1_json, scenario2_json, baseline_json,
-         delta_json, view_count
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-              params = list(
-                row$timestamp, row$session_id, row$ip_hash, row$user_country,
-                row$event_type, row$model_country, row$scenario1_json,
-                row$scenario2_json, row$baseline_json, row$delta_json,
-                row$view_count
-              )
+    v <- fromJSON(j)
+    if (!is.list(v) || length(v) == 0) return(setNames(numeric(0), character(0)))
+    # Keep only numeric scalars
+    keep <- vapply(v, function(x) is.numeric(x) && length(x) == 1 && !is.na(x), logical(1))
+    if (!any(keep)) return(setNames(numeric(0), character(0)))
+    out <- unlist(v[keep])
+    out
+  }, error = function(e) setNames(numeric(0), character(0)))
+}
+
+# For one row of scenario_json + baseline_json, return names of fields
+# where the scenario differs materially (per DELTA_THRESHOLD/FLOOR) from
+# the baseline.
+fields_changed_from_baseline <- function(scenario_json, baseline_json) {
+  s <- parse_inputs_json(scenario_json)
+  b <- parse_inputs_json(baseline_json)
+  common <- intersect(names(s), names(b))
+  if (length(common) == 0) return(character(0))
+  rel_diff <- abs(s[common] - b[common]) / pmax(abs(b[common]), DELTA_FLOOR)
+  common[rel_diff > DELTA_THRESHOLD]
+}
+
+# Theme for plots -- clean, decision-maker-friendly
+tier_theme <- theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 13),
+    axis.title = element_text(size = 11, color = "#444"),
+    axis.text = element_text(color = "#444")
+  )
+```
+
+*Report generated `r format(Sys.time(), "%Y-%m-%d %H:%M %Z")` from `r basename(params$sqlite_path)`*
+
+---
+
+## 1. Summary
+
+```{r summary}
+if (nrow(df) == 0) {
+  empty_msg("No events logged yet.")
+} else {
+  sessions <- df %>% filter(event_type == "session_start")
+  results  <- df %>% filter(event_type == "results_view")
+  date_range <- range(df$timestamp_posix, na.rm = TRUE)
+  
+  summary_tbl <- data.frame(
+    Metric = c(
+      "Date range",
+      "Total sessions",
+      "Sessions reaching Results tab",
+      "Total results-view events",
+      "Distinct session IDs",
+      "Distinct IP hashes"
+    ),
+    Value = c(
+      sprintf("%s -- %s",
+              format(date_range[1], "%Y-%m-%d"),
+              format(date_range[2], "%Y-%m-%d")),
+      format(nrow(sessions), big.mark = ","),
+      format(length(unique(results$session_id)), big.mark = ","),
+      format(nrow(results), big.mark = ","),
+      format(length(unique(df$session_id)), big.mark = ","),
+      format(length(unique(df$ip_hash[!is.na(df$ip_hash)])), big.mark = ",")
     )
-  }, error = function(e) {
-    # Silent. We must never crash the user's session.
-    message(sprintf("[usage_logger] Write failed: %s", e$message))
+  )
+  knitr::kable(summary_tbl, format = "html", table.attr = "class='table table-striped'")
+}
+```
+
+---
+
+## 2. Sessions per day
+
+```{r sessions_per_day}
+sessions <- df %>% filter(event_type == "session_start")
+
+if (nrow(sessions) == 0) {
+  empty_msg("No session_start events yet.")
+} else {
+  daily <- sessions %>%
+    mutate(date = as.Date(timestamp_posix)) %>%
+    count(date)
+  
+  # Fill in missing days as zero so the chart is continuous
+  if (nrow(daily) >= 2) {
+    full_dates <- data.frame(date = seq(min(daily$date), max(daily$date), by = "day"))
+    daily <- full_dates %>% left_join(daily, by = "date") %>%
+      mutate(n = ifelse(is.na(n), 0, n))
+  }
+  
+  print(
+    ggplot(daily, aes(x = date, y = n)) +
+      geom_col(fill = "#2563eb", width = 0.7) +
+      scale_y_continuous(breaks = scales::pretty_breaks()) +
+      labs(x = NULL, y = "Sessions") +
+      tier_theme
+  )
+  
+  cat(sprintf("<p style='color:#666;'>Total: %d sessions across %d distinct days. Median per active day: %.0f.</p>",
+              sum(daily$n), sum(daily$n > 0), median(daily$n[daily$n > 0])))
+}
+```
+
+---
+
+## 3. Hour-of-day pattern
+
+When during the day do sessions start? Useful for understanding global vs local usage patterns.
+
+```{r hour_pattern}
+if (nrow(sessions) == 0) {
+  empty_msg("No session_start events yet.")
+} else if (nrow(sessions) < 5) {
+  empty_msg(sprintf("Only %d sessions so far -- hour-of-day pattern not informative yet.", nrow(sessions)))
+} else {
+  hourly <- sessions %>%
+    mutate(hour = as.integer(format(timestamp_posix, "%H"))) %>%
+    count(hour) %>%
+    right_join(data.frame(hour = 0:23), by = "hour") %>%
+    mutate(n = ifelse(is.na(n), 0, n)) %>%
+    arrange(hour)
+  
+  print(
+    ggplot(hourly, aes(x = hour, y = n)) +
+      geom_col(fill = "#2563eb", width = 0.8) +
+      scale_x_continuous(breaks = seq(0, 23, by = 3),
+                         labels = sprintf("%02d:00", seq(0, 23, by = 3))) +
+      scale_y_continuous(breaks = scales::pretty_breaks()) +
+      labs(x = "Hour of day (UTC)", y = "Sessions") +
+      tier_theme
+  )
+  cat("<p style='color:#666;'>All timestamps in UTC. Adjust mentally for the time zone(s) you expect users in.</p>")
+}
+```
+
+---
+
+## 4. Engagement funnel
+
+How deep do users go? `view_count` is the cumulative number of times a session opens the Results Comparison tab. A user who clicks Results once and leaves has `max(view_count) = 1`; one who iterates 5 times has `max(view_count) = 5`.
+
+```{r engagement}
+results <- df %>% filter(event_type == "results_view")
+
+if (nrow(sessions) == 0) {
+  empty_msg("No sessions to analyse yet.")
+} else {
+  n_sessions <- length(unique(sessions$session_id))
+  n_reached <- length(unique(results$session_id))
+  pct_reached <- if (n_sessions > 0) 100 * n_reached / n_sessions else 0
+  
+  cat(sprintf("<p><strong>%d / %d sessions (%.0f%%)</strong> opened the Results Comparison tab.</p>",
+              n_reached, n_sessions, pct_reached))
+  
+  if (n_reached == 0) {
+    empty_msg("No results_view events yet.")
+  } else {
+    depth <- results %>%
+      group_by(session_id) %>%
+      summarise(max_views = max(view_count, na.rm = TRUE), .groups = "drop") %>%
+      count(max_views)
+    
+    print(
+      ggplot(depth, aes(x = factor(max_views), y = n)) +
+        geom_col(fill = "#10b981", width = 0.7) +
+        labs(x = "Number of times Results tab opened per session",
+             y = "Sessions") +
+        tier_theme
+    )
+    
+    avg_depth <- mean(results %>% group_by(session_id) %>%
+                      summarise(m = max(view_count, na.rm = TRUE)) %>% pull(m))
+    cat(sprintf("<p style='color:#666;'>Average iteration depth (among sessions reaching Results): <strong>%.1f</strong> views.</p>",
+                avg_depth))
+  }
+}
+```
+
+---
+
+## 5. Countries being modelled
+
+Which country profiles do users select in the app? This is the answer to "what is TIER being used for".
+
+```{r model_country}
+results <- df %>% filter(event_type == "results_view")
+
+if (nrow(results) == 0) {
+  empty_msg("No results_view events yet.")
+} else if (all(is.na(results$model_country))) {
+  empty_msg("No model_country values recorded yet.")
+} else {
+  countries <- results %>%
+    filter(!is.na(model_country), nzchar(model_country)) %>%
+    count(model_country, sort = TRUE)
+  
+  print(
+    ggplot(countries, aes(x = reorder(model_country, n), y = n)) +
+      geom_col(fill = "#7c3aed", width = 0.7) +
+      coord_flip() +
+      labs(x = NULL, y = "Results-view events") +
+      tier_theme
+  )
+  
+  knitr::kable(countries, col.names = c("Country", "Views"),
+               format = "html", table.attr = "class='table table-striped'")
+}
+```
+
+---
+
+## 6. User country of access
+
+```{r user_country, results="asis"}
+if (nrow(df) == 0) {
+  empty_msg("No data yet.")
+} else {
+  # Resolve per-session country: for each session, prefer a real country
+  # from any results_view row over the "unknown" written on session_start.
+  # "local" (old pre-browser-JS rows) and "unknown" are both treated as
+  # unresolved.
+  resolved <- df %>%
+    mutate(country_clean = ifelse(user_country %in% c("local", "unknown"),
+                                  NA_character_, user_country)) %>%
+    group_by(session_id) %>%
+    summarise(
+      resolved_country = {
+        non_na <- country_clean[!is.na(country_clean)]
+        if (length(non_na) > 0) non_na[1] else "unknown"
+      },
+      .groups = "drop"
+    )
+  
+  uc <- resolved %>%
+    count(resolved_country, sort = TRUE)
+  
+  # Print explicitly so the kable HTML is emitted at this point in the
+  # output stream. Bare kable() at chunk end relies on auto-print, which
+  # doesn't reliably interact with later cat() calls under results='asis'.
+  cat(knitr::kable(uc, col.names = c("Country", "Sessions"),
+                   format = "html", table.attr = "class='table table-striped'"))
+  
+  resolved_pct <- 100 * sum(uc$n[uc$resolved_country != "unknown"]) / sum(uc$n)
+  cat(sprintf("<p style='color:#666;'>Resolved for %.0f%% of sessions (%d of %d). ",
+              resolved_pct,
+              sum(uc$n[uc$resolved_country != "unknown"]),
+              sum(uc$n)))
+  cat("Resolution uses a browser-side ipapi.co lookup; sessions show ",
+      "'unknown' when the lookup is blocked (ad-blockers, strict CSP, or ",
+      "session ended before fetch completed). Country names follow ipapi.co's ",
+      "convention -- some carry the article (e.g. 'The Netherlands').</p>")
+}
+```
+
+---
+
+## 7. Most-adapted interventions
+
+Which intervention inputs do users most frequently move away from their stated baseline? Each `results_view` row carries both `baseline_json` (the user's Baseline tab values) and `scenario1_json`/`scenario2_json` (the Scenarios tab values). A field counts as "adapted" when the scenario value differs from the baseline value by more than **5%** (relative, with a floor of 1 to handle baselines near zero).
+
+Fields are prefixed `s1_` (scenario 1) and `s2_` (scenario 2). The first chart collapses across scenarios; the second keeps them separate.
+
+```{r delta_fields}
+results <- df %>% filter(event_type == "results_view")
+
+# Initialise top-10 list so downstream sections (8a, 8b) can detect it
+# even when there are zero results_view rows.
+section7_top10 <- character(0)
+
+if (nrow(results) == 0) {
+  empty_msg("No results_view events yet.")
+} else {
+  # For each row, list fields where each scenario differs from baseline
+  s1_changes <- lapply(seq_len(nrow(results)), function(i) {
+    paste0("s1_", fields_changed_from_baseline(
+      results$scenario1_json[i], results$baseline_json[i]))
   })
-  invisible(NULL)
-}
-
-# ---------------------------------------------------------------------------
-# Log a session_start event.
-#
-# session_id : stable hash of session$token
-# ip         : raw IP (will be hashed internally)
-# user_country : "unknown" if not yet resolved; can be updated later by
-#                another row if you want to resolve asynchronously
-# ---------------------------------------------------------------------------
-log_session_start <- function(session_id, ip = NA_character_,
-                              user_country = "unknown") {
-  .write_event(list(
-    timestamp      = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
-    session_id     = session_id,
-    ip_hash        = hash_ip(ip),
-    user_country   = user_country,
-    event_type     = "session_start",
-    model_country  = NA_character_,
-    scenario1_json = NA_character_,
-    scenario2_json = NA_character_,
-    baseline_json  = NA_character_,
-    delta_json     = NA_character_,
-    view_count     = NA_integer_
-  ))
-}
-
-# ---------------------------------------------------------------------------
-# Compute the JSON-encoded delta between two named lists. Returns a JSON
-# string of {field: [from, to]} for fields where the values differ.
-#
-# `baseline` is the snapshot taken on first results-view; `current` is the
-# current state. If baseline is NULL (i.e. this IS the first view), returns
-# an empty JSON object "{}".
-# ---------------------------------------------------------------------------
-compute_delta <- function(current, baseline) {
-  if (is.null(baseline)) return("{}")
-  if (is.null(current))  return("{}")
+  s2_changes <- lapply(seq_len(nrow(results)), function(i) {
+    paste0("s2_", fields_changed_from_baseline(
+      results$scenario2_json[i], results$baseline_json[i]))
+  })
   
-  tryCatch({
-    changed <- list()
-    all_keys <- union(names(baseline), names(current))
-    for (k in all_keys) {
-      bv <- baseline[[k]]
-      cv <- current[[k]]
-      # Treat NULL/NA as missing
-      if (is.null(bv)) bv <- NA
-      if (is.null(cv)) cv <- NA
-      # Numeric tolerance: a tiny float diff isn't a real change
-      if (is.numeric(bv) && is.numeric(cv) && !is.na(bv) && !is.na(cv)) {
-        if (abs(bv - cv) > 1e-9) changed[[k]] <- list(from = bv, to = cv)
-      } else if (!identical(bv, cv)) {
-        changed[[k]] <- list(from = bv, to = cv)
-      }
-    }
-    jsonlite::toJSON(changed, auto_unbox = TRUE, na = "null")
-  }, error = function(e) "{}")
-}
-
-# ---------------------------------------------------------------------------
-# Log a results-view event.
-#
-# session_id           : same hash used for session_start
-# ip / user_country    : repeated per row so the events table is queryable
-#                        without joining
-# model_country        : input$region at time of view
-# scenario1_inputs     : named list of scenario1 intervention values
-# scenario2_inputs     : named list of scenario2 intervention values
-# baseline_inputs      : named list of baseline intervention values
-# session_baseline_snapshot : the snapshot taken on FIRST results-view of
-#                             this session; pass NULL on first view
-# view_count           : 1, 2, 3, ... (caller maintains the counter)
-# ---------------------------------------------------------------------------
-log_results_view <- function(session_id,
-                             ip = NA_character_,
-                             user_country = "unknown",
-                             model_country = NA_character_,
-                             scenario1_inputs = list(),
-                             scenario2_inputs = list(),
-                             baseline_inputs = list(),
-                             session_baseline_snapshot = NULL,
-                             view_count = 1L) {
+  all_fields <- c(unlist(s1_changes), unlist(s2_changes))
+  all_fields <- all_fields[all_fields != "s1_" & all_fields != "s2_"]
   
-  # delta_json is no longer computed at log time -- the original
-  # "first-results-view snapshot" design proved misleading (first row
-  # always logged empty, only captured between-view changes).
-  #
-  # Analysis-time code now derives the meaningful delta directly from
-  # scenario1_json vs baseline_json on each row. We write NA to keep
-  # the schema stable for existing DBs; the column may be dropped in a
-  # future migration.
-  #
-  # session_baseline_snapshot is kept as a parameter for backward
-  # compatibility with callers that still pass it; it is no longer used.
-  
-  .write_event(list(
-    timestamp      = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
-    session_id     = session_id,
-    ip_hash        = hash_ip(ip),
-    user_country   = user_country,
-    event_type     = "results_view",
-    model_country  = model_country %||% NA_character_,
-    scenario1_json = tryCatch(jsonlite::toJSON(scenario1_inputs, auto_unbox = TRUE, na = "null"),
-                              error = function(e) "{}"),
-    scenario2_json = tryCatch(jsonlite::toJSON(scenario2_inputs, auto_unbox = TRUE, na = "null"),
-                              error = function(e) "{}"),
-    baseline_json  = tryCatch(jsonlite::toJSON(baseline_inputs, auto_unbox = TRUE, na = "null"),
-                              error = function(e) "{}"),
-    delta_json     = NA_character_,
-    view_count     = as.integer(view_count)
-  ))
-}
-
-# ---------------------------------------------------------------------------
-# Read helper -- used by ad-hoc analysis scripts AND (later) the admin
-# dashboard. Keeping this in the logger module means dashboard code reuses
-# the same read path.
-#
-# Returns a data.frame of all rows, or an empty data.frame if the DB doesn't
-# exist yet.
-# ---------------------------------------------------------------------------
-read_usage_db <- function(path = .TIER_LOG_PATH) {
-  if (is.null(path) || !file.exists(path)) {
-    return(data.frame())
+  if (length(all_fields) == 0) {
+    empty_msg("No interventions have been moved >5% from baseline in any logged session yet.")
+    section7_top10 <- character(0)  # so downstream sections can detect empty
+  } else {
+    # Collapsed across scenarios
+    collapsed <- gsub("^s[12]_", "", all_fields)
+    coll_tbl <- as.data.frame(sort(table(collapsed), decreasing = TRUE))
+    names(coll_tbl) <- c("Intervention", "Times adapted")
+    
+    # Top-10 list shared with sections 8a and 8b -- ensures all three views
+    # talk about the same set of interventions
+    section7_top10 <- as.character(head(coll_tbl$Intervention, 10))
+    
+    cat("<h4>Combined across scenarios</h4>")
+    print(
+      ggplot(head(coll_tbl, 15), aes(x = reorder(Intervention, `Times adapted`),
+                                     y = `Times adapted`)) +
+        geom_col(fill = "#dc2626", width = 0.7) +
+        coord_flip() +
+        labs(x = NULL, y = "Times scenario differed >5% from baseline") +
+        tier_theme
+    )
+    
+    cat("<h4>Split by scenario</h4>")
+    by_scen <- as.data.frame(sort(table(all_fields), decreasing = TRUE))
+    names(by_scen) <- c("Field", "Times adapted")
+    cat(knitr::kable(by_scen, format = "html",
+                     table.attr = "class='table table-striped'"))
   }
-  tryCatch({
-    con <- dbConnect(SQLite(), path)
-    on.exit(dbDisconnect(con), add = TRUE)
-    dbGetQuery(con, "SELECT * FROM events ORDER BY event_id")
-  }, error = function(e) data.frame())
+}
+```
+
+---
+
+## 8a. How much do users move adapted interventions?
+
+For each of Section 7's **top 10 most-adapted interventions**, the table below summarises what scenario-vs-baseline change users actually applied — i.e. the size of the move, not the absolute value set. Only adaptations >5% from baseline are counted; rows where the user left a field at baseline are excluded.
+
+Two tables, because the math differs:
+
+- **Fields with non-zero baseline**: reports the multiplier (`scenario / baseline`). Median of 2.0 means users typically doubled it; 0.5 means halved.
+- **Fields with zero baseline**: multiplier is undefined; the table reports the absolute scenario value the user set instead.
+
+```{r multiplier_dist}
+results <- df %>% filter(event_type == "results_view")
+
+if (length(section7_top10) == 0 || nrow(results) == 0) {
+  empty_msg("No adapted interventions yet -- no multiplier data to summarise.")
+} else {
+  # For each top-10 field, gather all (baseline, scenario) pairs where the
+  # scenario was adapted >5%. Combine s1 and s2 -- the two scenarios are
+  # both "users exploring" and pooling them is the most informative cut at
+  # this stage.
+  parse_field <- function(j, fld) {
+    tryCatch({
+      v <- fromJSON(j)
+      if (fld %in% names(v) && is.numeric(v[[fld]]) && length(v[[fld]]) == 1) v[[fld]] else NA_real_
+    }, error = function(e) NA_real_)
+  }
+  
+  pairs_for_field <- function(fld) {
+    bv <- vapply(results$baseline_json, parse_field, numeric(1), fld = fld)
+    s1v <- vapply(results$scenario1_json, parse_field, numeric(1), fld = fld)
+    s2v <- vapply(results$scenario2_json, parse_field, numeric(1), fld = fld)
+    
+    # Build a single 2-column matrix of (baseline, scenario_value) for any
+    # row where adaptation registered (>5% relative diff)
+    rows_s1 <- !is.na(bv) & !is.na(s1v) &
+               (abs(s1v - bv) / pmax(abs(bv), DELTA_FLOOR) > DELTA_THRESHOLD)
+    rows_s2 <- !is.na(bv) & !is.na(s2v) &
+               (abs(s2v - bv) / pmax(abs(bv), DELTA_FLOOR) > DELTA_THRESHOLD)
+    
+    data.frame(
+      baseline = c(bv[rows_s1], bv[rows_s2]),
+      scenario = c(s1v[rows_s1], s2v[rows_s2])
+    )
+  }
+  
+  # Split top10 into "always-zero-baseline" and "non-zero-baseline" cases.
+  # If a field's baseline is sometimes zero and sometimes not, it ends up
+  # in the non-zero bucket -- the zero rows just drop from the multiplier
+  # calc.
+  nonzero_rows <- list()
+  zero_rows <- list()
+  
+  for (fld in section7_top10) {
+    pairs <- pairs_for_field(fld)
+    if (nrow(pairs) == 0) next
+    
+    nz <- pairs[pairs$baseline != 0, , drop = FALSE]
+    zr <- pairs[pairs$baseline == 0, , drop = FALSE]
+    
+    if (nrow(nz) > 0) {
+      mults <- nz$scenario / nz$baseline
+      nonzero_rows[[fld]] <- data.frame(
+        Intervention = fld,
+        N            = nrow(nz),
+        `Min mult`   = round(min(mults), 2),
+        `Median mult` = round(median(mults), 2),
+        `Max mult`   = round(max(mults), 2),
+        check.names = FALSE
+      )
+    }
+    if (nrow(zr) > 0) {
+      vals <- zr$scenario
+      zero_rows[[fld]] <- data.frame(
+        Intervention = fld,
+        N            = nrow(zr),
+        `Min value`  = round(min(vals), 1),
+        `Median value` = round(median(vals), 1),
+        `Max value`  = round(max(vals), 1),
+        check.names = FALSE
+      )
+    }
+  }
+  
+  if (length(nonzero_rows) > 0) {
+    cat("<h4>Adapted from a non-zero baseline (multiplier)</h4>")
+    nz_df <- do.call(rbind, nonzero_rows)
+    rownames(nz_df) <- NULL
+    cat(knitr::kable(nz_df, format = "html",
+                     table.attr = "class='table table-striped'"))
+  }
+  
+  if (length(zero_rows) > 0) {
+    cat("<h4>Adapted from a zero baseline (absolute scenario value)</h4>")
+    z_df <- do.call(rbind, zero_rows)
+    rownames(z_df) <- NULL
+    cat(knitr::kable(z_df, format = "html",
+                     table.attr = "class='table table-striped'"))
+  }
+  
+  if (length(nonzero_rows) == 0 && length(zero_rows) == 0) {
+    empty_msg("No adaptation pairs collected for the top-10 fields.")
+  }
+  
+  cat("<p style='color:#666;'>N = number of (results_view row, scenario) pairs where adaptation registered.</p>")
+}
+```
+
+---
+
+## 8b. Where are these interventions being explored?
+
+For the **same top 10 interventions** as in 8a, the table below shows how many *sessions* in each country adapted each one at least once. A session is counted once per intervention per country, even if it adapted the field across multiple results_view events.
+
+The table is sorted by session count, so the most active (country, intervention) pairs sit at the top.
+
+```{r country_intervention}
+results <- df %>% filter(event_type == "results_view")
+
+if (length(section7_top10) == 0 || nrow(results) == 0) {
+  empty_msg("No adapted interventions yet -- no country breakdown to show.")
+} else {
+  # For each row, compute the set of adapted fields (collapsed across s1/s2).
+  # Then for each (session_id, model_country, field) triple in our top-10,
+  # we count it once.
+  rows_with_changes <- lapply(seq_len(nrow(results)), function(i) {
+    s1 <- fields_changed_from_baseline(results$scenario1_json[i], results$baseline_json[i])
+    s2 <- fields_changed_from_baseline(results$scenario2_json[i], results$baseline_json[i])
+    unique(c(s1, s2))
+  })
+  
+  # Build a long data frame: one row per (session_id, model_country, field)
+  long_rows <- list()
+  for (i in seq_len(nrow(results))) {
+    fields_i <- rows_with_changes[[i]]
+    fields_i <- fields_i[fields_i %in% section7_top10]
+    if (length(fields_i) == 0) next
+    long_rows[[i]] <- data.frame(
+      session_id = results$session_id[i],
+      country    = results$model_country[i],
+      field      = fields_i,
+      stringsAsFactors = FALSE
+    )
+  }
+  
+  if (length(long_rows) == 0) {
+    empty_msg("None of the top-10 fields have country-attributed adaptations yet.")
+  } else {
+    long_df <- do.call(rbind, long_rows)
+    long_df <- long_df[!is.na(long_df$country) & nzchar(long_df$country), ]
+    
+    if (nrow(long_df) == 0) {
+      empty_msg("No country information attached to adapted-intervention rows.")
+    } else {
+      # Distinct (session, country, field) triples -- so a session that
+      # adapted PrEP across 5 results_view rows in Zambia counts once.
+      distinct_triples <- unique(long_df[, c("session_id", "country", "field")])
+      
+      # Count sessions per (country, field) pair
+      pair_counts <- as.data.frame(
+        table(country = distinct_triples$country,
+              intervention = distinct_triples$field)
+      )
+      pair_counts <- pair_counts[pair_counts$Freq > 0, , drop = FALSE]
+      pair_counts <- pair_counts[order(-pair_counts$Freq), , drop = FALSE]
+      rownames(pair_counts) <- NULL
+      
+      cat(knitr::kable(pair_counts,
+                       col.names = c("Country (modelled)", "Intervention", "Sessions"),
+                       format = "html",
+                       table.attr = "class='table table-striped'"))
+      
+      cat("<p style='color:#666;'>",
+          sprintf("%d distinct (country, intervention) pairs across %d sessions and %d countries.</p>",
+                  nrow(pair_counts),
+                  length(unique(distinct_triples$session_id)),
+                  length(unique(distinct_triples$country))))
+    }
+  }
+}
+```
+
+---
+
+<hr>
+<p style="color:#888;font-size:0.85em;">
+TIER usage report. Generated from <code>`r params$sqlite_path`</code>.
+Re-run <code>generate_report()</code> after pulling a fresh SQLite snapshot.
+</p>
+)---"
+}
+
+# ---------------------------------------------------------------------------
+# If sourced from terminal with Rscript, run with positional args.
+# ---------------------------------------------------------------------------
+if (sys.nframe() == 0L) {
+  args <- commandArgs(trailingOnly = TRUE)
+  if (length(args) == 0) {
+    cat("Usage: Rscript analyse_usage.R <path-to-usage.sqlite> [<output.html>]\n")
+    quit(save = "no", status = 1)
+  }
+  sqlite_path <- args[1]
+  output_path <- if (length(args) >= 2) args[2] else NULL
+  generate_report(sqlite_path, output_path, open_after = FALSE)
 }

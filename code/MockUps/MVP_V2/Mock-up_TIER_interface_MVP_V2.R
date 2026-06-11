@@ -188,7 +188,7 @@ ui <- page_sidebar(
             "margin: 0 0 16px 0;"        # left-align, space below
           ),
           tags$iframe(
-            src = "https://www.youtube.com/embed/BNov1mqELpE",
+            src = "https://www.youtube.com/embed/cr4ibbplYi8",
             style = "position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;",
             allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
             allowfullscreen = NA,
@@ -410,9 +410,21 @@ ui <- page_sidebar(
         div(style = "height: 50px;")
       )
     )
+  ),
+  tags$footer(
+    class = "tier-footer",
+    style = paste(
+      "margin-top: 0.5rem;",
+      "padding: 0 rem 0;",
+      "border-top: 1px solid #e5e7eb;",
+      "text-align: center;",
+      "font-size: 0.75rem;",
+      "line-height: 1.2;",
+      "color: #6b7280;"
+    ),
+    HTML("Copyright © 2026. IAS – the International AIDS Society")
   )
 )
-
 # ============================================================================
 # SERVER LOGIC
 # ============================================================================

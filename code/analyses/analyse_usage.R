@@ -497,17 +497,17 @@ if (nrow(results) == 0) {
 
 ---
 
-## 8. Scenario value ranges (top adapted interventions)
+## 8. Scale-down vs scale-up of top adapted interventions
 
-For the 5 most-adapted interventions (combined across scenarios, using the same >5% scenario-vs-baseline rule), what range of values do users actually set? Distributions reveal whether decision-makers are exploring small adjustments or large ones, and where the median policy choice sits.
+For each of Section 7's top-10 most-adapted interventions, how often did users move it *down* from baseline vs *up*? Only adaptations >5% from baseline are counted (same rule as Section 7); rows where the user left the field at baseline are excluded. Scenarios 1 and 2 are pooled. Zero-baseline fields count any non-zero scenario as "up".
 
-```{r value_ranges}
+```{r direction_split}
 results <- df %>% filter(event_type == "results_view")
 
 if (nrow(results) == 0) {
   empty_msg("No results_view events yet.")
 } else {
-  # Re-derive top-5 from scenario-vs-baseline diffs (same rule as section 7)
+  # Re-derive top-10 from scenario-vs-baseline diffs (same rule as section 7)
   s1_changes <- lapply(seq_len(nrow(results)), function(i) {
     fields_changed_from_baseline(results$scenario1_json[i], results$baseline_json[i])
   })
@@ -515,60 +515,73 @@ if (nrow(results) == 0) {
     fields_changed_from_baseline(results$scenario2_json[i], results$baseline_json[i])
   })
   all_changed <- c(unlist(s1_changes), unlist(s2_changes))
-  
+
   if (length(all_changed) == 0) {
-    empty_msg("No interventions adapted >5% from baseline yet -- cannot identify top fields.")
+    empty_msg("No interventions adapted >5% from baseline yet -- nothing to summarise.")
   } else {
-    top5 <- head(names(sort(table(all_changed), decreasing = TRUE)), 5)
-    
-    if (length(top5) == 0) {
-      empty_msg("No top interventions identified yet.")
+    top10 <- head(names(sort(table(all_changed), decreasing = TRUE)), 10)
+
+    # Parse a single field from one row's JSON into a scalar numeric, or NA.
+    parse_field <- function(j, fld) {
+      tryCatch({
+        v <- fromJSON(j)
+        if (fld %in% names(v) && is.numeric(v[[fld]]) && length(v[[fld]]) == 1) v[[fld]] else NA_real_
+      }, error = function(e) NA_real_)
+    }
+
+    # For one field, count adapted (>5% from baseline) rows where the
+    # scenario went DOWN vs UP. Pools s1 and s2.
+    direction_for_field <- function(fld) {
+      bv <- vapply(results$baseline_json,  parse_field, numeric(1), fld = fld)
+      s1v <- vapply(results$scenario1_json, parse_field, numeric(1), fld = fld)
+      s2v <- vapply(results$scenario2_json, parse_field, numeric(1), fld = fld)
+
+      # Only adapted (>5%) rows count toward direction
+      rows_s1 <- !is.na(bv) & !is.na(s1v) &
+                 (abs(s1v - bv) / pmax(abs(bv), DELTA_FLOOR) > DELTA_THRESHOLD)
+      rows_s2 <- !is.na(bv) & !is.na(s2v) &
+                 (abs(s2v - bv) / pmax(abs(bv), DELTA_FLOOR) > DELTA_THRESHOLD)
+
+      b_all <- c(bv[rows_s1], bv[rows_s2])
+      s_all <- c(s1v[rows_s1], s2v[rows_s2])
+
+      # Down = scenario < baseline; Up = scenario > baseline.
+      # Zero-baseline edge: scenario > 0 -> up; scenario == 0 wouldn't pass
+      # the >5% gate when bv==0 (abs diff must exceed 0.05 * FLOOR = 0.05).
+      n_down <- sum(s_all < b_all)
+      n_up   <- sum(s_all > b_all)
+      c(n_down = n_down, n_up = n_up)
+    }
+
+    rows <- lapply(top10, function(fld) {
+      d <- direction_for_field(fld)
+      n_tot <- d[["n_down"]] + d[["n_up"]]
+      if (n_tot == 0) return(NULL)
+      data.frame(
+        Intervention = fld,
+        N            = n_tot,
+        `N down`     = d[["n_down"]],
+        `N up`       = d[["n_up"]],
+        `% down`     = round(100 * d[["n_down"]] / n_tot, 0),
+        `% up`       = round(100 * d[["n_up"]]   / n_tot, 0),
+        check.names = FALSE
+      )
+    })
+    rows <- rows[!vapply(rows, is.null, logical(1))]
+
+    if (length(rows) == 0) {
+      empty_msg("None of the top-10 fields had a directional adaptation registered.")
     } else {
-      # For each top intervention, pull the values set in both scenarios.
-      # Note: section 7 counts *occurrences of adaptation* (per row); here
-      # we report the *value distribution* across ALL results_view rows --
-      # so unchanged baseline values appear too.
-      parse_scenario <- function(j, fld) {
-        tryCatch({
-          v <- fromJSON(j)
-          if (fld %in% names(v) && is.numeric(v[[fld]])) v[[fld]] else NA_real_
-        }, error = function(e) NA_real_)
-      }
-      
-      stats_rows <- lapply(top5, function(fld) {
-        vals_s1 <- vapply(results$scenario1_json, parse_scenario,
-                          numeric(1), fld = fld)
-        vals_s2 <- vapply(results$scenario2_json, parse_scenario,
-                          numeric(1), fld = fld)
-        vals <- c(vals_s1, vals_s2)
-        vals <- vals[!is.na(vals)]
-        
-        if (length(vals) == 0) {
-          return(data.frame(Intervention = fld, N = 0,
-                            Min = NA, Q25 = NA, Median = NA,
-                            Q75 = NA, Max = NA))
-        }
-        data.frame(
-          Intervention = fld,
-          N = length(vals),
-          Min = round(min(vals), 1),
-          Q25 = round(quantile(vals, 0.25, names = FALSE), 1),
-          Median = round(median(vals), 1),
-          Q75 = round(quantile(vals, 0.75, names = FALSE), 1),
-          Max = round(max(vals), 1)
-        )
-      })
-      stats_df <- do.call(rbind, stats_rows)
-      
-      knitr::kable(stats_df,
-                   col.names = c("Intervention", "N", "Min", "25th pct",
-                                 "Median", "75th pct", "Max"),
-                   format = "html",
-                   table.attr = "class='table table-striped'")
-      
-      cat("<p style='color:#666;'>N = total values across both scenarios over all logged Results-tab visits. ",
-          "Values include baseline-equal settings, so the distribution shows both \"users who left it alone\" ",
-          "and \"users who moved it\".</p>")
+      dir_df <- do.call(rbind, rows)
+      dir_df <- dir_df[order(-dir_df$N), , drop = FALSE]
+      rownames(dir_df) <- NULL
+
+      cat(knitr::kable(dir_df, format = "html",
+                       table.attr = "class='table table-striped'"))
+
+      cat("<p style='color:#666;'>",
+          "N = number of (results_view row, scenario) pairs where the field was adapted >5% from baseline. ",
+          "Rows are ordered by N descending. Percentages may not sum to exactly 100 due to rounding.</p>")
     }
   }
 }
