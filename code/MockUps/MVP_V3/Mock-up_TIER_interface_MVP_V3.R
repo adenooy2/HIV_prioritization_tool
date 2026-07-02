@@ -13,6 +13,7 @@
 library(shiny)
 library(bslib)
 library(bsicons)
+library(shinyWidgets)
 library(DT)
 library(ggplot2)
 library(dplyr)
@@ -49,6 +50,41 @@ tryCatch(
 # })
 # 
 
+# ============================================================================
+# COMMA-FORMATTED NUMERIC INPUT (thousands separators for large counts)
+# ============================================================================
+# Drop-in numericInput() replacement for "absolute" (raw-count) fields where
+# large values benefit from live comma formatting as the user types (e.g.
+# condoms, PrEP, testing volumes, Total Population). Thin wrapper around
+# shinyWidgets::autonumericInput() (autoNumeric.js), keeping the same call
+# signature as numericInput() so call sites need only swap the function.
+# input$<id> is delivered to the server as a plain numeric, exactly as with
+# numericInput(). updateNumericInput() also keeps working against these
+# fields unchanged: it sends {value: ...} via session$sendInputMessage(),
+# which autonumericInputBinding.receiveMessage() picks up via
+# data.hasOwnProperty("value") regardless of which binding sent it --
+# Shiny routes update messages generically by DOM id, not by input type.
+# NOTE: requires the shinyWidgets package (new dependency -- install on
+# both the local machine and the Hetzner server).
+commaNumericInput <- function(inputId, label, value, min = NA, max = NA,
+                              step = NA, width = NULL) {
+  shinyWidgets::autonumericInput(
+    inputId             = inputId,
+    label               = label,
+    # htmltools serializes large doubles (e.g. 5000000) as "5e+06" in the
+    # HTML value attribute, which autoNumeric.js cannot parse -- force
+    # plain-decimal formatting to avoid the field rendering blank/broken.
+    value               = format(value, scientific = FALSE, trim = TRUE),
+    width               = width,
+    align               = "left",
+    decimalPlaces       = 0,
+    digitGroupSeparator = ",",
+    decimalCharacter    = ".",
+    minimumValue        = if (!is.na(min)) min else NULL,
+    maximumValue        = if (!is.na(max)) max else NULL,
+    emptyInputBehavior  = "null"
+  )
+}
 
 # ============================================================================
 # USER INTERFACE
@@ -121,13 +157,13 @@ ui <- page_sidebar(
     ),
     hr(),
     h5("Epidemic Parameters (Start of Year)"),
-    numericInput("total_pop", "Total Population:", value = 5000000, min = 0),
+    commaNumericInput("total_pop", "Total Population:", value = 5000000, min = 0),
     tags$div(class = "disabled-input",numericInput("prevalence", "HIV Prevalence among people aged 15+ (%):", value = 4.5, min = 0, max = 100, step = 0.1)),
-    tags$div(class = "disabled-input",numericInput("new_infections", "New Acquisitions/Year:", value = 8500, min = 0)),
+    tags$div(class = "disabled-input",commaNumericInput("new_infections", "New Acquisitions/Year:", value = 8500, min = 0)),
     numericInput("pct_diagnosed", "% of PLHIV Diagnosed:", value = 85, min = 0, max = 100),  
     numericInput("pct_on_art", "% Diagnosed on ART:", value = 78, min = 0, max = 100),
     numericInput("pct_suppressed", "% on ART Suppressed:", value = 82, min = 0, max = 100),
-    tags$div(class = "disabled-input",numericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0))
+    tags$div(class = "disabled-input",commaNumericInput("aids_deaths", "AIDS Deaths/Year (baseline):", value = 2200, min = 0))
     
     
   ),
@@ -198,7 +234,7 @@ ui <- page_sidebar(
           )
         ),
         
-      
+        
         
         h4("What is TIER-Plus"),
         p("TIER-Plus is an extension of the original TIER prioritization tool. It aims to enable stakeholders to compare outcome and cost trade-offs across HIV interventions though an accessible, interactive platform.  It takes a current programme picture and lets the user vary the volume of interventions to compare how cascade outcomes, new acquisitions, deaths, and total cost are expected to move in response."),
@@ -1370,7 +1406,8 @@ server <- function(input, output, session) {
           make_intervention_tip(int_key)
         )
         
-        numericInput(
+        numeric_widget <- if (intervention$type == "coverage") numericInput else commaNumericInput
+        numeric_widget(
           paste0("baseline_", int_key),
           label = label_with_tip,
           value = value,
@@ -1425,6 +1462,7 @@ server <- function(input, output, session) {
         # Set min and max based on type
         min_val <- 0
         max_val <- if(intervention$type == "coverage") 100 else NA
+        numeric_widget <- if (intervention$type == "coverage") numericInput else commaNumericInput
         
         layout_columns(
           col_widths = c(4, 4, 4),
@@ -1437,7 +1475,7 @@ server <- function(input, output, session) {
             span(style = "color: #999; font-size: 0.85em;", intervention$unit_label)
           ),
           div(
-            numericInput(
+            numeric_widget(
               paste0("scenario1_", int_key),
               label = "Scenario 1",
               value = base_value,
@@ -1447,7 +1485,7 @@ server <- function(input, output, session) {
             )
           ),
           div(
-            numericInput(
+            numeric_widget(
               paste0("scenario2_", int_key),
               label = "Scenario 2",
               value = base_value,
