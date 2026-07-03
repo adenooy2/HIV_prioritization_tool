@@ -159,7 +159,7 @@ ui <- page_sidebar(
     h5("Epidemic Parameters (Start of Year)"),
     commaNumericInput("total_pop", "Total Population:", value = 5000000, min = 0),
     tags$div(class = "disabled-input",numericInput("prevalence", "HIV Prevalence among people aged 15+ (%):", value = 4.5, min = 0, max = 100, step = 0.1)),
-    tags$div(class = "disabled-input",commaNumericInput("new_infections", "New Acquisitions/Year:", value = 8500, min = 0)),
+    tags$div(class = "disabled-input",commaNumericInput("new_infections", "New HIV Acquisitions/Year:", value = 8500, min = 0)),
     numericInput("pct_diagnosed", "% of PLHIV Diagnosed:", value = 85, min = 0, max = 100),  
     numericInput("pct_on_art", "% Diagnosed on ART:", value = 78, min = 0, max = 100),
     numericInput("pct_suppressed", "% on ART Suppressed:", value = 82, min = 0, max = 100),
@@ -237,7 +237,7 @@ ui <- page_sidebar(
         
         
         h4("What is TIER-Plus"),
-        p("TIER-Plus is an extension of the original TIER prioritization tool. It aims to enable stakeholders to compare outcome and cost trade-offs across HIV interventions though an accessible, interactive platform.  It takes a current programme picture and lets the user vary the volume of interventions to compare how cascade outcomes, new acquisitions, deaths, and total cost are expected to move in response."),
+        p("TIER-Plus is an extension of the original TIER prioritization tool. It aims to enable stakeholders to compare outcome and cost trade-offs across HIV interventions though an accessible, interactive platform.  It takes a current programme picture and lets the user vary the volume of interventions to compare how cascade outcomes, new HIV acquisitions, deaths, and total cost are expected to move in response."),
         p(strong("Important: TIER-Plus is intended as a support tool for prioritization conversations. "), "As such, the tool is ", em("indicative "),
           " of the direction and rough magnitude of impact of different choices. To make the tool quick and easy to use, and applicable across many contexts, it does not have the full complexity of other modelling tools. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decisions supported by this tool."),
         
@@ -1920,6 +1920,15 @@ server <- function(input, output, session) {
   # 95-95-95 GOALS DISPLAY
   # ========================================================================
   
+  # Impact-label highlight threshold: a difference strictly below this
+  # magnitude (in percentage points, i.e. |diff| < 0.1) is treated as
+  # visually insignificant and shown in gray with no +/- sign. Without this,
+  # a truly sub-0.1pp change (e.g. 0.04pp) rounds to "0" but was still
+  # getting a "+" sign and green highlight, reading as a real change when
+  # it wasn't. Per GDoc UI feedback: "highlight only if greater than 0.1%
+  # change" (boundary treated as inclusive: exactly 0.1pp is highlighted).
+  IMPACT_LABEL_THRESHOLD_PP <- 0.1
+  
   output$goals_baseline <- renderUI({
     pops <- populations()
     outcomes <- outcomes_baseline()
@@ -2037,9 +2046,13 @@ server <- function(input, output, session) {
     second_95_base <- ifelse(is.nan(second_95_base) | is.infinite(second_95_base), 0, min(second_95_base, 100))
     third_95_base <- ifelse(is.nan(third_95_base) | is.infinite(third_95_base), 0, min(third_95_base, 100))
     
-    diff_first <- first_95 - first_95_base
-    diff_second <- second_95 - second_95_base
-    diff_third <- third_95 - third_95_base
+    # Round here (not just at display time) so the highlight threshold check
+    # and the displayed value can never disagree -- e.g. a raw diff of
+    # 0.0999997 (float noise from the upstream division) rounds to "0.1" for
+    # display but fails a raw ">= 0.1" check, showing "(0.1pp)" in gray.
+    diff_first <- round(first_95 - first_95_base, 1)
+    diff_second <- round(second_95 - second_95_base, 1)
+    diff_third <- round(third_95 - third_95_base, 1)
     
     tagList(
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
@@ -2049,9 +2062,9 @@ server <- function(input, output, session) {
                  paste0(round(first_95, 1), "%")),
             br(),
             span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff_first > 0, "green",
-                                       ifelse(diff_first < 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff_first > 0, "+", ""), round(diff_first, 1), "pp)"))
+                                ifelse(abs(diff_first) >= IMPACT_LABEL_THRESHOLD_PP,
+                                       ifelse(diff_first > 0, "green", "red"), "gray"), ";"),
+                 paste0("(", ifelse(diff_first >= IMPACT_LABEL_THRESHOLD_PP, "+", ""), round(diff_first, 1), "pp)"))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
@@ -2061,9 +2074,9 @@ server <- function(input, output, session) {
                  paste0(round(second_95, 1), "%")),
             br(),
             span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff_second > 0, "green",
-                                       ifelse(diff_second < 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff_second > 0, "+", ""), round(diff_second, 1), "pp)"))
+                                ifelse(abs(diff_second) >= IMPACT_LABEL_THRESHOLD_PP,
+                                       ifelse(diff_second > 0, "green", "red"), "gray"), ";"),
+                 paste0("(", ifelse(diff_second >= IMPACT_LABEL_THRESHOLD_PP, "+", ""), round(diff_second, 1), "pp)"))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
@@ -2073,9 +2086,9 @@ server <- function(input, output, session) {
                  paste0(round(third_95, 1), "%")),
             br(),
             span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff_third > 0, "green",
-                                       ifelse(diff_third < 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff_third > 0, "+", ""), round(diff_third, 1), "pp)"))
+                                ifelse(abs(diff_third) >= IMPACT_LABEL_THRESHOLD_PP,
+                                       ifelse(diff_third > 0, "green", "red"), "gray"), ";"),
+                 paste0("(", ifelse(diff_third >= IMPACT_LABEL_THRESHOLD_PP, "+", ""), round(diff_third, 1), "pp)"))
           )
       )
     )
@@ -2140,9 +2153,13 @@ server <- function(input, output, session) {
     second_95_base <- ifelse(is.nan(second_95_base) | is.infinite(second_95_base), 0, min(second_95_base, 100))
     third_95_base <- ifelse(is.nan(third_95_base) | is.infinite(third_95_base), 0, min(third_95_base, 100))
     
-    diff_first <- first_95 - first_95_base
-    diff_second <- second_95 - second_95_base
-    diff_third <- third_95 - third_95_base
+    # Round here (not just at display time) so the highlight threshold check
+    # and the displayed value can never disagree -- e.g. a raw diff of
+    # 0.0999997 (float noise from the upstream division) rounds to "0.1" for
+    # display but fails a raw ">= 0.1" check, showing "(0.1pp)" in gray.
+    diff_first <- round(first_95 - first_95_base, 1)
+    diff_second <- round(second_95 - second_95_base, 1)
+    diff_third <- round(third_95 - third_95_base, 1)
     
     tagList(
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
@@ -2152,9 +2169,9 @@ server <- function(input, output, session) {
                  paste0(round(first_95, 1), "%")),
             br(),
             span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff_first > 0, "green",
-                                       ifelse(diff_first < 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff_first > 0, "+", ""), round(diff_first, 1), "pp)"))
+                                ifelse(abs(diff_first) >= IMPACT_LABEL_THRESHOLD_PP,
+                                       ifelse(diff_first > 0, "green", "red"), "gray"), ";"),
+                 paste0("(", ifelse(diff_first >= IMPACT_LABEL_THRESHOLD_PP, "+", ""), round(diff_first, 1), "pp)"))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
@@ -2164,9 +2181,9 @@ server <- function(input, output, session) {
                  paste0(round(second_95, 1), "%")),
             br(),
             span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff_second > 0, "green",
-                                       ifelse(diff_second < 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff_second > 0, "+", ""), round(diff_second, 1), "pp)"))
+                                ifelse(abs(diff_second) >= IMPACT_LABEL_THRESHOLD_PP,
+                                       ifelse(diff_second > 0, "green", "red"), "gray"), ";"),
+                 paste0("(", ifelse(diff_second >= IMPACT_LABEL_THRESHOLD_PP, "+", ""), round(diff_second, 1), "pp)"))
           )
       ),
       div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
@@ -2176,9 +2193,9 @@ server <- function(input, output, session) {
                  paste0(round(third_95, 1), "%")),
             br(),
             span(style = paste0("font-size: 0.9em; color: ",
-                                ifelse(diff_third > 0, "green",
-                                       ifelse(diff_third < 0, "red", "gray")), ";"),
-                 paste0("(", ifelse(diff_third > 0, "+", ""), round(diff_third, 1), "pp)"))
+                                ifelse(abs(diff_third) >= IMPACT_LABEL_THRESHOLD_PP,
+                                       ifelse(diff_third > 0, "green", "red"), "gray"), ";"),
+                 paste0("(", ifelse(diff_third >= IMPACT_LABEL_THRESHOLD_PP, "+", ""), round(diff_third, 1), "pp)"))
           )
       )
     )
