@@ -435,6 +435,23 @@ build_intervention_groups <- function(intervention_params){
           eligible_pop = "on_art_stable",
           unit_cost = subset(intervention_params, intervention_key == "community_pickup")$unit_cost,     
           outcomes = c("retention")
+        ),
+        clinical_visit_12month = list(
+          name = "Frequency of clinical visits for stable clients",
+          type = "coverage",
+          unit_label = "standard practice",
+          # efficacy = fraction of the currently-UNSUPPRESSED established pool
+          # converted to suppressed at 100% coverage (same conversion-probability
+          # semantics as EAC / other viral_suppression rows — NOT a flat pp).
+          # See deferred effect block after n_est_treated_base is computed.
+          # Value pending in intervention_params (Alex, with sources).
+          efficacy = subset(intervention_params, intervention_key == "clinical_visit_12month")$efficacy,
+          eligible_pop = "on_art_stable",
+          # unit_cost is a FRACTION of art_cost_standard (negative = saving),
+          # same convention as MMD/community_pickup. Charged on stable clients
+          # enrolled. Value pending in intervention_params.
+          unit_cost = subset(intervention_params, intervention_key == "clinical_visit_12month")$unit_cost,
+          outcomes = c("viral_suppression")
         )
       )
     ),
@@ -660,7 +677,7 @@ default_baseline_interventions <- list(
   test_kpsti = 8000, hivst_facility = 10000, hivst_community = 5000,
   eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
   vl_monitoring_routine = 60, 
-  mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, community_pickup=5,
+  mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, community_pickup=5,clinical_visit_12month = 0,
   adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68, pnc_vl_testing = 0,
   cd4_testing = 92, ahd_package = 88
 )
@@ -804,6 +821,7 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
         eid = 75, anc_hiv_testing = 88, pnc_hiv_testing = 70,
         vl_monitoring_routine = 60, 
         mmd_3month = 50, mmd_6month = 10, mmd_12month = 5, community_pickup =5, 
+        clinical_visit_12month = 0,
         adherence_counseling = 55, tracking_tracing = 40, anc_vl_testing = 68, pnc_vl_testing = 0,
         cd4_testing = 92, ahd_package = 88
       )
@@ -1494,6 +1512,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   deferred_tracking_unit_cost <- 0 # unit cost for cost calculation against full pool
   total_intervention_cost <- 0
   dsd_cost_adjustment <- 0
+  clinical_visit_cost_adjustment <- 0
   dsd_bundle_done     <- FALSE  # one-shot guard for the DSD bundle calculation
   # (MMD-3/6/12 + community pickup are processed
   # jointly on the first DSD key encountered)
@@ -1773,6 +1792,21 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         total_intervention_cost <- total_intervention_cost +
           eac_reach * intervention$unit_cost
         
+        next
+      }
+      # ── Annual (12-month) clinical visit: COST here, EFFECT deferred ─────
+      # Cost charged on STABLE clients enrolled (number_reached = on_art_stable
+      # × coverage), as a FRACTION of art_cost_standard (negative = saving) —
+      # same convention as MMD/DSD. Lands in clinical_visit_cost_adjustment ->
+      # art_provision_cost.
+      # The suppression EFFECT is deliberately NOT computed here: under
+      # Interpretation Y it acts on the unsuppressed-established pool
+      # (n_est_treated_base), which is only known after the loop. See the
+      # deferred effect block after n_est_treated_base is set (~line 2229).
+      if (int_key == "clinical_visit_12month") {
+        cv12_art_cost_unit <- context$art_cost_standard %||% ART_COST_STANDARD
+        clinical_visit_cost_adjustment <- clinical_visit_cost_adjustment +
+          number_reached * cv12_art_cost_unit * (intervention$unit_cost %||% 0)
         next
       }
       
@@ -2227,6 +2261,26 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   pct_supp_frac <- context$percent_suppressed / 100
   n_est_supp_base    <- n_established_on_art * pct_supp_frac
   n_est_treated_base <- n_established_on_art - n_est_supp_base
+  
+  # ── Annual clinical visit: deferred suppression effect ─────────────────────
+  # `efficacy` for this intervention is the TARGET percentage-point gain in
+  # established suppression (e.g. 0.01 = +1pp), NOT a conversion fraction like
+  # other viral_suppression rows. Applying it to the established HEADCOUNT makes
+  # the pp gain constant across countries regardless of baseline suppression s.
+  #
+  # This is the algebraic equivalent of converting target_pp/(1-s) of the
+  # unsuppressed-established pool, but without the 1/(1-s) division — so a
+  # country at 100% suppression yields a finite contribution that the shift cap
+  # below (min(., n_est_treated_base) at line ~2321) correctly floors to 0,
+  # instead of Inf/NaN.
+  #
+  # Flows into additional_suppressed BEFORE the shift allocation, so it is
+  # capped at n_est_treated_base and cannot push end_suppressed above end_on_art
+  # (guarded by tests 8.5/8.6).
+  cv12_cov_frac  <- (interventions$clinical_visit_12month %||% 0) / 100
+  cv12_target_pp <- all_interventions$clinical_visit_12month$efficacy %||% 0
+  additional_suppressed <- additional_suppressed +
+    n_established_on_art * cv12_cov_frac * cv12_target_pp
   
   # New initiates: suppress at testing_art_init_supp (typically ~0.9 by year-end).
   # This is the 12-month suppression rate for new starts, which is generally
@@ -2796,7 +2850,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # ========================================================================
   
   art_cost_unit <- context$art_cost_standard %||% ART_COST_STANDARD
-  art_provision_cost <- end_on_art * art_cost_unit + dsd_cost_adjustment
+  art_provision_cost <- end_on_art * art_cost_unit + dsd_cost_adjustment+clinical_visit_cost_adjustment
   if (art_provision_cost < 0) {
     warning(sprintf(
       paste0("art_provision_cost floored to 0: DSD savings (%.0f) exceeded ",

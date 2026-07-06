@@ -287,6 +287,12 @@ baseline_data$pnc_vl_testing[is.na(baseline_data$pnc_vl_testing)==TRUE]=75
 
 baseline_data$ahd_package[is.na(baseline_data$ahd_package)==TRUE]=35 #https://www.thelancet.com/journals/langlo/article/PIIS2214-109X(25)00020-8/fulltext
 
+
+#####clnic visit frequency
+baseline_data$clinical_visit_12month=0
+country_12_months=c("Guinea","Lesotho","Namibia","Zimbabwe","Ghana","Kenya")
+baseline_data$clinical_visit_12month[baseline_data$country %in% country_12_months]=100
+
 ######
 write.csv(baseline_data,"/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/tier_app/baseline_testing.csv")
 

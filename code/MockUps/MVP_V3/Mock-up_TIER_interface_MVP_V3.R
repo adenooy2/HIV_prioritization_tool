@@ -532,6 +532,7 @@ server <- function(input, output, session) {
     mmd_6month            = "Number / percentage of stable ART clients enrolled in 6-month multi-month dispensing.",
     mmd_12month           = "Number / percentage of stable ART clients enrolled in 12-month multi-month dispensing.",
     community_pickup      = "Percentage of MMD-enrolled stable clients receiving refills via community pickup (overrides MMD facility-pickup mode for that share, equally across MMD-3/6/12). Has no effect if MMD enrolment is 0%.",
+    clinical_visit_12month = "Frequency at which stable ART clients must return for clinical visits, either every 6 months or every 12 months.",
     
     # Retention support
     adherence_counseling  = "Percentage of individuals identified as unsuppressed (through a recent viral load) receiving Enhanced Adherence Counselling (EAC).",
@@ -944,6 +945,11 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$baseline_community_pickup)
   
+  # NOTE: the previous "all-or-nothing" snapping observer for
+  # baseline_clinical_visit_12month has been removed. That input is now a
+  # two-option radioGroupButtons (6 vs 12 months), so an intermediate value
+  # can no longer be entered and the snap/notify guard is redundant.
+  
   # ========================================================================
   # SCENARIO 1 INTERVENTION VALIDATION
   # ========================================================================
@@ -1150,6 +1156,9 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$scenario1_community_pickup)
   
+  # NOTE: scenario1_clinical_visit_12month snapping observer removed — now a
+  # two-option radioGroupButtons, so intermediate values are impossible.
+  
   # ========================================================================
   # SCENARIO 2 INTERVENTION VALIDATION
   # ========================================================================
@@ -1355,6 +1364,8 @@ server <- function(input, output, session) {
     })
   }) %>% bindEvent(input$scenario2_community_pickup)
   
+  # NOTE: scenario2_clinical_visit_12month snapping observer removed — now a
+  # two-option radioGroupButtons, so intermediate values are impossible.
   # ========================================================================
   # BASELINE VALUES AND UI GENERATION
   # ========================================================================
@@ -1406,15 +1417,33 @@ server <- function(input, output, session) {
           make_intervention_tip(int_key)
         )
         
-        numeric_widget <- if (intervention$type == "coverage") numericInput else commaNumericInput
-        numeric_widget(
-          paste0("baseline_", int_key),
-          label = label_with_tip,
-          value = value,
-          min = min_val,
-          max = max_val,
-          step = if(intervention$type == "coverage") 0.1 else 1
-        )
+        # clinical_visit_12month is a binary 6-vs-12-month choice (all-or-
+        # nothing per country). Render it as a two-option button group instead
+        # of a numeric field. choiceValues 0/100 keep the same numeric contract
+        # the logic expects; radioGroupButtons returns them as CHARACTER, so the
+        # collection reactives coerce with as.numeric() (see baseline_input_values).
+        if (int_key == "clinical_visit_12month") {
+          shinyWidgets::radioGroupButtons(
+            inputId      = paste0("baseline_", int_key),
+            label        = label_with_tip,
+            choiceNames  = c("Every 6 months", "Every 12 months"),
+            choiceValues = c(0, 100),
+            selected     = if (!is.null(value) && !is.na(value) && value >= 50) 100 else 0,
+            justified    = TRUE,
+            size         = "sm",
+            checkIcon    = list(yes = icon("check"))
+          )
+        } else {
+          numeric_widget <- if (intervention$type == "coverage") numericInput else commaNumericInput
+          numeric_widget(
+            paste0("baseline_", int_key),
+            label = label_with_tip,
+            value = value,
+            min = min_val,
+            max = max_val,
+            step = if(intervention$type == "coverage") 0.1 else 1
+          )
+        }
       })
       
       if (group_key == "prevention") {
@@ -1475,24 +1504,50 @@ server <- function(input, output, session) {
             span(style = "color: #999; font-size: 0.85em;", intervention$unit_label)
           ),
           div(
-            numeric_widget(
-              paste0("scenario1_", int_key),
-              label = "Scenario 1",
-              value = base_value,
-              min = min_val,
-              max = max_val,
-              step = if(intervention$type == "coverage") 0.1 else 1
-            )
+            if (int_key == "clinical_visit_12month") {
+              shinyWidgets::radioGroupButtons(
+                inputId      = paste0("scenario1_", int_key),
+                label        = "Scenario 1",
+                choiceNames  = c("6 months", "12 months"),
+                choiceValues = c(0, 100),
+                selected     = if (base_value >= 50) 100 else 0,
+                justified    = TRUE,
+                size         = "sm",
+                checkIcon    = list(yes = icon("check"))
+              )
+            } else {
+              numeric_widget(
+                paste0("scenario1_", int_key),
+                label = "Scenario 1",
+                value = base_value,
+                min = min_val,
+                max = max_val,
+                step = if(intervention$type == "coverage") 0.1 else 1
+              )
+            }
           ),
           div(
-            numeric_widget(
-              paste0("scenario2_", int_key),
-              label = "Scenario 2",
-              value = base_value,
-              min = min_val,
-              max = max_val,
-              step = if(intervention$type == "coverage") 0.1 else 1
-            )
+            if (int_key == "clinical_visit_12month") {
+              shinyWidgets::radioGroupButtons(
+                inputId      = paste0("scenario2_", int_key),
+                label        = "Scenario 2",
+                choiceNames  = c("6 months", "12 months"),
+                choiceValues = c(0, 100),
+                selected     = if (base_value >= 50) 100 else 0,
+                justified    = TRUE,
+                size         = "sm",
+                checkIcon    = list(yes = icon("check"))
+              )
+            } else {
+              numeric_widget(
+                paste0("scenario2_", int_key),
+                label = "Scenario 2",
+                value = base_value,
+                min = min_val,
+                max = max_val,
+                step = if(intervention$type == "coverage") 0.1 else 1
+              )
+            }
           )
         )
       })
@@ -1696,7 +1751,11 @@ server <- function(input, output, session) {
           # widget hasn't rendered yet (or was cleared) — use the preset
           value <- preset[[int_key]]
         }
-        baseline[[int_key]] <- ifelse(is.null(value) || is.na(value), 0, value)
+        value <- ifelse(is.null(value) || is.na(value), 0, value)
+        # radioGroupButtons (clinical_visit_12month) returns character "0"/"100";
+        # coerce so downstream arithmetic (eligible * value/100) works.
+        if (int_key == "clinical_visit_12month") value <- as.numeric(value)
+        baseline[[int_key]] <- value
       }
     }
     baseline
@@ -1714,6 +1773,16 @@ server <- function(input, output, session) {
           updateNumericInput(session, paste0("baseline_", int_key), value = baseline_value)
           updateNumericInput(session, paste0("scenario1_", int_key), value = baseline_value)
           updateNumericInput(session, paste0("scenario2_", int_key), value = baseline_value)
+          # clinical_visit_12month is a radioGroupButtons, not a numericInput —
+          # updateNumericInput won't drive it, so sync it explicitly. Without
+          # this, switching country presets would leave the visit-frequency
+          # boxes on their previous selection.
+          if (int_key == "clinical_visit_12month") {
+            snap <- if (baseline_value >= 50) 100 else 0
+            shinyWidgets::updateRadioGroupButtons(session, paste0("baseline_", int_key),  selected = snap)
+            shinyWidgets::updateRadioGroupButtons(session, paste0("scenario1_", int_key), selected = snap)
+            shinyWidgets::updateRadioGroupButtons(session, paste0("scenario2_", int_key), selected = snap)
+          }
         }
       }
     }
@@ -1736,6 +1805,8 @@ server <- function(input, output, session) {
           }
           value <- ifelse(is.null(baseline_value) || is.na(baseline_value), 0, baseline_value)
         }
+        # radioGroupButtons (clinical_visit_12month) returns character; coerce.
+        if (int_key == "clinical_visit_12month") value <- as.numeric(value)
         scenario[[int_key]] <- value
       }
     }
@@ -1757,6 +1828,8 @@ server <- function(input, output, session) {
           }
           value <- ifelse(is.null(baseline_value) || is.na(baseline_value), 0, baseline_value)
         }
+        # radioGroupButtons (clinical_visit_12month) returns character; coerce.
+        if (int_key == "clinical_visit_12month") value <- as.numeric(value)
         scenario[[int_key]] <- value
       }
     }
@@ -2812,7 +2885,6 @@ server <- function(input, output, session) {
       rmarkdown::render(
         input         = tmp_rmd,
         output_file   = out_html,
-        params        = report_params,
         envir         = new.env(parent = globalenv()),
         quiet         = TRUE
       )
