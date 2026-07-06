@@ -1616,13 +1616,13 @@ server <- function(input, output, session) {
     color <- ifelse(total_prep > adult_pop, "red", 
                     ifelse(pct > 90, "orange", "green"))
     
-    tags$div(
-      style = paste0("color: ", color, "; font-weight: bold;"),
-      paste0(format(round(total_prep), big.mark = ","), " people"),
-      br(),
-      span(style = "font-size: 0.85em;",
-           paste0("(", round(pct, 1), "% of adult pop)"))
-    )
+    # tags$div(
+    #   style = paste0("color: ", color, "; font-weight: bold;"),
+    #   paste0(format(round(total_prep), big.mark = ","), " people"),
+    #   br(),
+    #   span(style = "font-size: 0.85em;",
+    #        paste0("(", round(pct, 1), "% of adult pop)"))
+    # )
   })
   
   output$prep_total_scenario1 <- renderUI({

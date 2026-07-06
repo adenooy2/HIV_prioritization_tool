@@ -223,18 +223,18 @@ build_intervention_groups <- function(intervention_params){
       color = "#10b981",
       interventions = list(
         prep_oral = list(
-          name = "PrEP (oral)",
+          name = "Oral Prep",
           type = "absolute",
-          unit_label = "people",
+          unit_label = "people initiated and currently using",
           efficacy = subset(intervention_params, intervention_key == "prep_oral")$efficacy,
           eligible_pop = "sexually_active_negative",
           unit_cost = subset(intervention_params, intervention_key == "prep_oral")$unit_cost,
           outcomes = c("adult_infections")
         ),
         prep_lenacapavir = list(
-          name = "PrEP (Lenacapavir)",
+          name = "Lenacapavir",
           type = "absolute",
-          unit_label = "people",
+          unit_label = "people initiated and currently using",
           efficacy = subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy,
           eligible_pop = "sexually_active_negative",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost,
@@ -581,6 +581,11 @@ calculate_populations <- function(context) {
     anc_mult <- 1
   }
   hiv_exposed_births <- births * context$hiv_prevalence * anc_mult
+  
+  print(paste("Births:",births))
+  print(paste("HIV Births:",hiv_exposed_births))
+  print(paste("Diagnosed Moms:",hiv_exposed_births *(context$percent_diagnosed / 100)))
+  
   
   # LTFU flow: people dropping off ART during the year, split by stability status.
   # Stable patients: DSD-eligible, lower dropout risk.
