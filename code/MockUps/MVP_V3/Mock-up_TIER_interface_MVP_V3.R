@@ -567,23 +567,18 @@ server <- function(input, output, session) {
   # reactive values that may still be NULL on first load.
   `%||%` <- function(x, y) if (is.null(x)) y else x
   
-  # UI-only approximation of a group's population size, used solely for
-  # validation caps and the PrEP coverage summary display. NOT the
-  # authoritative denominator -- the logic file's cost loop enforces the
-  # real cap against strata_val$n_fsw/n_msm/n_agyw (partition_into_strata())
-  # at calculation time. AGYW approximated as (adult female pop) x
-  # prop_agyw, ignoring the HIV-negative/general-pool narrowing that
-  # partition_into_strata() applies -- adequate for a soft UI warning, not
-  # for FOI math.
-  approx_group_pop <- function(ctx, group = c("fsw", "msm", "agyw")) {
+  # Real population cap for a group (FSW/MSM/AGYW), matching exactly what
+  # the logic file's cost loop (min(intervention_value, strata_val$n_*))
+  # and compute_prevention_adjustments()'s cov() clip use as denominator.
+  # Replaces the former adult_pop x prop_fsw approximation, which ignored
+  # the sexually-active/HIV-negative narrowing partition_into_strata()
+  # applies and so overstated the cap (e.g. Botswana FSW: ~11,000 approx
+  # vs ~8,294 actual).
+  group_pop <- function(group = c("fsw", "msm", "agyw")) {
     group <- match.arg(group)
-    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return(NA)
-    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14 / 100)
-    switch(group,
-           fsw  = adult_pop * (ctx$prop_fsw %||% 0),
-           msm  = adult_pop * (ctx$prop_msm %||% 0),
-           agyw = adult_pop * (1 - (ctx$prop_pop_male %||% 50) / 100) * (ctx$prop_agyw %||% 0)
-    )
+    s <- strata_sizes()
+    val <- switch(group, fsw = s$n_fsw, msm = s$n_msm, agyw = s$n_agyw)
+    if (is.null(val) || is.na(val)) NA else val
   }
   
   # Registers the oral/lenacapavir cross-validation pair for one scenario +
@@ -596,7 +591,7 @@ server <- function(input, output, session) {
     lena_id <- paste0(scenario_prefix, "_prep_lenacapavir_", group)
     
     observe({
-      n_group <- approx_group_pop(context(), group)
+      n_group <- group_pop(group)
       if (is.na(n_group)) return()
       isolate({
         oral_val <- input[[oral_id]]; lena_val <- input[[lena_id]]
@@ -615,7 +610,7 @@ server <- function(input, output, session) {
     }) %>% bindEvent(input[[oral_id]])
     
     observe({
-      n_group <- approx_group_pop(context(), group)
+      n_group <- group_pop(group)
       if (is.na(n_group)) return()
       isolate({
         oral_val <- input[[oral_id]]; lena_val <- input[[lena_id]]
@@ -777,6 +772,16 @@ server <- function(input, output, session) {
   # Calculate populations
   populations <- reactive({
     calculate_populations(context())
+  })
+  
+  # Real per-group population sizes (FSW/MSM/AGYW), computed via the same
+  # define_strata_params()/partition_into_strata() path the logic file's
+  # cost loop and compute_prevention_adjustments() use. Replaces the old
+  # approx_group_pop() UI-side approximation so the input caps shown to
+  # users match the actual cost/coverage denominator exactly.
+  strata_sizes <- reactive({
+    strata_params <- define_strata_params(context())
+    partition_into_strata(populations(), strata_params)
   })
   
   # ========================================================================
