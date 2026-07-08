@@ -53,7 +53,7 @@ country_codes=gam_data %>% select(Area,Area.ID) %>% unique()
 
 ######worldbank data
 
-pop_data= WDI(indicator =  c( "SP.POP.TOTL","SP.POP.TOTL.MA.ZS","SP.POP.0014.TO.ZS"),start=2024) %>% select(-year)
+pop_data= WDI(indicator =  c( "SP.POP.TOTL","SP.POP.TOTL.MA.ZS","SP.POP.0014.TO.ZS"),start=2025) %>% select(-year)
 pop_data= pop_data %>% left_join(WDI(indicator =  c( "SP.DYN.CBRT.IN"),start=2023,end = 2023))
 pop_data=pop_data %>% select(Area=country,Area.ID=iso3c,population=SP.POP.TOTL,prop_male=SP.POP.TOTL.MA.ZS,prop_under14=SP.POP.0014.TO.ZS,birth_rate=SP.DYN.CBRT.IN)
 
@@ -105,36 +105,59 @@ sub_countries=c("Botswana","Côte d'Ivoire","Eswatini","Ghana","Kenya","Lesotho"
 
 basic_data=basic_data %>% filter(country%in%sub_countries)
 
+basic_data=unique(basic_data)
 
-
-########KP data -UPDATE
-#https://kpatlas.unaids.org/dashboard
-kp_raw=read.csv(paste(data_dir,"KPAtlasDB_2025.csv",sep=""),quote = "")
-
-kp_raw=kp_raw %>% rename(country=Area) %>% filter(country %in% sub_countries)%>% 
-  filter(Indicator_GId %in%c("MSM_POPULATION_SIZE","SEX_WORKERS_POPULATION_SIZE","PWID_POPULATION_SIZE","TG_POPULATION_SIZE")) %>% filter(Subgroup=="estimate") %>% 
-  select(country,Indicator_GId,Subgroup,Time.Period,Data.value) %>% group_by(country,Indicator_GId,Subgroup) %>% arrange(desc(Time.Period))%>% slice(1) %>% 
-  select(country,Indicator_GId,Subgroup,Data.value)
-
-kp_wide=kp_raw%>% 
-  spread(Indicator_GId,Data.value)
-
-kp_wide$kp_pop_estimate=rowSums(kp_wide[,c("MSM_POPULATION_SIZE","SEX_WORKERS_POPULATION_SIZE","PWID_POPULATION_SIZE","TG_POPULATION_SIZE")], na.rm=TRUE)
-kp_wide=kp_wide %>% left_join(basic_data %>% select(country,total_population,prop_under14))
-kp_wide$adult_pop=kp_wide$total_population*(1-kp_wide$prop_under14/100)
-kp_wide$high_risk_pop=2*kp_wide$kp_pop_estimate #Assumes each KP indiviudal has a partner as part of teh network
-kp_wide$pop_sexually_active=kp_wide$adult_pop*0.85 ##UPDATE
-kp_wide$prop_high_risk=kp_wide$high_risk_pop/kp_wide$pop_sexually_active
-
-#kp_wide$prop_high_risk=0.03 #1% MSM, 1.2% FSW 
-
+# ########KP data - original - no longer used
+# #https://kpatlas.unaids.org/dashboard
+# kp_raw=read.csv(paste(data_dir,"KPAtlasDB_2025.csv",sep=""),quote = "")
 # 
-kp_wide_final=kp_wide %>% ungroup() %>% select(country,prop_high_risk)
-kp_wide_final$rr_high=8.6 #(11.5 #https://www.thelancet.com/journals/langlo/article/PIIS2214-109X(24)00270-5/fulltext)
-basic_data=left_join(basic_data, kp_wide_final)
+# kp_raw=kp_raw %>% rename(country=Area) %>% filter(country %in% sub_countries)%>% 
+#   filter(Indicator_GId %in%c("MSM_POPULATION_SIZE","SEX_WORKERS_POPULATION_SIZE","PWID_POPULATION_SIZE","TG_POPULATION_SIZE")) %>% filter(Subgroup=="estimate") %>% 
+#   select(country,Indicator_GId,Subgroup,Time.Period,Data.value) %>% group_by(country,Indicator_GId,Subgroup) %>% arrange(desc(Time.Period))%>% slice(1) %>% 
+#   select(country,Indicator_GId,Subgroup,Data.value)
+# 
+# kp_wide=kp_raw%>% 
+#   spread(Indicator_GId,Data.value)
+# 
+# kp_wide$kp_pop_estimate=rowSums(kp_wide[,c("MSM_POPULATION_SIZE","SEX_WORKERS_POPULATION_SIZE","PWID_POPULATION_SIZE","TG_POPULATION_SIZE")], na.rm=TRUE)
+# kp_wide=kp_wide %>% left_join(basic_data %>% select(country,total_population,prop_under14))
+# kp_wide$adult_pop=kp_wide$total_population*(1-kp_wide$prop_under14/100)
+# kp_wide$high_risk_pop=2*kp_wide$kp_pop_estimate #Assumes each KP indiviudal has a partner as part of teh network
+# kp_wide$pop_sexually_active=kp_wide$adult_pop*0.85 ##UPDATE
+# kp_wide$prop_high_risk=kp_wide$high_risk_pop/kp_wide$pop_sexually_active
+# 
+# #kp_wide$prop_high_risk=0.03 #1% MSM, 1.2% FSW 
+# 
+# # 
+# kp_wide_final=kp_wide %>% ungroup() %>% select(country,prop_high_risk)
+# kp_wide_final$rr_high=8.6 #(11.5 #https://www.thelancet.com/journals/langlo/article/PIIS2214-109X(24)00270-5/fulltext)
+# basic_data=left_join(basic_data, kp_wide_final)
+# 
+# 
+# basic_data$prop_high_risk=prop_high_risk
+
+#####################
+##KP Data - MSM and FSW - 
+#https://www.thelancet.com/journals/langlo/article/PIIS2214-109X(24)00236-5/fulltext
+#https://zenodo.org/records/13144705
+
+kp_data=read.csv(paste(data_dir,"kp_size.csv",sep=""),quote = "")
+kp_data=kp_data %>% select(-iso3)
+kp_data$country[kp_data$country=="Ivory Coast"]="Côte d'Ivoire"
+kp_data$country[kp_data$country=="Tanzania"]="United Republic of Tanzania"
+
+basic_data=left_join(basic_data, kp_data)
+
+prop_agyw=read_excel(paste(data_dir,"prop_agyw_by_country.xlsx",sep=""))
+prop_agyw=prop_agyw %>% select(country, prop_agyw)
+basic_data=left_join(basic_data,prop_agyw)
+
+######RR values - based on thembisa - see general values
+basic_data$rr_fsw=5.3
+basic_data$rr_msm=4
+basic_data$rr_agyw=2.5
 
 
-basic_data$prop_high_risk=prop_high_risk
 ########testing data (avg volume and positiivity)
 test_data=gam_data %>% filter(Indicator_GId %in% c("HIV_TESTS_VOL","HIV_POS_RATE")) %>% filter(Subgroup=="Total") %>% select(Area,Indicator_GId,Time.Period,Data.value) %>% 
   arrange(Area,Indicator_GId,desc(Time.Period)) %>% group_by(Area,Indicator_GId) %>% slice(1) %>% spread(Indicator_GId,Data.value)
@@ -186,7 +209,7 @@ basic_data=left_join(basic_data,anc_mults %>% select(country,ANC_multiplier))
 basic_data$use_mortality_calibration="FALSE"
 basic_data$use_mortality_calibration[basic_data$country=="South Africa"]="TRUE"
 
-######breastfeeding duration
+######breastfeeding duration - DHS - see analysis code
 
 bf_data=read.csv("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/data/bf_duration.csv")
 bf_data=bf_data %>% select(country, bf_duration_months)

@@ -264,8 +264,7 @@ ui <- page_sidebar(
         
         h5(strong("Prevention")),
         tags$ul(
-          tags$li(strong("Oral PrEP: "), "Number of individuals currently receiving and/or initiated on oral PrEP."),
-          tags$li(strong("Long-acting PrEP (lenacapavir): "), "Number of individuals currently receiving and/or initiated on long-acting injectable PrEP."),
+          tags$li(strong("Oral PrEP / Lenacapavir: "), "Number of individuals currently receiving and/or initiated on PrEP, entered separately for FSW, MSM, and AGYW (15-24)."),
           tags$li(strong("Condoms: "), "Total number of condoms distributed in the year."),
           tags$li(strong("VMMC: "), "Voluntary medical male circumcisions performed in the year."),
           tags$li(strong("Infant prophylaxis: "), "Percentage of HIV-exposed infants receiving HIV prophylaxis (e.g. NVP) to reduce vertical transmission.")
@@ -508,8 +507,12 @@ server <- function(input, output, session) {
   # Edit text here — it propagates to every tooltip in both tabs.
   intervention_tooltips <- list(
     # Prevention
-    prep_oral           = "Number of individuals currently receiving and/or initiated on oral PrEP.",
-    prep_lenacapavir    = "Number of individuals currently receiving and/or initiated on long-acting injectable PrEP (lenacapavir).",
+    prep_oral_fsw          = "Number of FSW currently receiving and/or initiated on oral PrEP.",
+    prep_oral_msm          = "Number of MSM currently receiving and/or initiated on oral PrEP.",
+    prep_oral_agyw         = "Number of AGYW (15-24) currently receiving and/or initiated on oral PrEP.",
+    prep_lenacapavir_fsw   = "Number of FSW currently receiving and/or initiated on long-acting injectable PrEP (lenacapavir).",
+    prep_lenacapavir_msm   = "Number of MSM currently receiving and/or initiated on long-acting injectable PrEP (lenacapavir).",
+    prep_lenacapavir_agyw  = "Number of AGYW (15-24) currently receiving and/or initiated on long-acting injectable PrEP (lenacapavir).",
     vmmc                = "Voluntary medical male circumcisions performed in the year.",
     condoms             = "Total number of condoms distributed in the year.",
     infant_prophylaxis  = "Percentage of HIV-exposed infants receiving HIV prophylaxis (e.g. NVP) to reduce vertical transmission.",
@@ -564,6 +567,78 @@ server <- function(input, output, session) {
   # reactive values that may still be NULL on first load.
   `%||%` <- function(x, y) if (is.null(x)) y else x
   
+  # UI-only approximation of a group's population size, used solely for
+  # validation caps and the PrEP coverage summary display. NOT the
+  # authoritative denominator -- the logic file's cost loop enforces the
+  # real cap against strata_val$n_fsw/n_msm/n_agyw (partition_into_strata())
+  # at calculation time. AGYW approximated as (adult female pop) x
+  # prop_agyw, ignoring the HIV-negative/general-pool narrowing that
+  # partition_into_strata() applies -- adequate for a soft UI warning, not
+  # for FOI math.
+  approx_group_pop <- function(ctx, group = c("fsw", "msm", "agyw")) {
+    group <- match.arg(group)
+    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return(NA)
+    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14 / 100)
+    switch(group,
+           fsw  = adult_pop * (ctx$prop_fsw %||% 0),
+           msm  = adult_pop * (ctx$prop_msm %||% 0),
+           agyw = adult_pop * (1 - (ctx$prop_pop_male %||% 50) / 100) * (ctx$prop_agyw %||% 0)
+    )
+  }
+  
+  # Registers the oral/lenacapavir cross-validation pair for one scenario +
+  # group (FSW/MSM/AGYW), replacing the old single adult_pop cap that used
+  # to cross-validate baseline_prep_oral against baseline_prep_lenacapavir
+  # directly. Called once per scenario x group combination below (9 calls,
+  # 18 observers total -- matches the 18 new group-specific PrEP inputs).
+  register_prep_group_validation <- function(input, session, scenario_prefix, group, group_label) {
+    oral_id <- paste0(scenario_prefix, "_prep_oral_", group)
+    lena_id <- paste0(scenario_prefix, "_prep_lenacapavir_", group)
+    
+    observe({
+      n_group <- approx_group_pop(context(), group)
+      if (is.na(n_group)) return()
+      isolate({
+        oral_val <- input[[oral_id]]; lena_val <- input[[lena_id]]
+        if (!is.null(oral_val) && !is.null(lena_val) && !is.na(oral_val) && !is.na(lena_val)) {
+          if (oral_val + lena_val > n_group) {
+            max_oral <- max(0, n_group - lena_val)
+            updateNumericInput(session, oral_id, value = round(max_oral), max = round(n_group))
+            showNotification(
+              paste0(scenario_prefix, ": Oral PrEP (", group_label, ") capped at ",
+                     format(round(max_oral), big.mark = ","),
+                     " (approx. ", group_label, " population: ", format(round(n_group), big.mark = ","), ")"),
+              type = "warning", duration = 4)
+          }
+        }
+      })
+    }) %>% bindEvent(input[[oral_id]])
+    
+    observe({
+      n_group <- approx_group_pop(context(), group)
+      if (is.na(n_group)) return()
+      isolate({
+        oral_val <- input[[oral_id]]; lena_val <- input[[lena_id]]
+        if (!is.null(oral_val) && !is.null(lena_val) && !is.na(oral_val) && !is.na(lena_val)) {
+          if (oral_val + lena_val > n_group) {
+            max_lena <- max(0, n_group - oral_val)
+            updateNumericInput(session, lena_id, value = round(max_lena), max = round(n_group))
+            showNotification(
+              paste0(scenario_prefix, ": Lenacapavir (", group_label, ") capped at ",
+                     format(round(max_lena), big.mark = ",")),
+              type = "warning", duration = 4)
+          }
+        }
+      })
+    }) %>% bindEvent(input[[lena_id]])
+  }
+  
+  for (sp in c("baseline", "scenario1", "scenario2")) {
+    register_prep_group_validation(input, session, sp, "fsw",  "FSW")
+    register_prep_group_validation(input, session, sp, "msm",  "MSM")
+    register_prep_group_validation(input, session, sp, "agyw", "AGYW")
+  }
+  
   # Store original baseline to scale proportionally
   original_population <- reactiveVal(5000000)
   original_baseline <- reactiveVal(NULL)
@@ -614,8 +689,12 @@ server <- function(input, output, session) {
     # hiv_params defaults when absent (e.g. for "Custom Country").
     country_calibration(list(
       circ_prevalence   = preset$context$circ_prevalence,
-      prop_high_risk    = preset$context$prop_high_risk,
-      rr_high           = preset$context$rr_high,
+      prop_fsw          = preset$context$prop_fsw,
+      rr_fsw            = preset$context$rr_fsw,
+      prop_msm          = preset$context$prop_msm,
+      rr_msm            = preset$context$rr_msm,
+      prop_agyw         = preset$context$prop_agyw,
+      rr_agyw           = preset$context$rr_agyw,
       test_yield        = preset$context$test_yield,
       prior_year_tests  = preset$context$prior_year_tests,
       prop_retesting    = preset$context$prop_retesting,
@@ -666,8 +745,12 @@ server <- function(input, output, session) {
       # and calculate_scenario_outcomes falls back to hiv_params defaults.
       # yield_multipliers must remain a named list, not unlisted.
       circ_prevalence   = if (!is.null(cc)) cc$circ_prevalence   else NULL,
-      prop_high_risk    = if (!is.null(cc)) cc$prop_high_risk    else NULL,
-      rr_high           = if (!is.null(cc)) cc$rr_high           else NULL,
+      prop_fsw          = if (!is.null(cc)) cc$prop_fsw          else NULL,
+      rr_fsw            = if (!is.null(cc)) cc$rr_fsw            else NULL,
+      prop_msm          = if (!is.null(cc)) cc$prop_msm          else NULL,
+      rr_msm            = if (!is.null(cc)) cc$rr_msm            else NULL,
+      prop_agyw         = if (!is.null(cc)) cc$prop_agyw         else NULL,
+      rr_agyw           = if (!is.null(cc)) cc$rr_agyw           else NULL,
       test_yield        = if (!is.null(cc)) cc$test_yield        else NULL,
       prior_year_tests  = if (!is.null(cc)) cc$prior_year_tests  else NULL,
       prop_retesting    = if (!is.null(cc)) cc$prop_retesting    else NULL,
@@ -757,62 +840,6 @@ server <- function(input, output, session) {
       }
     }
   })
-  
-  # Baseline PrEP Validation - Oral
-  observe({
-    ctx <- context()
-    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return()
-    
-    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
-    
-    isolate({
-      prep_oral <- input$baseline_prep_oral
-      prep_lena <- input$baseline_prep_lenacapavir
-      
-      if (!is.null(prep_oral) && !is.null(prep_lena) && !is.na(prep_oral) && !is.na(prep_lena)) {
-        if (prep_oral + prep_lena > adult_pop) {
-          max_oral <- max(0, adult_pop - prep_lena)
-          updateNumericInput(session, "baseline_prep_oral", 
-                             value = round(max_oral),
-                             max = round(adult_pop))
-          showNotification(
-            paste0("Baseline: Oral PrEP capped at ", format(round(max_oral), big.mark = ","), 
-                   " (max with current Lenacapavir: ", format(round(prep_lena), big.mark = ","), ")"),
-            type = "warning",
-            duration = 4
-          )
-        }
-      }
-    })
-  }) %>% bindEvent(input$baseline_prep_oral)
-  
-  # Baseline PrEP Validation - Lenacapavir
-  observe({
-    ctx <- context()
-    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return()
-    
-    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
-    
-    isolate({
-      prep_oral <- input$baseline_prep_oral
-      prep_lena <- input$baseline_prep_lenacapavir
-      
-      if (!is.null(prep_oral) && !is.null(prep_lena) && !is.na(prep_oral) && !is.na(prep_lena)) {
-        if (prep_oral + prep_lena > adult_pop) {
-          max_lena <- max(0, adult_pop - prep_oral)
-          updateNumericInput(session, "baseline_prep_lenacapavir", 
-                             value = round(max_lena),
-                             max = round(adult_pop))
-          showNotification(
-            paste0("Baseline: Lenacapavir capped at ", format(round(max_lena), big.mark = ","),
-                   " (max with current oral PrEP: ", format(round(prep_oral), big.mark = ","), ")"),
-            type = "warning",
-            duration = 4
-          )
-        }
-      }
-    })
-  }) %>% bindEvent(input$baseline_prep_lenacapavir)
   
   # Baseline VMMC Validation
   observe({
@@ -975,60 +1002,6 @@ server <- function(input, output, session) {
     }
   })
   
-  # Scenario 1 PrEP Validation - Oral
-  observe({
-    ctx <- context()
-    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return()
-    
-    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
-    
-    isolate({
-      prep_oral <- input$scenario1_prep_oral
-      prep_lena <- input$scenario1_prep_lenacapavir
-      
-      if (!is.null(prep_oral) && !is.null(prep_lena) && !is.na(prep_oral) && !is.na(prep_lena)) {
-        if (prep_oral + prep_lena > adult_pop) {
-          max_oral <- max(0, adult_pop - prep_lena)
-          updateNumericInput(session, "scenario1_prep_oral", 
-                             value = round(max_oral),
-                             max = round(adult_pop))
-          showNotification(
-            paste0("Scenario 1: Oral PrEP capped at ", format(round(max_oral), big.mark = ",")),
-            type = "warning",
-            duration = 4
-          )
-        }
-      }
-    })
-  }) %>% bindEvent(input$scenario1_prep_oral)
-  
-  # Scenario 1 PrEP Validation - Lenacapavir
-  observe({
-    ctx <- context()
-    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return()
-    
-    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
-    
-    isolate({
-      prep_oral <- input$scenario1_prep_oral
-      prep_lena <- input$scenario1_prep_lenacapavir
-      
-      if (!is.null(prep_oral) && !is.null(prep_lena) && !is.na(prep_oral) && !is.na(prep_lena)) {
-        if (prep_oral + prep_lena > adult_pop) {
-          max_lena <- max(0, adult_pop - prep_oral)
-          updateNumericInput(session, "scenario1_prep_lenacapavir", 
-                             value = round(max_lena),
-                             max = round(adult_pop))
-          showNotification(
-            paste0("Scenario 1: Lenacapavir capped at ", format(round(max_lena), big.mark = ",")),
-            type = "warning",
-            duration = 4
-          )
-        }
-      }
-    })
-  }) %>% bindEvent(input$scenario1_prep_lenacapavir)
-  
   # Scen 1 VMMC Validation
   observe({
     ctx <- context()
@@ -1183,60 +1156,6 @@ server <- function(input, output, session) {
       }
     }
   })
-  
-  # Scenario 2 PrEP Validation - Oral
-  observe({
-    ctx <- context()
-    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return()
-    
-    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
-    
-    isolate({
-      prep_oral <- input$scenario2_prep_oral
-      prep_lena <- input$scenario2_prep_lenacapavir
-      
-      if (!is.null(prep_oral) && !is.null(prep_lena) && !is.na(prep_oral) && !is.na(prep_lena)) {
-        if (prep_oral + prep_lena > adult_pop) {
-          max_oral <- max(0, adult_pop - prep_lena)
-          updateNumericInput(session, "scenario2_prep_oral", 
-                             value = round(max_oral),
-                             max = round(adult_pop))
-          showNotification(
-            paste0("Scenario 2: Oral PrEP capped at ", format(round(max_oral), big.mark = ",")),
-            type = "warning",
-            duration = 4
-          )
-        }
-      }
-    })
-  }) %>% bindEvent(input$scenario2_prep_oral)
-  
-  # Scenario 2 PrEP Validation - Lenacapavir
-  observe({
-    ctx <- context()
-    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return()
-    
-    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
-    
-    isolate({
-      prep_oral <- input$scenario2_prep_oral
-      prep_lena <- input$scenario2_prep_lenacapavir
-      
-      if (!is.null(prep_oral) && !is.null(prep_lena) && !is.na(prep_oral) && !is.na(prep_lena)) {
-        if (prep_oral + prep_lena > adult_pop) {
-          max_lena <- max(0, adult_pop - prep_oral)
-          updateNumericInput(session, "scenario2_prep_lenacapavir", 
-                             value = round(max_lena),
-                             max = round(adult_pop))
-          showNotification(
-            paste0("Scenario 2: Lenacapavir capped at ", format(round(max_lena), big.mark = ",")),
-            type = "warning",
-            duration = 4
-          )
-        }
-      }
-    })
-  }) %>% bindEvent(input$scenario2_prep_lenacapavir)
   
   # Scen 2 VMMC Validation
   observe({
@@ -1600,80 +1519,38 @@ server <- function(input, output, session) {
   # PREP AND MMD TOTAL INDICATORS
   # ========================================================================
   
-  output$prep_total_baseline <- renderUI({
-    prep_oral <- input$baseline_prep_oral
-    prep_lena <- input$baseline_prep_lenacapavir
-    
-    if (is.null(prep_oral) || is.null(prep_lena)) return(NULL)
-    
+  # Builds the per-group PrEP coverage summary (FSW/MSM/AGYW) for one
+  # scenario. Population sizes are the same UI-only approximation used for
+  # validation caps (approx_group_pop()) -- not the authoritative FOI
+  # denominator. Replaces the old single blended oral+lenacapavir/adult_pop
+  # total, which no longer makes sense once PrEP is targeted per group.
+  render_prep_group_summary <- function(scenario_prefix) {
     ctx <- context()
     if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return(NULL)
     
-    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
-    total_prep <- prep_oral + prep_lena
-    pct <- (total_prep / adult_pop) * 100
-    
-    color <- ifelse(total_prep > adult_pop, "red", 
-                    ifelse(pct > 90, "orange", "green"))
-    
-    # tags$div(
-    #   style = paste0("color: ", color, "; font-weight: bold;"),
-    #   paste0(format(round(total_prep), big.mark = ","), " people"),
-    #   br(),
-    #   span(style = "font-size: 0.85em;",
-    #        paste0("(", round(pct, 1), "% of adult pop)"))
-    # )
-  })
+    groups <- list(fsw = "FSW", msm = "MSM", agyw = "AGYW")
+    rows <- lapply(names(groups), function(group) {
+      oral_val <- input[[paste0(scenario_prefix, "_prep_oral_", group)]] %||% 0
+      lena_val <- input[[paste0(scenario_prefix, "_prep_lenacapavir_", group)]] %||% 0
+      n_group  <- approx_group_pop(ctx, group)
+      if (is.na(n_group) || n_group <= 0) return(NULL)
+      
+      total <- oral_val + lena_val
+      pct   <- (total / n_group) * 100
+      color <- if (total > n_group) "red" else if (pct > 90) "orange" else "green"
+      
+      tags$div(
+        style = paste0("color: ", color, "; font-size: 0.85em; margin-bottom: 2px;"),
+        paste0(groups[[group]], ": ", format(round(total), big.mark = ","),
+               " (", round(pct, 1), "% of approx. ", groups[[group]], " pop.)")
+      )
+    })
+    tagList(rows)
+  }
   
-  output$prep_total_scenario1 <- renderUI({
-    prep_oral <- input$scenario1_prep_oral
-    prep_lena <- input$scenario1_prep_lenacapavir
-    
-    if (is.null(prep_oral) || is.null(prep_lena)) return(NULL)
-    
-    ctx <- context()
-    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return(NULL)
-    
-    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
-    total_prep <- prep_oral + prep_lena
-    pct <- (total_prep / adult_pop) * 100
-    
-    color <- ifelse(total_prep > adult_pop, "red", 
-                    ifelse(pct > 90, "orange", "green"))
-    
-    tags$div(
-      style = paste0("color: ", color, "; font-weight: bold;"),
-      paste0(format(round(total_prep), big.mark = ","), " people"),
-      br(),
-      span(style = "font-size: 0.85em;",
-           paste0("(", round(pct, 1), "% of adult pop)"))
-    )
-  })
-  
-  output$prep_total_scenario2 <- renderUI({
-    prep_oral <- input$scenario2_prep_oral
-    prep_lena <- input$scenario2_prep_lenacapavir
-    
-    if (is.null(prep_oral) || is.null(prep_lena)) return(NULL)
-    
-    ctx <- context()
-    if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return(NULL)
-    
-    adult_pop <- ctx$total_population * (1 - ctx$prop_pop_under_14/100)
-    total_prep <- prep_oral + prep_lena
-    pct <- (total_prep / adult_pop) * 100
-    
-    color <- ifelse(total_prep > adult_pop, "red", 
-                    ifelse(pct > 90, "orange", "green"))
-    
-    tags$div(
-      style = paste0("color: ", color, "; font-weight: bold;"),
-      paste0(format(round(total_prep), big.mark = ","), " people"),
-      br(),
-      span(style = "font-size: 0.85em;",
-           paste0("(", round(pct, 1), "% of adult pop)"))
-    )
-  })
+  output$prep_total_baseline  <- renderUI({ render_prep_group_summary("baseline") })
+  output$prep_total_scenario1 <- renderUI({ render_prep_group_summary("scenario1") })
+  output$prep_total_scenario2 <- renderUI({ render_prep_group_summary("scenario2") })
   
   output$mmd_total_baseline <- renderUI({
     mmd3  <- input$baseline_mmd_3month

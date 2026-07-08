@@ -35,7 +35,7 @@ suppressPackageStartupMessages({
 # Path is taken from an environment variable so the suite can be run from
 # anywhere; defaults to the uploads path used during development.
 LOGIC_PATH <- Sys.getenv("HIV_LOGIC_PATH",
-                         unset = "/mnt/user-data/uploads/Mock-Up_logic_V2.R")
+                         unset = "/mnt/user-data/uploads/Mock-Up_logic_V3.R")
 
 if (!file.exists(LOGIC_PATH)) {
   stop(sprintf(
@@ -113,7 +113,24 @@ make_fixture_context <- function(...) {
     anc_multiplier          = 1,
     circ_prevalence         = 30,
     prop_high_risk          = 0.05,
-    rr_high                 = 4,
+    # NEW
+    #   prop_fsw  = 0.025, prop_msm = 0.025  -> 5% combined (splits the old
+    #     prop_high_risk 50/50; arbitrary split, NOT sourced -- chosen only to
+    #     reproduce the exact old n_high_risk=17,100 test derivation so the other
+    #     8 test files that don't care about FSW/MSM specifically keep passing
+    #     unchanged. rr_fsw = rr_msm = 4 (same value split old rr_high) for the
+    #     same reason -- calibrate_beta's weighting only cares about
+    #     rr*prop combined when rr_fsw==rr_msm, so this is numerically identical
+    #     in aggregate to the old single high_risk stratum.
+    #   prop_agyw = 0, rr_agyw = 1 -- AGYW stratum OFF by default (reproduces
+    #     pre-refactor behaviour exactly: no AGYW carve-out existed before).
+    #     Tests that need to exercise AGYW behaviour override prop_agyw locally.
+    prop_fsw   = 0.025,
+    rr_fsw     = 4,
+    prop_msm   = 0.025,
+    rr_msm     = 4,
+    prop_agyw  = 0,
+    rr_agyw    = 1,
     percent_on_art_pregnant = 80,
     test_yield              = 0.05,
     prior_year_tests        = NULL,
@@ -129,12 +146,12 @@ make_fixture_context <- function(...) {
 # what calibration already absorbed".
 make_fixture_interventions <- function(...) {
   defaults <- list(
-    prep_oral             = 0,
-    prep_lenacapavir      = 0,
+    prep_oral_fsw         = 0, prep_oral_msm         = 0, prep_oral_agyw         = 0,
+    prep_lenacapavir_fsw  = 0, prep_lenacapavir_msm  = 0, prep_lenacapavir_agyw  = 0,
     condoms               = 0,
     vmmc                  = 0,
-    eff_prep_oral         = 0.99,
-    eff_prep_len          = 1.00,
+    eff_prep_oral_fsw     = 0.3, eff_prep_oral_msm     = 0.6, eff_prep_oral_agyw     = 0.4,
+    eff_prep_len_fsw      = 0.50, eff_prep_len_msm      = 1, eff_prep_len_agyw      = 0.5,
     eff_condom            = 0.80,
     acts_per_year_high    = 100,
     acts_per_year_gen     = 50,

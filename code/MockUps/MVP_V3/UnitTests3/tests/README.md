@@ -720,3 +720,74 @@ Things the suite does NOT currently cover, in rough order of risk:
    not fully diagnosed before the fix was applied. If you see similar
    passing-by-accident behaviour in future, lean toward investigating rather
    than declaring victory.
+
+7. **FSW/MSM/AGYW PrEP re-stratification (IN PROGRESS, 2026-07).** The single
+   `high_risk` stratum has been split into separate `fsw` and `msm` strata,
+   and a new `agyw` (women 15-24) stratum has been carved out of what was
+   `general_female`. PrEP is now targeted directly per group (real head
+   counts, no more `prep_high_risk_fold` allocation heuristic) — confirmed
+   with Alex that FSW/AGYW/MSM fully replace the old single PrEP total, with
+   no residual general/untargeted PrEP bucket, for both oral PrEP and
+   lenacapavir.
+   - **Sourced:** `prop_fsw`/`prop_msm` are derived via `estimate_kp_props()`
+     from Stevens et al. 2024 (*Lancet Glob Health* 12:e1400-12) country-level
+     `pse_prop`/`prevalence` data. Two known approximations are documented
+     in-code: (1) the source's 15-49 denominator is approximated by this
+     model's 15+ "adult" population, which overstates `prop_fsw`/`prop_msm`
+     by an unquantified amount; (2) the cross-country medians used as a last-
+     resort fallback (n=39) are not country-specific.
+   - **NOT sourced (placeholder values, clearly flagged in-code):**
+     `rr_fsw`/`rr_msm` (need an incidence-based relative-risk estimate, not
+     a prevalence ratio — candidate source: Jones et al. 2024, cited in
+     Stevens et al.'s own reference list, not yet reviewed), `prop_agyw` and
+     `rr_agyw` (need DHS/PHIA age-structure and AGYW-specific incidence data
+     — nothing reviewed yet), and per-group PrEP efficacy (temporarily
+     reuses the old blended `prep_oral`/`prep_lenacapavir` efficacy for all
+     three groups pending trial-specific values — candidates: iPrEx,
+     Partners PrEP, FEM-PrEP/VOICE for oral; PURPOSE 1/2 for lenacapavir).
+   - **Test impact (rewrites needed, not yet done):** `test_02_strata_foi.R`
+     2.1/2.2 (strata structure), 2.5-2.8 (`compute_prevention_adjustments`
+     assumes single `prep_oral`), 2.11 (`by_stratum` key names changed from
+     `high_risk` to `fsw`/`msm`/`agyw`). `test_04_prevention.R` 4.3 (tests the
+     k-fold heuristic being removed — needs replacing, not patching), 4.8/
+     4.8b/4.8c (cost caps), 4.10 (partition sum). `test_09_costs.R` PrEP+
+     condom additivity tests reference the old `prep_oral` key directly.
+     `test_01_populations.R` is unaffected — the separate (and apparently
+     unused/dead) `high_risk_negative`/`general_female`/`uncirc_male`/
+     `circ_male` fields in `calculate_populations()` were deliberately left
+     untouched to avoid unrelated test churn; worth confirming they're
+     genuinely unused before a future cleanup.
+   - **UI status:** the country-calibration plumbing (`country_calibration()`
+     capture and the `context()` reactive) has been updated so the new
+     per-country fields actually reach the logic layer. The *input* side has
+     not: the old single `baseline_prep_oral`/`scenario1_prep_oral`/etc.
+     numeric fields are still in the UI but are now inert — they no longer
+     map to any live intervention, so PrEP impact will show as zero in every
+     scenario until the 18 new group-specific numeric inputs (3 groups × 2
+     products × 3 scenarios) replace them.
+
+8. **Infectious pressure is population-wide, not stratified by source group
+   (PRE-EXISTING, not changed by item 7 above).** `estimate_new_infections_foi()`
+   computes one pooled `infectious_pressure = n_unsuppressed / total_population`
+   and applies it identically to every stratum, scaled only by that stratum's
+   own β and protection term. There is no tracking of *which* stratum an
+   unsuppressed person belongs to, and no assortative mixing (KP members
+   partnering disproportionately within-group). Concretely: (a) HIV-positive
+   FSW/MSM/AGYW are not modelled as a distinct sub-population anywhere —
+   `calculate_populations()`'s cascade fields (`diagnosed`/`on_art`/
+   `suppressed`/`unsuppressed`) are population-wide aggregates with no
+   risk-group tag; (b) `suppression_delta` reduces the same shared pool
+   proportionally across all strata (see item 2.9 in test_02), so a
+   suppression intervention targeted at one group does not preferentially
+   protect that group's own partners. This is a proportionate-mixing
+   simplification, not a bug, and predates the FSW/MSM/AGYW re-stratification
+   (the old `high_risk` stratum had the identical limitation). It matters
+   because Stevens et al. 2024 (the source for item 7's `prop_fsw`/`prop_msm`)
+   explicitly cites network effects — KP-focused treatment scale-up reducing
+   onward transmission to non-KP partners (Stone et al. 2021; Mishra et al.
+   2014) — as a reason KP programming has outsized epidemic impact beyond
+   simple population proportions. A proportionate-mixing model structurally
+   cannot produce that result. Fixing it properly would mean tagging cascade
+   state by risk group and introducing sourced assortative-mixing parameters
+   — a materially larger change than the current re-stratification, not
+   scoped here.

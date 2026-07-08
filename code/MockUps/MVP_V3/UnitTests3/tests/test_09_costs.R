@@ -364,18 +364,18 @@ test_that("multi-intervention total cost = sum of single-intervention costs", {
   override_cost_globals()
   
   ig_new <- intervention_groups
-  ig_new$prevention$interventions$prep_oral$unit_cost <- 80
-  ig_new$prevention$interventions$prep_oral$efficacy  <- 0.99
+  ig_new$prevention$interventions$prep_oral_fsw$unit_cost <- 80
+  ig_new$prevention$interventions$prep_oral_fsw$efficacy  <- 0.99
   ig_new$prevention$interventions$condoms$unit_cost   <- 0.10
   ig_new$prevention$interventions$condoms$efficacy    <- 0.80
   with_intervention_groups(list(prevention = ig_new$prevention))
   
   pops <- calculate_populations(base_ctx())
   
-  interv_prep <- zero_interventions(); interv_prep$prep_oral <- 5000
+  interv_prep <- zero_interventions(); interv_prep$prep_oral_fsw <- 5000
   interv_cond <- zero_interventions(); interv_cond$condoms   <- 1e6
   interv_both <- zero_interventions()
-  interv_both$prep_oral <- 5000; interv_both$condoms <- 1e6
+  interv_both$prep_oral_fsw <- 5000; interv_both$condoms <- 1e6
   
   r_prep <- calculate_scenario_outcomes(base_ctx(), interv_prep, pops,
                                         is_baseline = TRUE,
@@ -510,12 +510,12 @@ test_that("total_cost = total_intervention_cost + art_provision_cost (within rou
   override_cost_globals()
   
   ig_new <- intervention_groups
-  ig_new$prevention$interventions$prep_oral$unit_cost <- 80
+  ig_new$prevention$interventions$prep_oral_fsw$unit_cost <- 80
   with_intervention_groups(list(prevention = ig_new$prevention))
   
   pops <- calculate_populations(base_ctx())
   interv <- zero_interventions()
-  interv$prep_oral <- 5000
+  interv$prep_oral_fsw <- 5000
   
   result <- calculate_scenario_outcomes(
     base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
@@ -595,7 +595,7 @@ test_that("PNC VL testing cost = number_reached × unit_cost", {
 # ---------------------------------------------------------------------------
 # WHAT: Activates a deliberately-chosen "baseline" mix of 9 interventions
 #       spanning every cost branch we can derive cleanly by hand:
-#         - prep_oral (capped at adult_pop)
+#         - prep_oral_fsw (capped at n_fsw, the FSW-only HIV-negative pool)
 #         - condoms   (raw intervention_value, not number_reached)
 #         - vmmc      (capped at uncircumcised_males_all)
 #         - test_facility_general + test_community
@@ -664,7 +664,7 @@ test_that("PNC VL testing cost = number_reached × unit_cost", {
 #     n_ahd_pkg_reached = min(125.4 * 0.88, 125.4)      = 110.352
 #
 #   Step 4 -- Cost lines charged to total_intervention_cost:
-#     PrEP        =  1,000   * 80    [min(1k, 600k) = 1k]    =  80,000.0
+#     PrEP        =  1,000   * 80    [min(1k, n_fsw=12,112.5) = 1k] =  80,000.0
 #     Condoms     =100,000   * 0.10  [raw value, not reach]  =  10,000.0
 #     VMMC        =  5,000   * 50    [min(5k, 350k) = 5k]    = 250,000.0
 #     test_fac unit  = 10,000 * 2                            =  20,000.0
@@ -702,8 +702,8 @@ test_that("full multi-intervention baseline: total_intervention_cost = 518,174 a
   ig_new <- intervention_groups
   
   # Prevention
-  ig_new$prevention$interventions$prep_oral$unit_cost          <- 80
-  ig_new$prevention$interventions$prep_oral$efficacy           <- 0.99
+  ig_new$prevention$interventions$prep_oral_fsw$unit_cost      <- 80
+  ig_new$prevention$interventions$prep_oral_fsw$efficacy       <- 0.99
   ig_new$prevention$interventions$condoms$unit_cost            <- 0.10
   ig_new$prevention$interventions$condoms$efficacy             <- 0.80
   ig_new$prevention$interventions$vmmc$unit_cost               <- 50
@@ -744,7 +744,7 @@ test_that("full multi-intervention baseline: total_intervention_cost = 518,174 a
   
   pops <- calculate_populations(base_ctx())
   interv <- zero_interventions()
-  interv$prep_oral             <- 1000
+  interv$prep_oral_fsw          <- 1000
   interv$condoms               <- 100000
   interv$vmmc                  <- 5000
   interv$test_facility_general <- 10000

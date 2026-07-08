@@ -67,53 +67,29 @@ base_ctx <- function() {
 # ---------------------------------------------------------------------------
 # 4.3 PrEP + condom stacking in high-risk (multiplicative, k-fold allocation)
 # ---------------------------------------------------------------------------
-# WHAT: protection_high = 1 - (1 - prep_oral_cov_H × eff) × (1 - prep_len_cov_H × eff_len) ×
-#                              (1 - condom_cov_high × eff_condom)
-#       Multiplicative residual prevents double-counting when interventions
-#       overlap on the same person. With the new k-fold PrEP allocation,
-#       prep_oral_cov_H is no longer (prep_oral / n_high_risk) — it's the
-#       Case A allocation: k × (prep_oral / (k*H + G)).
-# WHY: Locks the stacking formula AND the new allocation logic together.
-# HOW: n_high_risk (H) = 24,225 (from 4.1 derivation).
-#      n_general (G) = 460,275 (= 484,500 - 24,225).
-#      k = 3 (default hiv_params$prep_high_risk_fold).
-#      Threshold no-sat: H + G/k = 24,225 + 153,425 = 177,650.
-#
-#      Prep oral = 4,845. Since 4,845 < 177,650, Case A:
-#        c_G_prep = 4,845 / (3 * 24,225 + 460,275) = 4,845 / 532,950
-#                 = 0.009090909...
-#        c_H_prep = 3 * c_G_prep                    = 0.027272727...
-#        c_H_prep × eff_prep_oral = 0.027272727 × 0.99 = 0.027 (exact)
-#
-#      Condoms = total such that condom_cov_high = 0.20. From 2.6 derivation:
-#        condom_cov_high = total × use_rate_high / total_acts
-#        acts_high_total = 24,225 × 500 = 12,112,500
-#        acts_gen_total  = 460,275 × 50 = 23,013,750
-#        total_acts      = 35,126,250
-#        For condom_cov_high = 0.20: total = 0.20 × 35,126,250 / 0.83 = 8,464,759.0
-#      eff_condom = 0.80.
-#        residual_high   = (1 - 0.027) × (1 - 0) × (1 - 0.20 × 0.80)
-#                        = 0.973 × 1 × 0.84
-#                        = 0.81732
-#        protection_high = 1 - 0.81732 = 0.18268
-# ---------------------------------------------------------------------------
-test_that("PrEP + condom stack multiplicatively in high-risk stratum (k-fold)", {
+# ---- 4.3: NEW ----
+# WHAT: protection_fsw = 1 - (1-cov_oral*eff)*(1-cov_len*eff_len)*(1-condom_cov_high*eff_condom).
+#       No more k-fold allocation -- cov_oral = prep_oral_fsw / n_fsw directly.
+# HOW:  n_fsw = 484,500 * 0.025 = 12,112.5 (SAFR=0.85, prev_setup()).
+#       prep_oral_fsw = 1,211.25 (10% of n_fsw) -> cov_oral = 0.10.
+#       cov_oral * eff_prep_oral = 0.10 * 0.99 = 0.099.
+#       Condoms: unchanged from the old derivation (n_fsw+n_msm = 24,225,
+#       same combined "high" pool as before) -> condom_cov_high = 0.20.
+#         residual_fsw = (1-0.099) * (1-0) * (1-0.20*0.80)
+#                      = 0.901 * 1 * 0.84 = 0.75684
+#         protection_fsw = 1 - 0.75684 = 0.24316
+test_that("PrEP + condom stack multiplicatively per group (direct targeting)", {
   s   <- prev_setup()
-  # Override condom behaviour params to live values from CSV
   interv <- make_fixture_interventions(
-    prep_oral             = 4845,
+    prep_oral_fsw         = 1211.25,
     condoms               = 8464759,
-    eff_prep_oral         = 0.99,
+    eff_prep_oral_fsw     = 0.99,
     eff_condom            = 0.80,
-    acts_per_year_high    = 500,    # live value
-    acts_per_year_gen     = 50,     # live value
-    condom_use_rate_high  = 0.83,   # live value
-    condom_use_rate_gen   = 0.48    # live value
+    acts_per_year_high    = 500, acts_per_year_gen = 50,
+    condom_use_rate_high  = 0.83, condom_use_rate_gen = 0.48
   )
   adj <- compute_prevention_adjustments(interv, s$strata, s$pops, s$sp)
-  
-  # protection = 1 - 0.973 × 0.84 = 1 - 0.81732 = 0.18268
-  expect_close(adj$protection_high, 0.18268, tolerance = 1e-4)
+  expect_close(adj$protection_fsw, 0.24316, tolerance = 1e-4)
 })
 
 # ---------------------------------------------------------------------------
@@ -137,7 +113,8 @@ test_that("VMMC alone leaves stratum protection_* at 0", {
   expect_gt(adj$vmmc_coverage_frac, 0)
   expect_close(adj$protection_gen_male_circ, 0)
   expect_close(adj$protection_gen_male_unc,  0)
-  expect_close(adj$protection_high,          0)
+  expect_close(adj$protection_fsw,           0)
+  expect_close(adj$protection_msm,           0)
 })
 
 # ---------------------------------------------------------------------------
@@ -186,105 +163,68 @@ test_that("condoms cost uses raw intervention_value, not number_reached", {
 # ---------------------------------------------------------------------------
 # 4.8 PrEP cost capped at sexually_active_negative
 # ---------------------------------------------------------------------------
-# WHAT: For prep_oral and prep_lenacapavir, cost =
-#       min(intervention_value, sexually_active_negative) × unit_cost.
-#       This matches the FOI impact denominator: PrEP allocation in
-#       compute_prevention_adjustments operates on n_high_risk + n_general
-#       = sexually_active_negative, so cost and impact share one cap.
-# WHY:  Internally consistent with the FOI math (PrEP can't biologically
-#       benefit children or non-sexually-active adults, so they should not
-#       absorb cost either). Replaces the previous adult_pop cap which
-#       included HIV+ adults and the non-sexually-active.
-# HOW:  With test fixture: total_population = 1,000,000, prop_under_14 = 40,
-#       hiv_prevalence = 0.05, sexually_active_frac = SAFR = 0.85.
-#         hiv_negative              = 950,000
-#         sexually_active_negative  = 950,000 × 0.60 × 0.85 = 484,500
-#       Set prep_oral = 100,000. 100,000 < 484,500 (cap), so the full
-#       100,000 is costed. Expected cost = 100,000 × 80 = 8,000,000.
-# ---------------------------------------------------------------------------
-test_that("PrEP cost uses intervention_value capped at sexually_active_negative", {
+## ---- 4.8: NEW (below cap) ----
+test_that("PrEP cost uses intervention_value capped at n_fsw (below cap)", {
   with_hiv_params(LIVE_PARAMS_PREVENTION_04)
-  
   ig_new <- intervention_groups
-  ig_new$prevention$interventions$prep_oral$unit_cost <- 80
-  ig_new$prevention$interventions$prep_oral$efficacy  <- 0.99
+  ig_new$prevention$interventions$prep_oral_fsw$unit_cost <- 80
+  ig_new$prevention$interventions$prep_oral_fsw$efficacy  <- 0.99
   with_intervention_groups(list(prevention = ig_new$prevention))
   
   ctx  <- base_ctx()
   pops <- calculate_populations(ctx)
-  
   interv <- zero_interventions()
-  interv$prep_oral <- 1e5   # below sexually_active_negative (484,500)
+  interv$prep_oral_fsw <- 5000   # below n_fsw (12,112.5)
   
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-  
-  # Expected: 100,000 × 80 = 8,000,000 (full input costed because < cap)
-  expect_close(result$total_intervention_cost, 8e6)
+  # Expected: 5,000 x 80 = 400,000 (full input costed, below cap)
+  expect_close(result$total_intervention_cost, 4e5)
 })
-
 # ---------------------------------------------------------------------------
 # 4.8b PrEP cost capped at sexually_active_negative when input exceeds it
 # ---------------------------------------------------------------------------
-# WHAT: Push prep_oral above the cap to verify the cap binds.
-# HOW:  sexually_active_negative = 484,500 (see 4.8 derivation).
-#       Set prep_oral = 1,000,000.
-#       Expected reached for costing = 484,500.
-#       Expected cost = 484,500 × 80 = 38,760,000.
-# ---------------------------------------------------------------------------
-test_that("PrEP cost capped at sexually_active_negative when input exceeds it", {
+test_that("PrEP cost capped at n_fsw when input exceeds it", {
   with_hiv_params(LIVE_PARAMS_PREVENTION_04)
-  
   ig_new <- intervention_groups
-  ig_new$prevention$interventions$prep_oral$unit_cost <- 80
-  ig_new$prevention$interventions$prep_oral$efficacy  <- 0.99
+  ig_new$prevention$interventions$prep_oral_fsw$unit_cost <- 80
+  ig_new$prevention$interventions$prep_oral_fsw$efficacy  <- 0.99
   with_intervention_groups(list(prevention = ig_new$prevention))
   
   ctx  <- base_ctx()
   pops <- calculate_populations(ctx)
-  
   interv <- zero_interventions()
-  interv$prep_oral <- 1e6   # above sexually_active_negative (484,500)
+  interv$prep_oral_fsw <- 50000   # above n_fsw (12,112.5)
   
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-  
-  # Expected: 484,500 × 80 = 38,760,000
-  expect_close(result$total_intervention_cost, 3.876e7)
+  # Expected: 12,112.5 x 80 = 969,000
+  expect_close(result$total_intervention_cost, 969000)
 })
 
 # ---------------------------------------------------------------------------
 # 4.8c prep_lenacapavir uses same cap as prep_oral
-# ---------------------------------------------------------------------------
-# WHAT: Same behaviour for prep_lenacapavir — cost capped at sexually_active_negative.
-# HOW:  Set prep_lenacapavir = 100,000, unit_cost = 100.
-#       100,000 < sexually_active_negative (484,500), so the full input is costed.
-#       Expected: 100,000 × 100 = 10,000,000.
-# ---------------------------------------------------------------------------
-test_that("prep_lenacapavir cost capped at sexually_active_negative (same rule as prep_oral)", {
+# ---- 4.8c: NEW (lenacapavir, same rule, below cap) ----
+test_that("prep_lenacapavir cost capped at n_fsw (same rule as prep_oral)", {
   with_hiv_params(LIVE_PARAMS_PREVENTION_04)
-  
   ig_new <- intervention_groups
-  ig_new$prevention$interventions$prep_lenacapavir$unit_cost <- 100
-  ig_new$prevention$interventions$prep_lenacapavir$efficacy  <- 1.00
+  ig_new$prevention$interventions$prep_lenacapavir_fsw$unit_cost <- 100
+  ig_new$prevention$interventions$prep_lenacapavir_fsw$efficacy  <- 1.00
   with_intervention_groups(list(prevention = ig_new$prevention))
   
   ctx  <- base_ctx()
   pops <- calculate_populations(ctx)
-  
   interv <- zero_interventions()
-  interv$prep_lenacapavir <- 1e5
+  interv$prep_lenacapavir_fsw <- 5000   # below n_fsw
   
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-  
-  # Expected: 100,000 × 100 = 10,000,000
-  expect_close(result$total_intervention_cost, 1e7)
+  # Expected: 5,000 x 100 = 500,000
+  expect_close(result$total_intervention_cost, 5e5)
 })
-
 # ---------------------------------------------------------------------------
 # 4.9 VMMC cost capped at all uncircumcised males (HIV+ and HIV-)
 # ---------------------------------------------------------------------------
@@ -335,7 +275,8 @@ test_that("VMMC cost capped at uncircumcised_males_all (HIV+ and HIV-)", {
 # ---------------------------------------------------------------------------
 test_that("strata partition sums to sexually_active_negative at live SAFR", {
   s <- prev_setup()
-  total <- s$strata$n_high_risk + s$strata$n_general_female +
+  total <- s$strata$n_fsw + s$strata$n_msm + s$strata$n_agyw +
+    s$strata$n_general_female +
     s$strata$n_general_male_uncirc + s$strata$n_general_male_circ
   expect_close(total, s$strata$hiv_neg_active)
   expect_close(s$strata$hiv_neg_active, 484500)

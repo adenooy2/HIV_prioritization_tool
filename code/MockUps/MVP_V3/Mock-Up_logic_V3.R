@@ -222,22 +222,83 @@ build_intervention_groups <- function(intervention_params){
       name = "Prevention",
       color = "#10b981",
       interventions = list(
-        prep_oral = list(
-          name = "Oral Prep",
+        # FSW/MSM/AGYW PrEP targeting replaces the old single prep_oral/
+        # prep_lenacapavir entries (confirmed with Alex, 2026-07: no residual
+        # general/untargeted PrEP bucket). eligible_pop is documentary only --
+        # these six keys are special-cased in the cost loop against
+        # strata_val$n_fsw/n_msm/n_agyw (computed earlier in
+        # calculate_scenario_outcomes), not looked up via populations[[ ]].
+        #
+        # EFFICACY NOT YET SOURCED PER GROUP: falls back to the pre-existing
+        # blended prep_oral/prep_lenacapavir efficacy for all three groups
+        # until real trial-specific values are entered as their own
+        # intervention_key rows in the Excel sheet. Candidate sources: iPrEx,
+        # Partners PrEP, FEM-PrEP/VOICE (oral); PURPOSE 1 (AGYW) and PURPOSE 2
+        # (MSM/transgender individuals) primary publications (lenacapavir).
+        prep_oral_fsw = list(
+          name = "Oral PrEP (FSW)",
           type = "absolute",
           unit_label = "people initiated and currently using",
-          efficacy = subset(intervention_params, intervention_key == "prep_oral")$efficacy,
-          eligible_pop = "sexually_active_negative",
-          unit_cost = subset(intervention_params, intervention_key == "prep_oral")$unit_cost,
+          efficacy = subset(intervention_params, intervention_key == "prep_oral_fsw")$efficacy %||%
+            (subset(intervention_params, intervention_key == "prep_oral")$efficacy %||% 0.99),
+          eligible_pop = "n_fsw",
+          unit_cost = subset(intervention_params, intervention_key == "prep_oral_fsw")$unit_cost %||%
+            (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
           outcomes = c("adult_infections")
         ),
-        prep_lenacapavir = list(
-          name = "Lenacapavir",
+        prep_oral_msm = list(
+          name = "Oral PrEP (MSM)",
           type = "absolute",
           unit_label = "people initiated and currently using",
-          efficacy = subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy,
-          eligible_pop = "sexually_active_negative",
-          unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost,
+          efficacy = subset(intervention_params, intervention_key == "prep_oral_msm")$efficacy %||%
+            (subset(intervention_params, intervention_key == "prep_oral")$efficacy %||% 0.99),
+          eligible_pop = "n_msm",
+          unit_cost = subset(intervention_params, intervention_key == "prep_oral_msm")$unit_cost %||%
+            (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
+          outcomes = c("adult_infections")
+        ),
+        prep_oral_agyw = list(
+          name = "Oral PrEP (AGYW)",
+          type = "absolute",
+          unit_label = "people initiated and currently using",
+          efficacy = subset(intervention_params, intervention_key == "prep_oral_agyw")$efficacy %||%
+            (subset(intervention_params, intervention_key == "prep_oral")$efficacy %||% 0.99),
+          eligible_pop = "n_agyw",
+          unit_cost = subset(intervention_params, intervention_key == "prep_oral_agyw")$unit_cost %||%
+            (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
+          outcomes = c("adult_infections")
+        ),
+        prep_lenacapavir_fsw = list(
+          name = "Lenacapavir (FSW)",
+          type = "absolute",
+          unit_label = "people initiated and currently using",
+          efficacy = subset(intervention_params, intervention_key == "prep_lenacapavir_fsw")$efficacy %||%
+            (subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy %||% 1.00),
+          eligible_pop = "n_fsw",
+          unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_fsw")$unit_cost %||%
+            (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
+          outcomes = c("adult_infections")
+        ),
+        prep_lenacapavir_msm = list(
+          name = "Lenacapavir (MSM)",
+          type = "absolute",
+          unit_label = "people initiated and currently using",
+          efficacy = subset(intervention_params, intervention_key == "prep_lenacapavir_msm")$efficacy %||%
+            (subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy %||% 1.00),
+          eligible_pop = "n_msm",
+          unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_msm")$unit_cost %||%
+            (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
+          outcomes = c("adult_infections")
+        ),
+        prep_lenacapavir_agyw = list(
+          name = "Lenacapavir (AGYW)",
+          type = "absolute",
+          unit_label = "people initiated and currently using",
+          efficacy = subset(intervention_params, intervention_key == "prep_lenacapavir_agyw")$efficacy %||%
+            (subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy %||% 1.00),
+          eligible_pop = "n_agyw",
+          unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_agyw")$unit_cost %||%
+            (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
           outcomes = c("adult_infections")
         ),
         vmmc = list(
@@ -582,9 +643,9 @@ calculate_populations <- function(context) {
   }
   hiv_exposed_births <- births * context$hiv_prevalence * anc_mult
   
-  print(paste("Births:",births))
-  print(paste("HIV Births:",hiv_exposed_births))
-  print(paste("Diagnosed Moms:",hiv_exposed_births *(context$percent_diagnosed / 100)))
+  # print(paste("Births:",births))
+  # print(paste("HIV Births:",hiv_exposed_births))
+  # print(paste("Diagnosed Moms:",hiv_exposed_births *(context$percent_diagnosed / 100)))
   
   
   # LTFU flow: people dropping off ART during the year, split by stability status.
@@ -675,7 +736,12 @@ calculate_populations <- function(context) {
 # DEFAULT BASELINE INTERVENTIONS
 # ============================================================================
 default_baseline_interventions <- list(
-  prep_oral = 5000, prep_lenacapavir = 0, vmmc = 30000,
+  # FSW/MSM/AGYW replace the old single prep_oral/prep_lenacapavir totals.
+  # Defaulted to 0 rather than guessing a split of the old 5000 -- set real
+  # baseline values once country programme data is available.
+  prep_oral_fsw = 0, prep_oral_msm = 0, prep_oral_agyw = 0,
+  prep_lenacapavir_fsw = 0, prep_lenacapavir_msm = 0, prep_lenacapavir_agyw = 0,
+  vmmc = 30000,
   condoms = 200000, infant_prophylaxis = 70,
   test_facility_general = 25000,
   test_network = 3000, test_index = 2000, test_community = 20000,
@@ -688,6 +754,50 @@ default_baseline_interventions <- list(
 )
 
 # ============================================================================
+# KEY POPULATION SIZE ESTIMATION (FSW, MSM)
+# ----------------------------------------------------------------------------
+# Converts published key-population size/prevalence statistics into this
+# model's prop_fsw / prop_msm (fraction of sexually_active_negative).
+#
+# SOURCE for pse_prop / prevalence inputs and the fallback medians below:
+#   Stevens O, Sabin K, Anderson RL, et al. Population size, HIV prevalence,
+#   and antiretroviral therapy coverage among key populations in sub-Saharan
+#   Africa: collation and synthesis of survey data, 2010-23.
+#   Lancet Glob Health 2024; 12: e1400-12.
+#   Country-level medians extracted from the paper's Zenodo "Estimates" sheet
+#   (kp_size_prevalence_by_country.csv). pse_prop = national median proportion
+#   of adult women (FSW) / adult men (MSM) aged 15-49 who are FSW/MSM.
+#   prevalence = median HIV prevalence within that key population.
+#
+# TWO KNOWN APPROXIMATIONS (not correctable from this source alone):
+#   1. pse_prop's denominator is the 15-49 population; this model only tracks
+#      "adult" (15+, via prop_pop_under_14) with no upper age cut. Using
+#      adult 15+ as the base OVERSTATES prop_fsw/prop_msm by including the
+#      50+ population, who the published rate was never calibrated against.
+#      Magnitude unquantified without age-band population data (e.g. WDI).
+#   2. Fallback medians (used only when a country is missing from
+#      country_data_csv AND hiv_params has no default_* override) are
+#      cross-country medians across the 39 countries in the source (n=39),
+#      computed from the extracted dataset -- NOT country-specific.
+estimate_kp_props <- function(total_population, plhiv, prop_pop_male, prop_pop_under14,
+                              fsw_pse_prop, fsw_prevalence, msm_pse_prop, msm_prevalence) {
+  adult_frac  <- 1 - prop_pop_under14 / 100
+  women_adult <- total_population * (1 - prop_pop_male / 100) * adult_frac
+  men_adult   <- total_population * (prop_pop_male / 100)     * adult_frac
+  
+  fsw_hiv_neg <- (fsw_pse_prop * women_adult) * (1 - fsw_prevalence)
+  msm_hiv_neg <- (msm_pse_prop * men_adult)   * (1 - msm_prevalence)
+  
+  hiv_negative              <- total_population - plhiv
+  sexually_active_negative  <- hiv_negative * adult_frac * hiv_params$sexually_active_frac
+  
+  list(
+    prop_fsw = if (sexually_active_negative > 0) fsw_hiv_neg / sexually_active_negative else 0,
+    prop_msm = if (sexually_active_negative > 0) msm_hiv_neg / sexually_active_negative else 0
+  )
+}
+
+# ============================================================================
 # BUILD COUNTRY PRESETS FROM CSV
 # ============================================================================
 build_country_presets <- function(csv_data, baseline_csv = NULL) {
@@ -697,6 +807,31 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
     for (i in 1:nrow(csv_data)) {
       row <- csv_data[i, ]
       country_name <- row$country
+      
+      # Resolved ahead of the context list() call below (list() cannot
+      # forward-reference sibling elements it is still constructing).
+      # Fallback chain: country CSV -> Excel general_values default -> Stevens
+      # et al. 2024 39-country median (see estimate_kp_props() comment above).
+      kp_prop_male_val    <- if (!is.null(row$prop_male) && !is.na(row$prop_male)) as.numeric(row$prop_male) else hiv_params$default_prop_pop_male
+      kp_prop_under14_val <- if (!is.null(row$prop_under14) && !is.na(row$prop_under14)) as.numeric(row$prop_under14) else hiv_params$default_prop_pop_under_14
+      fsw_pse_prop_val   <- if (!is.null(row$fsw_pse_prop) && !is.na(row$fsw_pse_prop)) as.numeric(row$fsw_pse_prop)
+      else if (!is.null(hiv_params$default_fsw_pse_prop) && !is.na(hiv_params$default_fsw_pse_prop)) hiv_params$default_fsw_pse_prop
+      else 0.012   # Stevens et al. 2024, 39-country median
+      fsw_prevalence_val <- if (!is.null(row$fsw_prevalence) && !is.na(row$fsw_prevalence)) as.numeric(row$fsw_prevalence)
+      else if (!is.null(hiv_params$default_fsw_prevalence) && !is.na(hiv_params$default_fsw_prevalence)) hiv_params$default_fsw_prevalence
+      else 0.138  # Stevens et al. 2024, 39-country median
+      msm_pse_prop_val   <- if (!is.null(row$msm_pse_prop) && !is.na(row$msm_pse_prop)) as.numeric(row$msm_pse_prop)
+      else if (!is.null(hiv_params$default_msm_pse_prop) && !is.na(hiv_params$default_msm_pse_prop)) hiv_params$default_msm_pse_prop
+      else 0.007  # Stevens et al. 2024, 39-country median
+      msm_prevalence_val <- if (!is.null(row$msm_prevalence) && !is.na(row$msm_prevalence)) as.numeric(row$msm_prevalence)
+      else if (!is.null(hiv_params$default_msm_prevalence) && !is.na(hiv_params$default_msm_prevalence)) hiv_params$default_msm_prevalence
+      else 0.136  # Stevens et al. 2024, 39-country median
+      kp_props_val <- estimate_kp_props(
+        total_population = row$total_population, plhiv = row$plhiv,
+        prop_pop_male = kp_prop_male_val, prop_pop_under14 = kp_prop_under14_val,
+        fsw_pse_prop = fsw_pse_prop_val, fsw_prevalence = fsw_prevalence_val,
+        msm_pse_prop = msm_pse_prop_val, msm_prevalence = msm_prevalence_val
+      )
       
       context <- list(
         total_population = row$total_population,
@@ -785,8 +920,49 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
           as.numeric(row$prop_under14) else hiv_params$default_prop_pop_under_14,
         # FOI parameters (optional CSV columns; defaults used if absent)
         circ_prevalence = if (!is.null(row$circ_prevalence) && !is.na(row$circ_prevalence)) row$circ_prevalence else hiv_params$default_circ_prevalence,
-        prop_high_risk  = if (!is.null(row$prop_high_risk)  && !is.na(row$prop_high_risk))  row$prop_high_risk  else hiv_params$default_prop_high_risk,
-        rr_high          = if (!is.null(row$rr_high)              && !is.na(row$rr_high))   row$rr_high  else hiv_params$default_rr_high,
+        # FSW/MSM sizing: derived via estimate_kp_props() from Stevens et al.
+        # 2024 pse_prop/prevalence inputs (see kp_props_val above). rr_fsw/
+        # rr_msm are NOT sourced yet -- see PLACEHOLDER note on default_rr_fsw
+        # in the hiv_params fallback section.
+        prop_fsw  = kp_props_val$prop_fsw,
+        # rr_fsw/rr_msm/rr_agyw defaults sourced from Thembisa v5.0 South
+        # Africa output (Thembisa_SA.xlsx), 2024 projection year, mean
+        # incidence estimates. Computed as group incidence / GENERAL ADULT
+        # (15+) incidence (row 259, value 0.003590):
+        #   rr_fsw  = FSW 0.019024 / 0.003590 = 5.30
+        #   rr_msm  = MSM 0.013945 / 0.003590 = 3.88 -> rounded to 4
+        #   rr_agyw = F15-24 0.008936 / 0.003590 = 2.49 -> rounded to 2.5
+        #
+        # KNOWN MODELLING DECISION (see README item 7): these use a
+        # general-population denominator, but calibrate_beta()'s reference
+        # weights are sex-specific (w_gen_female = w_gen_male = 1.0). This
+        # double-counts the female/male-vs-population baseline difference and
+        # tilts infection apportionment toward FSW/AGYW relative to a
+        # sex-matched denominator. Chosen deliberately (Alex, 2026-07) for
+        # comparability with general-population framing; documented, not a bug.
+        #
+        # OTHER CAVEATS: realised-incidence ratios (already reflect Thembisa's
+        # modelled prevention/behaviour) used as an approximation for the
+        # acquisition-risk weight; SA-specific, applied as a global default
+        # across all countries. Override per-country via CSV rr_fsw/rr_msm/
+        # rr_agyw columns, or globally via hiv_params$default_rr_* (Excel).
+        rr_fsw    = if (!is.null(row$rr_fsw) && !is.na(row$rr_fsw)) row$rr_fsw
+        else if (!is.null(hiv_params$default_rr_fsw) && !is.na(hiv_params$default_rr_fsw)) hiv_params$default_rr_fsw
+        else 5.3,  # Thembisa v5.0 SA 2024, vs general 15+ (see comment)
+        prop_msm  = kp_props_val$prop_msm,
+        rr_msm    = if (!is.null(row$rr_msm) && !is.na(row$rr_msm)) row$rr_msm
+        else if (!is.null(hiv_params$default_rr_msm) && !is.na(hiv_params$default_rr_msm)) hiv_params$default_rr_msm
+        else 4,    # Thembisa v5.0 SA 2024, vs general 15+ (3.88 rounded)
+        # AGYW (15-24): rr_agyw now sourced (Thembisa, above). prop_agyw
+        # remains an UNSOURCED PLACEHOLDER -- Thembisa gives the incidence
+        # RATIO but NOT the population SHARE (fraction of general females aged
+        # 15-24), which needs DHS/UN age-structure data. Do not conflate.
+        prop_agyw = if (!is.null(row$prop_agyw) && !is.na(row$prop_agyw)) row$prop_agyw
+        else if (!is.null(hiv_params$default_prop_agyw) && !is.na(hiv_params$default_prop_agyw)) hiv_params$default_prop_agyw
+        else 0.20,  # PLACEHOLDER -- not sourced (population share, not the ratio)
+        rr_agyw   = if (!is.null(row$rr_agyw) && !is.na(row$rr_agyw)) row$rr_agyw
+        else if (!is.null(hiv_params$default_rr_agyw) && !is.na(hiv_params$default_rr_agyw)) hiv_params$default_rr_agyw
+        else 2.5,  # Thembisa v5.0 SA 2024, vs general 15+ (2.49 rounded)
         test_yield       = if (!is.null(row$avg_test_yield)       && !is.na(row$avg_test_yield))
           as.numeric(row$avg_test_yield) / 100 else NULL,  # % in CSV -> proportion
         prior_year_tests = if (!is.null(row$total_tests_prev_year) && !is.na(row$total_tests_prev_year))
@@ -814,7 +990,11 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
       pops <- calculate_populations(context)
       
       default_baseline_interventions <- list(
-        prep_oral = 0.01*pops$total, prep_lenacapavir = 0, vmmc = 0.01*pops$uncircumcised_males,
+        # See note at the top-level default_baseline_interventions definition:
+        # defaulted to 0, not a guessed split of the old 0.01*pops$total.
+        prep_oral_fsw = 0, prep_oral_msm = 0, prep_oral_agyw = 0,
+        prep_lenacapavir_fsw = 0, prep_lenacapavir_msm = 0, prep_lenacapavir_agyw = 0,
+        vmmc = 0.01*pops$uncircumcised_males,
         condoms = 0.6*pops$total, infant_prophylaxis = 70,
         test_facility_general = round(0.134*pops$adult_pop, -4), 
         test_network = round(0.0024*pops$adult_pop, -4), 
@@ -954,8 +1134,16 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
 # STEP 1: DEFINE STRATUM PARAMETERS
 # ----------------------------------------------------------------------------
 define_strata_params <- function(context = NULL) {
-  prop_high_risk      <- if (!is.null(context$prop_high_risk))      context$prop_high_risk      else hiv_params$default_prop_high_risk
-  rr_high             <- if (!is.null(context$rr_high))             context$rr_high             else hiv_params$default_rr_high
+  # FSW/MSM (KP) and AGYW (age-based) replace the old single high_risk
+  # stratum. See estimate_kp_props() / build_country_presets() for how
+  # prop_fsw/prop_msm are derived, and the PLACEHOLDER notes there for
+  # rr_fsw/rr_msm/prop_agyw/rr_agyw sourcing status.
+  prop_fsw            <- if (!is.null(context$prop_fsw))            context$prop_fsw            else hiv_params$default_prop_fsw
+  rr_fsw              <- if (!is.null(context$rr_fsw))              context$rr_fsw              else hiv_params$default_rr_fsw
+  prop_msm            <- if (!is.null(context$prop_msm))            context$prop_msm            else hiv_params$default_prop_msm
+  rr_msm              <- if (!is.null(context$rr_msm))              context$rr_msm              else hiv_params$default_rr_msm
+  prop_agyw           <- if (!is.null(context$prop_agyw))           context$prop_agyw           else hiv_params$default_prop_agyw
+  rr_agyw             <- if (!is.null(context$rr_agyw))             context$rr_agyw             else hiv_params$default_rr_agyw
   prop_male_general   <- if (!is.null(context$prop_pop_male))       context$prop_pop_male / 100 else hiv_params$default_prop_pop_male
   circ_prevalence     <- if (!is.null(context$circ_prevalence))     context$circ_prevalence/100 else hiv_params$default_circ_prevalence
   # VMMC risk reduction: prefer explicit context override, otherwise route
@@ -970,9 +1158,10 @@ define_strata_params <- function(context = NULL) {
   }
   
   list(
-    prop_high_risk      = prop_high_risk,
-    prop_general        = 1 - prop_high_risk,
-    rr_high             = rr_high,
+    prop_fsw  = prop_fsw,  rr_fsw  = rr_fsw,
+    prop_msm  = prop_msm,  rr_msm  = rr_msm,
+    prop_agyw = prop_agyw, rr_agyw = rr_agyw,
+    prop_general        = 1 - prop_fsw - prop_msm,
     prop_male_general   = prop_male_general,
     circ_prevalence     = circ_prevalence,
     vmmc_risk_reduction = vmmc_risk_reduction
@@ -985,12 +1174,18 @@ define_strata_params <- function(context = NULL) {
 partition_into_strata <- function(populations, strata_params) {
   hiv_neg_active <- populations$sexually_active_negative
   
-  n_high_risk           <- hiv_neg_active * strata_params$prop_high_risk
+  n_fsw                 <- hiv_neg_active * strata_params$prop_fsw
+  n_msm                 <- hiv_neg_active * strata_params$prop_msm
   n_general             <- hiv_neg_active * strata_params$prop_general
   n_general_male        <- n_general * strata_params$prop_male_general
   n_general_male_uncirc <- n_general_male * (1 - strata_params$circ_prevalence)
   n_general_male_circ   <- n_general_male * strata_params$circ_prevalence
-  n_general_female      <- n_general * (1 - strata_params$prop_male_general)
+  n_general_female_all  <- n_general * (1 - strata_params$prop_male_general)
+  # AGYW (15-24) is an age share of general female, not a KP share -- carved
+  # out separately from the FSW/MSM split above. See PLACEHOLDER note on
+  # prop_agyw in build_country_presets()/define_strata_params().
+  n_agyw                <- n_general_female_all * strata_params$prop_agyw
+  n_general_female      <- n_general_female_all * (1 - strata_params$prop_agyw)
   
   # Total unsuppressed = on ART not suppressed + diagnosed not on ART + undiagnosed
   n_unsuppressed <- populations$unsuppressed +
@@ -998,8 +1193,9 @@ partition_into_strata <- function(populations, strata_params) {
     populations$undiagnosed
   
   list(
-    n_high_risk           = n_high_risk,
-    n_general             = n_general,
+    n_fsw                 = n_fsw,
+    n_msm                 = n_msm,
+    n_agyw                = n_agyw,
     n_general_male_uncirc = n_general_male_uncirc,
     n_general_male_circ   = n_general_male_circ,
     n_general_female      = n_general_female,
@@ -1026,38 +1222,50 @@ calibrate_beta <- function(context, populations, strata, strata_params,
   # Effective susceptible counts after baseline prevention
   if (!is.null(baseline_prev_adj)) {
     n_newly_circ_base <- baseline_prev_adj$vmmc_coverage_frac * strata$n_general_male_uncirc
-    eff_high   <- strata$n_high_risk            * (1 - baseline_prev_adj$protection_high)
+    eff_fsw    <- strata$n_fsw                  * (1 - baseline_prev_adj$protection_fsw)
+    eff_msm    <- strata$n_msm                  * (1 - baseline_prev_adj$protection_msm)
+    eff_agyw   <- strata$n_agyw                 * (1 - baseline_prev_adj$protection_agyw)
     eff_genfem <- strata$n_general_female       * (1 - baseline_prev_adj$protection_gen_female)
     eff_uncirc <- (strata$n_general_male_uncirc - n_newly_circ_base) *
       (1 - baseline_prev_adj$protection_gen_male_unc)
     eff_circ   <- (strata$n_general_male_circ + n_newly_circ_base) *
       (1 - baseline_prev_adj$protection_gen_male_circ)
   } else {
-    eff_high   <- strata$n_high_risk
+    eff_fsw    <- strata$n_fsw
+    eff_msm    <- strata$n_msm
+    eff_agyw   <- strata$n_agyw
     eff_genfem <- strata$n_general_female
     eff_uncirc <- strata$n_general_male_uncirc
     eff_circ   <- strata$n_general_male_circ
   }
   
-  w_high            <- strata_params$rr_high
+  w_fsw             <- strata_params$rr_fsw
+  w_msm             <- strata_params$rr_msm
+  w_agyw            <- strata_params$rr_agyw
   w_gen_female      <- 1.0
   w_gen_male_uncirc <- 1.0
   w_gen_male_circ   <- 1.0 - strata_params$vmmc_risk_reduction
   
-  weighted_high          <- w_high            * eff_high
+  weighted_fsw           <- w_fsw             * eff_fsw
+  weighted_msm           <- w_msm             * eff_msm
+  weighted_agyw          <- w_agyw            * eff_agyw
   weighted_gen_female    <- w_gen_female      * eff_genfem
   weighted_gen_male_unc  <- w_gen_male_uncirc * eff_uncirc
   weighted_gen_male_circ <- w_gen_male_circ   * eff_circ
   
-  total_weight <- weighted_high + weighted_gen_female +
-    weighted_gen_male_unc + weighted_gen_male_circ
+  total_weight <- weighted_fsw + weighted_msm + weighted_agyw +
+    weighted_gen_female + weighted_gen_male_unc + weighted_gen_male_circ
   
-  frac_high          <- weighted_high          / total_weight
+  frac_fsw           <- weighted_fsw           / total_weight
+  frac_msm           <- weighted_msm           / total_weight
+  frac_agyw          <- weighted_agyw          / total_weight
   frac_gen_female    <- weighted_gen_female    / total_weight
   frac_gen_male_unc  <- weighted_gen_male_unc  / total_weight
   frac_gen_male_circ <- weighted_gen_male_circ / total_weight
   
-  inf_high          <- observed_infections * frac_high
+  inf_fsw           <- observed_infections * frac_fsw
+  inf_msm           <- observed_infections * frac_msm
+  inf_agyw          <- observed_infections * frac_agyw
   inf_gen_female    <- observed_infections * frac_gen_female
   inf_gen_male_unc  <- observed_infections * frac_gen_male_unc
   inf_gen_male_circ <- observed_infections * frac_gen_male_circ
@@ -1068,12 +1276,15 @@ calibrate_beta <- function(context, populations, strata, strata_params,
   }
   
   list(
-    beta_high          = safe_beta(inf_high,          infectious_pressure, eff_high),
+    beta_fsw           = safe_beta(inf_fsw,           infectious_pressure, eff_fsw),
+    beta_msm           = safe_beta(inf_msm,           infectious_pressure, eff_msm),
+    beta_agyw          = safe_beta(inf_agyw,          infectious_pressure, eff_agyw),
     beta_gen_female    = safe_beta(inf_gen_female,    infectious_pressure, eff_genfem),
     beta_gen_male_unc  = safe_beta(inf_gen_male_unc,  infectious_pressure, eff_uncirc),
     beta_gen_male_circ = safe_beta(inf_gen_male_circ, infectious_pressure, eff_circ),
-    frac_high          = frac_high,
-    frac_gen           = 1 - frac_high,
+    frac_fsw           = frac_fsw,
+    frac_msm           = frac_msm,
+    frac_agyw          = frac_agyw,
     baseline_infections_check = observed_infections
   )
 }
@@ -1081,146 +1292,102 @@ calibrate_beta <- function(context, populations, strata, strata_params,
 # ----------------------------------------------------------------------------
 # STEP 4: COMPUTE PREVENTION COVERAGE ADJUSTMENTS
 # ----------------------------------------------------------------------------
-# ----------------------------------------------------------------------------
-# Allocate PrEP supply across high-risk and general strata with a fold-rate
-# advantage to high-risk, with spillover to general when high-risk saturates.
-#
-#   prep_high_risk_fold (k): per-capita coverage in high-risk is k× general
-#
-#   Case A (no saturation):       c_G = T / (k*H + G);     c_H = k * c_G
-#   Case B (high-risk saturates): c_H = 1; c_G = (T - H) / G
-#   Case C (both saturate):       c_H = 1; c_G = 1
-#
-# Threshold T(B) when c_H -> 1 in Case A: T = H + G/k.
-# Threshold T(C) when c_G -> 1 in Case B: T = H + G.
-#
-# Returns: list(cov_high, cov_gen) — per-capita coverages, each in [0, 1].
-# Used independently for prep_oral and prep_lenacapavir.
-# ----------------------------------------------------------------------------
-allocate_prep_coverage <- function(total_units, n_high_risk, n_general, fold) {
-  if (is.null(total_units) || total_units <= 0 || (n_high_risk + n_general) <= 0) {
-    return(list(cov_high = 0, cov_gen = 0))
-  }
-  H <- max(n_high_risk, 0)
-  G <- max(n_general,   0)
-  k <- max(fold, 1)  # fold < 1 would invert prioritisation; clamp at 1
-  
-  threshold_no_sat   <- H + G / k          # T at which c_H hits 1
-  threshold_full_sat <- H + G              # T at which both hit 1
-  
-  if (total_units <= threshold_no_sat) {
-    cov_gen  <- total_units / (k * H + G)
-    cov_high <- k * cov_gen
-  } else if (total_units <= threshold_full_sat) {
-    cov_high <- 1
-    cov_gen  <- (total_units - H) / max(G, 1)
-  } else {
-    cov_high <- 1
-    cov_gen  <- 1
-  }
-  list(cov_high = min(cov_high, 1), cov_gen = min(cov_gen, 1))
-}
-
-# Efficacies passed in via scenario_interventions$eff_* keys so they stay
-# in sync with intervention_params (set in calculate_scenario_outcomes before calling).
-# Multiplicative stacking prevents double-counting when interventions overlap.
+# PrEP is now targeted directly by group (FSW/MSM/AGYW) using real per-group
+# counts, rather than allocated via an assumed k-fold prioritisation heuristic
+# across an undifferentiated high-risk pool. The old allocate_prep_coverage()
+# fold-rate allocator is removed -- confirmed with Alex (2026-07) that FSW/
+# AGYW/MSM fully replace the single blended PrEP total, with no residual
+# general/untargeted PrEP bucket. Condom allocation is UNCHANGED in scope:
+# condoms are not being targeted in this pass, so "high" (FSW+MSM combined)
+# vs "general" (AGYW + general female/male) acts-based allocation continues
+# exactly as before, just recomposed from the new sub-strata.
 compute_prevention_adjustments <- function(scenario_interventions, strata, populations, strata_params) {
   clip <- function(x) max(0, min(1, x))
   
-  # Pull efficacies — with fallbacks if not supplied
-  eff_prep_oral <- scenario_interventions$eff_prep_oral %||% 0.99
-  eff_prep_len  <- scenario_interventions$eff_prep_len  %||% 1.00
-  eff_condom    <- scenario_interventions$eff_condom    %||% 0.80
+  eff_condom <- scenario_interventions$eff_condom %||% 0.80
   
-  # Behavioural condom parameters
-  # acts_per_year: converts condoms distributed → people with consistent annual coverage
-  # condom_use_rate: fraction of sex acts where someone *with access* actually uses a condom
-  # High-risk group has higher use rate (targeted programmes, stronger motivation)
+  # Behavioural condom parameters (unchanged from before)
   acts_per_year_high        <- scenario_interventions$acts_per_year_high   %||% 100
   acts_per_year_gen         <- scenario_interventions$acts_per_year_gen    %||% 50
   condom_use_rate_high      <- scenario_interventions$condom_use_rate_high %||% 0.75
   condom_use_rate_gen       <- scenario_interventions$condom_use_rate_gen  %||% 0.55
   
-  # ---- Demand-weighted condom allocation ----------------------------------------
-  # Condoms are allocated proportionally to total sex acts per group, not
-  # population share. This ensures the full distributed stock is consumed and
-  # the high-risk group — which has more acts per person — receives a
-  # correspondingly larger share before the general population is served.
-  #
-  # Per-person coverage within each group:
-  #   condom_cov = (condoms_allocated_to_group / acts_per_year) * condom_use_rate
-  #             = (total_condoms * group_acts_share / acts_per_year) * condom_use_rate
-  #             = total_condoms * condom_use_rate / total_acts
-  #
-  # All three general sub-strata (female, uncirc male, circ male) share the
-  # same acts_per_year_gen, so they all receive the same per-person coverage.
+  # ---- Demand-weighted condom allocation (unchanged in scope) -------------------
+  # "High" = FSW+MSM combined (replaces the old single high_risk pool).
+  # "General" = AGYW + general female + general male (uncirc/circ) combined.
   # -------------------------------------------------------------------------------
+  n_high_combined <- strata$n_fsw + strata$n_msm
+  n_gen_combined  <- strata$n_agyw + strata$n_general_female +
+    strata$n_general_male_uncirc + strata$n_general_male_circ
+  
   total_condoms   <- scenario_interventions$condoms %||% 0
-  acts_high_total <- strata$n_high_risk * acts_per_year_high
-  acts_gen_total  <- strata$n_general   * acts_per_year_gen
+  acts_high_total <- n_high_combined * acts_per_year_high
+  acts_gen_total  <- n_gen_combined  * acts_per_year_gen
   total_acts      <- max(acts_high_total + acts_gen_total, 1)
   
   condom_cov_high <- clip(total_condoms * condom_use_rate_high / total_acts)
   condom_cov_gen  <- clip(total_condoms * condom_use_rate_gen  / total_acts)
   
-  # ---- PrEP allocation across high-risk + general ----
-  # k-fold per-capita advantage to high-risk. Both prep_oral and
-  # prep_lenacapavir are allocated INDEPENDENTLY using the same fold parameter.
-  # Surplus beyond high-risk capacity spills to general (see allocate_prep_coverage).
-  prep_fold <- hiv_params$prep_high_risk_fold %||% 3
+  # ---- PrEP: direct per-group coverage, no allocation heuristic -----------------
+  # cov = people initiated / group population size, capped at 1.
+  cov <- function(n_people, n_pop) if (is.null(n_pop) || n_pop <= 0) 0 else clip(n_people / n_pop)
   
-  prep_oral_alloc <- allocate_prep_coverage(
-    total_units = scenario_interventions$prep_oral %||% 0,
-    n_high_risk = strata$n_high_risk,
-    n_general   = strata$n_general,
-    fold        = prep_fold
-  )
-  prep_len_alloc <- allocate_prep_coverage(
-    total_units = scenario_interventions$prep_lenacapavir %||% 0,
-    n_high_risk = strata$n_high_risk,
-    n_general   = strata$n_general,
-    fold        = prep_fold
-  )
+  cov_fsw_oral  <- cov(scenario_interventions$prep_oral_fsw          %||% 0, strata$n_fsw)
+  cov_fsw_len   <- cov(scenario_interventions$prep_lenacapavir_fsw   %||% 0, strata$n_fsw)
+  cov_msm_oral  <- cov(scenario_interventions$prep_oral_msm          %||% 0, strata$n_msm)
+  cov_msm_len   <- cov(scenario_interventions$prep_lenacapavir_msm   %||% 0, strata$n_msm)
+  cov_agyw_oral <- cov(scenario_interventions$prep_oral_agyw         %||% 0, strata$n_agyw)
+  cov_agyw_len  <- cov(scenario_interventions$prep_lenacapavir_agyw  %||% 0, strata$n_agyw)
   
-  prep_oral_cov_high <- prep_oral_alloc$cov_high
-  prep_oral_cov_gen  <- prep_oral_alloc$cov_gen
-  prep_len_cov_high  <- prep_len_alloc$cov_high
-  prep_len_cov_gen   <- prep_len_alloc$cov_gen
+  # Per-group, per-product efficacy. TEMPORARY: falls back to the old blended
+  # prep_oral/prep_lenacapavir efficacy for all three groups until real
+  # trial-specific values are sourced and entered in the Excel
+  # intervention_params sheet (prep_oral_fsw/msm/agyw, prep_lenacapavir_fsw/
+  # msm/agyw rows). Candidate sources to check before finalising: iPrEx,
+  # Partners PrEP, FEM-PrEP/VOICE (oral); PURPOSE 1 (AGYW) and PURPOSE 2
+  # (MSM/transgender individuals) primary publications (lenacapavir). Do NOT
+  # treat the numbers below as sourced -- they are the pre-existing blended
+  # defaults, reused only so behaviour doesn't silently change to zero.
+  eff_fsw_oral  <- scenario_interventions$eff_prep_oral_fsw  %||% (scenario_interventions$eff_prep_oral %||% 0.99)
+  eff_fsw_len   <- scenario_interventions$eff_prep_len_fsw   %||% (scenario_interventions$eff_prep_len  %||% 1.00)
+  eff_msm_oral  <- scenario_interventions$eff_prep_oral_msm  %||% (scenario_interventions$eff_prep_oral %||% 0.99)
+  eff_msm_len   <- scenario_interventions$eff_prep_len_msm   %||% (scenario_interventions$eff_prep_len  %||% 1.00)
+  eff_agyw_oral <- scenario_interventions$eff_prep_oral_agyw %||% (scenario_interventions$eff_prep_oral %||% 0.99)
+  eff_agyw_len  <- scenario_interventions$eff_prep_len_agyw  %||% (scenario_interventions$eff_prep_len  %||% 1.00)
   
-  # ---- High-risk stratum: PrEP (oral + LEN) + condoms ----
-  residual_high   <- (1 - prep_oral_cov_high * eff_prep_oral) *
-    (1 - prep_len_cov_high  * eff_prep_len)  *
-    (1 - condom_cov_high    * eff_condom)
-  protection_high <- 1 - residual_high
+  # ---- FSW: PrEP (oral + LEN) + condoms ----
+  residual_fsw   <- (1 - cov_fsw_oral * eff_fsw_oral) *
+    (1 - cov_fsw_len  * eff_fsw_len)  *
+    (1 - condom_cov_high * eff_condom)
+  protection_fsw <- 1 - residual_fsw
   
-  # ---- General female: PrEP + condoms ----
-  residual_gen_female   <- (1 - prep_oral_cov_gen * eff_prep_oral) *
-    (1 - prep_len_cov_gen  * eff_prep_len)  *
-    (1 - condom_cov_gen    * eff_condom)
-  protection_gen_female <- 1 - residual_gen_female
+  # ---- MSM: PrEP (oral + LEN) + condoms ----
+  residual_msm   <- (1 - cov_msm_oral * eff_msm_oral) *
+    (1 - cov_msm_len  * eff_msm_len)  *
+    (1 - condom_cov_high * eff_condom)
+  protection_msm <- 1 - residual_msm
   
-  # ---- General uncircumcised male: PrEP + condoms ----
-  residual_gen_male_unc   <- (1 - prep_oral_cov_gen * eff_prep_oral) *
-    (1 - prep_len_cov_gen  * eff_prep_len)  *
-    (1 - condom_cov_gen    * eff_condom)
-  protection_gen_male_unc <- 1 - residual_gen_male_unc
+  # ---- AGYW: PrEP (oral + LEN) + condoms ----
+  residual_agyw   <- (1 - cov_agyw_oral * eff_agyw_oral) *
+    (1 - cov_agyw_len  * eff_agyw_len)  *
+    (1 - condom_cov_gen * eff_condom)
+  protection_agyw <- 1 - residual_agyw
   
-  # ---- General circumcised male: PrEP + condoms ----
-  # Circumcised men also use PrEP/condoms; this stacks ON TOP of their lower β_circ
-  # (which encodes biological circumcision protection only).
-  # Without this, men transferred from the uncirc pool by VMMC lose their
-  # protection coverage and can appear to gain MORE infections — fixed here.
-  residual_gen_male_circ   <- (1 - prep_oral_cov_gen * eff_prep_oral) *
-    (1 - prep_len_cov_gen  * eff_prep_len)  *
-    (1 - condom_cov_gen    * eff_condom)
-  protection_gen_male_circ <- 1 - residual_gen_male_circ
+  # ---- General female (excl. AGYW), general male (uncirc/circ): condoms only ----
+  # No PrEP bucket remains for these strata (confirmed with Alex, 2026-07) --
+  # only FSW/MSM/AGYW are targeted with PrEP in this model version.
+  protection_gen_female    <- 1 - (1 - condom_cov_gen * eff_condom)
+  protection_gen_male_unc  <- 1 - (1 - condom_cov_gen * eff_condom)
+  protection_gen_male_circ <- 1 - (1 - condom_cov_gen * eff_condom)
   
   # ---- VMMC: converts uncirc men → circ pool (not a coverage multiplier) ----
   newly_circumcised  <- min(scenario_interventions$vmmc %||% 0, strata$n_general_male_uncirc)
   vmmc_coverage_frac <- clip(newly_circumcised / max(strata$n_general_male_uncirc, 1))
   
   list(
-    protection_high          = protection_high,
+    protection_fsw           = protection_fsw,
+    protection_msm           = protection_msm,
+    protection_agyw          = protection_agyw,
     protection_gen_female    = protection_gen_female,
     protection_gen_male_unc  = protection_gen_male_unc,
     protection_gen_male_circ = protection_gen_male_circ,
@@ -1262,10 +1429,20 @@ estimate_new_infections_foi <- function(context,
   n_uncirc_eff <- strata$n_general_male_uncirc - n_newly_circ
   n_circ_eff   <- strata$n_general_male_circ   + n_newly_circ
   
-  infections_high <- betas$beta_high *
+  infections_fsw <- betas$beta_fsw *
     infectious_pressure_scenario *
-    strata$n_high_risk *
-    (1 - prev_adj$protection_high)
+    strata$n_fsw *
+    (1 - prev_adj$protection_fsw)
+  
+  infections_msm <- betas$beta_msm *
+    infectious_pressure_scenario *
+    strata$n_msm *
+    (1 - prev_adj$protection_msm)
+  
+  infections_agyw <- betas$beta_agyw *
+    infectious_pressure_scenario *
+    strata$n_agyw *
+    (1 - prev_adj$protection_agyw)
   
   infections_gen_female <- betas$beta_gen_female *
     infectious_pressure_scenario *
@@ -1285,23 +1462,30 @@ estimate_new_infections_foi <- function(context,
     (1 - prev_adj$protection_gen_male_circ)
   
   total_new_infections <- max(0,
-                              infections_high + infections_gen_female + infections_gen_male_unc + infections_gen_male_circ)
+                              infections_fsw + infections_msm + infections_agyw +
+                                infections_gen_female + infections_gen_male_unc + infections_gen_male_circ)
   
   list(
     new_infections     = round(total_new_infections),
     infections_averted = round(max(0, context$new_infections_per_year - total_new_infections)),
     by_stratum = list(
-      high_risk       = round(max(0, infections_high)),
+      fsw             = round(max(0, infections_fsw)),
+      msm             = round(max(0, infections_msm)),
+      agyw            = round(max(0, infections_agyw)),
       gen_female      = round(max(0, infections_gen_female)),
       gen_male_uncirc = round(max(0, infections_gen_male_unc)),
       gen_male_circ   = round(max(0, infections_gen_male_circ))
     ),
     diagnostics = list(
-      beta_high                    = betas$beta_high,
+      beta_fsw                     = betas$beta_fsw,
+      beta_msm                     = betas$beta_msm,
+      beta_agyw                    = betas$beta_agyw,
       beta_gen_female              = betas$beta_gen_female,
       beta_gen_male_unc            = betas$beta_gen_male_unc,
       beta_gen_male_circ           = betas$beta_gen_male_circ,
-      frac_infections_high_risk    = betas$frac_high,
+      frac_infections_fsw          = betas$frac_fsw,
+      frac_infections_msm          = betas$frac_msm,
+      frac_infections_agyw         = betas$frac_agyw,
       n_unsuppressed_baseline      = strata$n_unsuppressed,
       n_unsuppressed_scenario      = n_unsuppressed_scenario,
       infectious_pressure_baseline = strata$n_unsuppressed / populations$total,
@@ -1328,15 +1512,24 @@ validate_calibration <- function(context, populations, betas, strata, strata_par
   #   - General male: ~0.7× female (median F:M IRR 1.47)
   # Upper bounds chosen so a worst-case epidemic (~25% prevalence, ~3% pressure,
   # KP incidence ~15%/yr, female incidence ~3%/yr) does not falsely flag.
+  # AGYW bounds NOT independently sourced (2026-07) -- reusing the general
+  # female bounds as a placeholder until AGYW-specific incidence data (e.g.
+  # DHS/PHIA) is reviewed. FSW/MSM bounds are genuine reuse of the
+  # already-cited literature above, now applied to their own separated strata
+  # rather than a single blended high-risk bound.
   bounds <- list(
-    beta_high          = list(lower = 0.05,  upper = 5.00, label = "High-risk (KP)"),
-    beta_gen_female    = list(lower = 0.005, upper = 1.50, label = "General (female)"),
-    beta_gen_male_unc  = list(lower = 0.003, upper = 1.20, label = "General (uncircumcised male)"),
-    beta_gen_male_circ = list(lower = 0.001, upper = 0.60, label = "General (circumcised male)")
+    beta_fsw           = list(lower = 0.05,   upper = 5.00, label = "FSW"),
+    beta_msm           = list(lower = 0.05,   upper = 5.00, label = "MSM"),
+    beta_agyw          = list(lower = 0.005,  upper = 1.50, label = "AGYW (placeholder bounds, see comment)"),
+    beta_gen_female    = list(lower = 0.005,  upper = 1.50, label = "General (female, excl. AGYW)"),
+    beta_gen_male_unc  = list(lower = 0.003,  upper = 1.20, label = "General (uncircumcised male)"),
+    beta_gen_male_circ = list(lower = 0.001,  upper = 0.60, label = "General (circumcised male)")
   )
   
   beta_values <- list(
-    beta_high          = betas$beta_high,
+    beta_fsw           = betas$beta_fsw,
+    beta_msm           = betas$beta_msm,
+    beta_agyw          = betas$beta_agyw,
     beta_gen_female    = betas$beta_gen_female,
     beta_gen_male_unc  = betas$beta_gen_male_unc,
     beta_gen_male_circ = betas$beta_gen_male_circ
@@ -1373,13 +1566,15 @@ validate_calibration <- function(context, populations, betas, strata, strata_par
   if (ratio_inf_to_unsup > 0.5)
     flags <- c(flags, sprintf("new_infections / unsuppressed_PLHIV = %.2f — implies implausibly high per-person transmission. Check suppression rate or infection counts.", ratio_inf_to_unsup))
   
-  if (betas$frac_high > 0.80 && strata_params$prop_high_risk < 0.10)
-    flags <- c(flags, sprintf("%.0f%% of infections attributed to high-risk stratum (%.0f%% of population). Consider adjusting prop_high_risk or rr_high.", betas$frac_high * 100, strata_params$prop_high_risk * 100))
+  frac_kp <- betas$frac_fsw + betas$frac_msm
+  prop_kp <- strata_params$prop_fsw + strata_params$prop_msm
+  if (frac_kp > 0.80 && prop_kp < 0.10)
+    flags <- c(flags, sprintf("%.0f%% of infections attributed to FSW+MSM strata combined (%.0f%% of population). Consider adjusting prop_fsw/prop_msm or rr_fsw/rr_msm.", frac_kp * 100, prop_kp * 100))
   
   n_flags   <- length(flags)
   narrative <- if (n_flags == 0) {
-    sprintf("Calibration passed. Implied annual incidence: %.3f%% among HIV-negative adults. High-risk stratum accounts for %.0f%% of baseline infections. All β values within plausible bounds.",
-            incidence_pct, betas$frac_high * 100)
+    sprintf("Calibration passed. Implied annual incidence: %.3f%% among HIV-negative adults. FSW+MSM strata account for %.0f%% of baseline infections. All β values within plausible bounds.",
+            incidence_pct, frac_kp * 100)
   } else {
     sprintf("%d calibration warning(s). Implied incidence: %.3f%%. Review flagged parameters before interpreting results.",
             n_flags, incidence_pct)
@@ -2518,8 +2713,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   foi_interventions <- c(
     interventions,
     list(
-      eff_prep_oral = all_interventions$prep_oral$efficacy       %||% 0.99,
-      eff_prep_len  = all_interventions$prep_lenacapavir$efficacy %||% 1.00,
+      eff_prep_oral_fsw  = all_interventions$prep_oral_fsw$efficacy         %||% 0.99,
+      eff_prep_oral_msm  = all_interventions$prep_oral_msm$efficacy         %||% 0.99,
+      eff_prep_oral_agyw = all_interventions$prep_oral_agyw$efficacy        %||% 0.99,
+      eff_prep_len_fsw   = all_interventions$prep_lenacapavir_fsw$efficacy  %||% 1.00,
+      eff_prep_len_msm   = all_interventions$prep_lenacapavir_msm$efficacy  %||% 1.00,
+      eff_prep_len_agyw  = all_interventions$prep_lenacapavir_agyw$efficacy %||% 1.00,
       eff_condom    = all_interventions$condoms$efficacy          %||% 0.80,
       acts_per_year_high     = ACTS_PER_YEAR_HIGH,    
       acts_per_year_gen      = ACTS_PER_YEAR_GEN,     
@@ -2539,8 +2738,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   baseline_foi <- if (!is.null(baseline_interventions)) {
     c(baseline_interventions,
       list(
-        eff_prep_oral        = all_interventions$prep_oral$efficacy        %||% 0.99,
-        eff_prep_len         = all_interventions$prep_lenacapavir$efficacy %||% 1.00,
+        eff_prep_oral_fsw    = all_interventions$prep_oral_fsw$efficacy         %||% 0.99,
+        eff_prep_oral_msm    = all_interventions$prep_oral_msm$efficacy         %||% 0.99,
+        eff_prep_oral_agyw   = all_interventions$prep_oral_agyw$efficacy        %||% 0.99,
+        eff_prep_len_fsw     = all_interventions$prep_lenacapavir_fsw$efficacy  %||% 1.00,
+        eff_prep_len_msm     = all_interventions$prep_lenacapavir_msm$efficacy  %||% 1.00,
+        eff_prep_len_agyw    = all_interventions$prep_lenacapavir_agyw$efficacy %||% 1.00,
         eff_condom           = all_interventions$condoms$efficacy          %||% 0.80,
         acts_per_year_high   = ACTS_PER_YEAR_HIGH,
         acts_per_year_gen    = ACTS_PER_YEAR_GEN,
@@ -2572,9 +2775,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     #   cat("input new_infections_per_year:", context$new_infections_per_year, "\n")
     #   cat("computed foi_result$new_infections:", foi_result$new_infections, "\n")
     #   cat("ratio computed/input:", foi_result$new_infections / context$new_infections_per_year, "\n")
-    #   cat("rr_high used:", define_strata_params(context)$rr_high, "\n")
-    #   cat("prop_high_risk used:", define_strata_params(context)$prop_high_risk, "\n")
-    #   cat("frac_high (calib):", foi_result$diagnostics$frac_infections_high_risk, "\n")
+    #   cat("rr_fsw used:", define_strata_params(context)$rr_fsw, "\n")
+    #   cat("prop_fsw used:", define_strata_params(context)$prop_fsw, "\n")
+    #   cat("frac_fsw (calib):", foi_result$diagnostics$frac_infections_fsw, "\n")
     #   cat("==============================\n\n")
     #   assign("last_fp", fingerprint, envir = .last_diag_country)
     # }
@@ -2629,16 +2832,19 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     
     if ("adult_infections" %in% intervention$outcomes) {
       # Cost only — FOI accounts for protective effect.
-      # PrEP cost is capped at sexually_active_negative (HIV-neg, sexually active).
-      # This is the same denominator used by FOI for impact, so cost and
-      # impact stay internally consistent. Children and non-sexually-active
-      # adults are excluded — they can't biologically benefit from PrEP and
-      # are not in the FOI strata. Allocation (3-fold high-risk advantage with
-      # spillover) is handled in compute_prevention_adjustments.
+      # PrEP cost is capped at the group's own HIV-negative population size
+      # (n_fsw/n_msm/n_agyw from strata_val, computed above), the same
+      # denominator used by FOI's per-group coverage calculation, so cost and
+      # impact stay internally consistent. Direct group targeting (2026-07)
+      # replaced the old 3-fold high-risk allocation heuristic.
       units_costed <- if (int_key == "condoms") {
         (intervention_value %||% 0)
-      } else if (int_key %in% c("prep_oral", "prep_lenacapavir")) {
-        min(intervention_value, populations$sexually_active_negative %||% 0)
+      } else if (int_key %in% c("prep_oral_fsw", "prep_lenacapavir_fsw")) {
+        min(intervention_value, strata_val$n_fsw %||% 0)
+      } else if (int_key %in% c("prep_oral_msm", "prep_lenacapavir_msm")) {
+        min(intervention_value, strata_val$n_msm %||% 0)
+      } else if (int_key %in% c("prep_oral_agyw", "prep_lenacapavir_agyw")) {
+        min(intervention_value, strata_val$n_agyw %||% 0)
       } else {
         number_reached
       }
