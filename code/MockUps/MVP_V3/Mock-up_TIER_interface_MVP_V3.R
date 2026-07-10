@@ -513,6 +513,8 @@ server <- function(input, output, session) {
     prep_lenacapavir_fsw   = "Number of FSW currently receiving and/or initiated on long-acting injectable PrEP (lenacapavir).",
     prep_lenacapavir_msm   = "Number of MSM currently receiving and/or initiated on long-acting injectable PrEP (lenacapavir).",
     prep_lenacapavir_agyw  = "Number of AGYW (15-24) currently receiving and/or initiated on long-acting injectable PrEP (lenacapavir).",
+    prep_oral_general      = "Number of people who are NOT FSW/MSM/AGYW but receive oral PrEP for another reason (e.g. serodiscordant partners, general high risk). Split across the general population internally.",
+    prep_lenacapavir_general = "Number of people who are NOT FSW/MSM/AGYW but receive long-acting injectable PrEP (lenacapavir) for another reason. Split across the general population internally.",
     vmmc                = "Voluntary medical male circumcisions performed in the year.",
     condoms             = "Total number of condoms distributed in the year.",
     infant_prophylaxis  = "Percentage of HIV-exposed infants receiving HIV prophylaxis (e.g. NVP) to reduce vertical transmission.",
@@ -574,10 +576,17 @@ server <- function(input, output, session) {
   # the sexually-active/HIV-negative narrowing partition_into_strata()
   # applies and so overstated the cap (e.g. Botswana FSW: ~11,000 approx
   # vs ~8,294 actual).
-  group_pop <- function(group = c("fsw", "msm", "agyw")) {
+  group_pop <- function(group = c("fsw", "msm", "agyw", "general")) {
     group <- match.arg(group)
     s <- strata_sizes()
-    val <- switch(group, fsw = s$n_fsw, msm = s$n_msm, agyw = s$n_agyw)
+    val <- switch(group,
+                  fsw = s$n_fsw, msm = s$n_msm, agyw = s$n_agyw,
+                  # General PrEP is capped against the combined general population (the
+                  # same denominator the logic file's cost loop and the female/male split
+                  # distribute across). This is the total the single general entry covers.
+                  general = (s$n_general_female %||% 0) +
+                    (s$n_general_male_uncirc %||% 0) +
+                    (s$n_general_male_circ %||% 0))
     if (is.null(val) || is.na(val)) NA else val
   }
   
@@ -629,9 +638,10 @@ server <- function(input, output, session) {
   }
   
   for (sp in c("baseline", "scenario1", "scenario2")) {
-    register_prep_group_validation(input, session, sp, "fsw",  "FSW")
-    register_prep_group_validation(input, session, sp, "msm",  "MSM")
-    register_prep_group_validation(input, session, sp, "agyw", "AGYW")
+    register_prep_group_validation(input, session, sp, "fsw",     "FSW")
+    register_prep_group_validation(input, session, sp, "msm",     "MSM")
+    register_prep_group_validation(input, session, sp, "agyw",    "AGYW")
+    register_prep_group_validation(input, session, sp, "general", "General")
   }
   
   # Store original baseline to scale proportionally
@@ -1524,20 +1534,20 @@ server <- function(input, output, session) {
   # PREP AND MMD TOTAL INDICATORS
   # ========================================================================
   
-  # Builds the per-group PrEP coverage summary (FSW/MSM/AGYW) for one
-  # scenario. Population sizes are the same UI-only approximation used for
-  # validation caps (approx_group_pop()) -- not the authoritative FOI
+  # Builds the per-group PrEP coverage summary (FSW/MSM/AGYW/General) for one
+  # scenario. Population sizes come from group_pop() -- the same UI-side
+  # approximation used for validation caps, not the authoritative FOI
   # denominator. Replaces the old single blended oral+lenacapavir/adult_pop
   # total, which no longer makes sense once PrEP is targeted per group.
   render_prep_group_summary <- function(scenario_prefix) {
     ctx <- context()
     if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return(NULL)
     
-    groups <- list(fsw = "FSW", msm = "MSM", agyw = "AGYW")
+    groups <- list(fsw = "FSW", msm = "MSM", agyw = "AGYW", general = "General")
     rows <- lapply(names(groups), function(group) {
       oral_val <- input[[paste0(scenario_prefix, "_prep_oral_", group)]] %||% 0
       lena_val <- input[[paste0(scenario_prefix, "_prep_lenacapavir_", group)]] %||% 0
-      n_group  <- approx_group_pop(ctx, group)
+      n_group  <- group_pop(group)
       if (is.na(n_group) || n_group <= 0) return(NULL)
       
       total <- oral_val + lena_val

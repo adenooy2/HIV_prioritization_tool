@@ -268,6 +268,25 @@ build_intervention_groups <- function(intervention_params){
             (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
           outcomes = c("adult_infections")
         ),
+        # General PrEP: for people who are NOT FSW/MSM/AGYW but receive PrEP
+        # for another reason (serodiscordant partners, general high risk, etc.).
+        # A single total entered by the user is split across the three general
+        # strata inside compute_prevention_adjustments() using the sourced
+        # female/male split (prep_general_prop_female) and each country's
+        # circ_prevalence for the male uncirc/circ sub-split. eligible_pop is
+        # documentary only -- the cost loop caps these against the combined
+        # general population (see cost-loop special-case).
+        prep_oral_general = list(
+          name = "Oral PrEP (General)",
+          type = "absolute",
+          unit_label = "people initiated and currently using",
+          efficacy = subset(intervention_params, intervention_key == "prep_oral_general")$efficacy %||%
+            (subset(intervention_params, intervention_key == "prep_oral")$efficacy %||% 0.99),
+          eligible_pop = "n_general_all",
+          unit_cost = subset(intervention_params, intervention_key == "prep_oral_general")$unit_cost %||%
+            (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
+          outcomes = c("adult_infections")
+        ),
         prep_lenacapavir_fsw = list(
           name = "Lenacapavir (FSW)",
           type = "absolute",
@@ -298,6 +317,17 @@ build_intervention_groups <- function(intervention_params){
             (subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy %||% 1.00),
           eligible_pop = "n_agyw",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_agyw")$unit_cost %||%
+            (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
+          outcomes = c("adult_infections")
+        ),
+        prep_lenacapavir_general = list(
+          name = "Lenacapavir (General)",
+          type = "absolute",
+          unit_label = "people initiated and currently using",
+          efficacy = subset(intervention_params, intervention_key == "prep_lenacapavir_general")$efficacy %||%
+            (subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy %||% 1.00),
+          eligible_pop = "n_general_all",
+          unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_general")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
           outcomes = c("adult_infections")
         ),
@@ -739,8 +769,8 @@ default_baseline_interventions <- list(
   # FSW/MSM/AGYW replace the old single prep_oral/prep_lenacapavir totals.
   # Defaulted to 0 rather than guessing a split of the old 5000 -- set real
   # baseline values once country programme data is available.
-  prep_oral_fsw = 0, prep_oral_msm = 0, prep_oral_agyw = 0,
-  prep_lenacapavir_fsw = 0, prep_lenacapavir_msm = 0, prep_lenacapavir_agyw = 0,
+  prep_oral_fsw = 0, prep_oral_msm = 0, prep_oral_agyw = 0, prep_oral_general = 0,
+  prep_lenacapavir_fsw = 0, prep_lenacapavir_msm = 0, prep_lenacapavir_agyw = 0, prep_lenacapavir_general = 0,
   vmmc = 30000,
   condoms = 200000, infant_prophylaxis = 70,
   test_facility_general = 25000,
@@ -992,8 +1022,8 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
       default_baseline_interventions <- list(
         # See note at the top-level default_baseline_interventions definition:
         # defaulted to 0, not a guessed split of the old 0.01*pops$total.
-        prep_oral_fsw = 0, prep_oral_msm = 0, prep_oral_agyw = 0,
-        prep_lenacapavir_fsw = 0, prep_lenacapavir_msm = 0, prep_lenacapavir_agyw = 0,
+        prep_oral_fsw = 0, prep_oral_msm = 0, prep_oral_agyw = 0, prep_oral_general = 0,
+        prep_lenacapavir_fsw = 0, prep_lenacapavir_msm = 0, prep_lenacapavir_agyw = 0, prep_lenacapavir_general = 0,
         vmmc = 0.01*pops$uncircumcised_males,
         condoms = 0.6*pops$total, infant_prophylaxis = 70,
         test_facility_general = round(0.134*pops$adult_pop, -4), 
@@ -1339,6 +1369,45 @@ compute_prevention_adjustments <- function(scenario_interventions, strata, popul
   cov_agyw_oral <- cov(scenario_interventions$prep_oral_agyw         %||% 0, strata$n_agyw)
   cov_agyw_len  <- cov(scenario_interventions$prep_lenacapavir_agyw  %||% 0, strata$n_agyw)
   
+  # ---- General PrEP: single total split across the three general strata --------
+  # For people who are NOT FSW/MSM/AGYW but receive PrEP for another reason.
+  # A single entered total is split female/male using the sourced allocation
+  # share (prep_general_prop_female, from programme allocation data -- see
+  # hiv_params default below), then the male share is sub-split uncirc/circ by
+  # the country's circ_prevalence. This keeps the split sourced end-to-end:
+  # programme data gives female/male, circ_prevalence gives uncirc/circ.
+  # NOTE: this re-introduces a general/untargeted PrEP bucket that an earlier
+  # design decision had removed -- deliberate (Alex, 2026-07), additive on top
+  # of the FSW/MSM/AGYW targeting, not a replacement.
+  gen_prop_female <- scenario_interventions$prep_general_prop_female %||%
+    (hiv_params$default_prep_general_prop_female %||% 0.506)  # programme data; see README
+  circ_frac       <- strata_params$circ_prevalence %||% 0
+  
+  split_general <- function(total) {
+    total <- total %||% 0
+    n_gf   <- total * gen_prop_female
+    n_gm   <- total * (1 - gen_prop_female)
+    list(
+      gf   = n_gf,
+      gmu  = n_gm * (1 - circ_frac),
+      gmc  = n_gm * circ_frac
+    )
+  }
+  go <- split_general(scenario_interventions$prep_oral_general        %||% 0)
+  gl <- split_general(scenario_interventions$prep_lenacapavir_general %||% 0)
+  
+  cov_genf_oral  <- cov(go$gf,  strata$n_general_female)
+  cov_genf_len   <- cov(gl$gf,  strata$n_general_female)
+  cov_gmu_oral   <- cov(go$gmu, strata$n_general_male_uncirc)
+  cov_gmu_len    <- cov(gl$gmu, strata$n_general_male_uncirc)
+  cov_gmc_oral   <- cov(go$gmc, strata$n_general_male_circ)
+  cov_gmc_len    <- cov(gl$gmc, strata$n_general_male_circ)
+  
+  eff_gen_oral <- scenario_interventions$eff_prep_oral_general %||%
+    (scenario_interventions$eff_prep_oral %||% 0.99)
+  eff_gen_len  <- scenario_interventions$eff_prep_len_general %||%
+    (scenario_interventions$eff_prep_len %||% 1.00)
+  
   # Per-group, per-product efficacy. TEMPORARY: falls back to the old blended
   # prep_oral/prep_lenacapavir efficacy for all three groups until real
   # trial-specific values are sourced and entered in the Excel
@@ -1373,12 +1442,20 @@ compute_prevention_adjustments <- function(scenario_interventions, strata, popul
     (1 - condom_cov_gen * eff_condom)
   protection_agyw <- 1 - residual_agyw
   
-  # ---- General female (excl. AGYW), general male (uncirc/circ): condoms only ----
-  # No PrEP bucket remains for these strata (confirmed with Alex, 2026-07) --
-  # only FSW/MSM/AGYW are targeted with PrEP in this model version.
-  protection_gen_female    <- 1 - (1 - condom_cov_gen * eff_condom)
-  protection_gen_male_unc  <- 1 - (1 - condom_cov_gen * eff_condom)
-  protection_gen_male_circ <- 1 - (1 - condom_cov_gen * eff_condom)
+  # ---- General female (excl. AGYW), general male (uncirc/circ): condoms + general PrEP ----
+  # General PrEP (oral + LEN) now stacks multiplicatively with condoms in each
+  # general stratum, using the split coverages computed above. Strata with no
+  # general PrEP allocated (coverage 0) reduce to condoms-only, matching the
+  # previous behaviour exactly.
+  protection_gen_female    <- 1 - (1 - cov_genf_oral * eff_gen_oral) *
+    (1 - cov_genf_len * eff_gen_len) *
+    (1 - condom_cov_gen * eff_condom)
+  protection_gen_male_unc  <- 1 - (1 - cov_gmu_oral * eff_gen_oral) *
+    (1 - cov_gmu_len * eff_gen_len) *
+    (1 - condom_cov_gen * eff_condom)
+  protection_gen_male_circ <- 1 - (1 - cov_gmc_oral * eff_gen_oral) *
+    (1 - cov_gmc_len * eff_gen_len) *
+    (1 - condom_cov_gen * eff_condom)
   
   # ---- VMMC: converts uncirc men → circ pool (not a coverage multiplier) ----
   newly_circumcised  <- min(scenario_interventions$vmmc %||% 0, strata$n_general_male_uncirc)
@@ -2719,6 +2796,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       eff_prep_len_fsw   = all_interventions$prep_lenacapavir_fsw$efficacy  %||% 1.00,
       eff_prep_len_msm   = all_interventions$prep_lenacapavir_msm$efficacy  %||% 1.00,
       eff_prep_len_agyw  = all_interventions$prep_lenacapavir_agyw$efficacy %||% 1.00,
+      eff_prep_oral_general = all_interventions$prep_oral_general$efficacy        %||% 0.99,
+      eff_prep_len_general  = all_interventions$prep_lenacapavir_general$efficacy %||% 1.00,
+      prep_general_prop_female = hiv_params$default_prep_general_prop_female %||% 0.506,
       eff_condom    = all_interventions$condoms$efficacy          %||% 0.80,
       acts_per_year_high     = ACTS_PER_YEAR_HIGH,    
       acts_per_year_gen      = ACTS_PER_YEAR_GEN,     
@@ -2744,6 +2824,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         eff_prep_len_fsw     = all_interventions$prep_lenacapavir_fsw$efficacy  %||% 1.00,
         eff_prep_len_msm     = all_interventions$prep_lenacapavir_msm$efficacy  %||% 1.00,
         eff_prep_len_agyw    = all_interventions$prep_lenacapavir_agyw$efficacy %||% 1.00,
+        eff_prep_oral_general = all_interventions$prep_oral_general$efficacy        %||% 0.99,
+        eff_prep_len_general  = all_interventions$prep_lenacapavir_general$efficacy %||% 1.00,
+        prep_general_prop_female = hiv_params$default_prep_general_prop_female %||% 0.506,
         eff_condom           = all_interventions$condoms$efficacy          %||% 0.80,
         acts_per_year_high   = ACTS_PER_YEAR_HIGH,
         acts_per_year_gen    = ACTS_PER_YEAR_GEN,
@@ -2845,6 +2928,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         min(intervention_value, strata_val$n_msm %||% 0)
       } else if (int_key %in% c("prep_oral_agyw", "prep_lenacapavir_agyw")) {
         min(intervention_value, strata_val$n_agyw %||% 0)
+      } else if (int_key %in% c("prep_oral_general", "prep_lenacapavir_general")) {
+        # Capped at the combined general population (female + male uncirc/circ),
+        # the same denominator the general split is distributed across.
+        min(intervention_value,
+            (strata_val$n_general_female %||% 0) +
+              (strata_val$n_general_male_uncirc %||% 0) +
+              (strata_val$n_general_male_circ %||% 0))
       } else {
         number_reached
       }

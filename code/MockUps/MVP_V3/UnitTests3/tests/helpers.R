@@ -148,10 +148,18 @@ make_fixture_interventions <- function(...) {
   defaults <- list(
     prep_oral_fsw         = 0, prep_oral_msm         = 0, prep_oral_agyw         = 0,
     prep_lenacapavir_fsw  = 0, prep_lenacapavir_msm  = 0, prep_lenacapavir_agyw  = 0,
+    prep_oral_general     = 0, prep_lenacapavir_general = 0,
     condoms               = 0,
     vmmc                  = 0,
     eff_prep_oral_fsw     = 0.3, eff_prep_oral_msm     = 0.6, eff_prep_oral_agyw     = 0.4,
     eff_prep_len_fsw      = 0.50, eff_prep_len_msm      = 1, eff_prep_len_agyw      = 0.5,
+    # General PrEP efficacy fixture values (arbitrary test constants, NOT
+    # sourced -- distinct per product so tests can tell oral/len apart).
+    eff_prep_oral_general = 0.7, eff_prep_len_general = 0.9,
+    # Sourced split default (programme allocation data): 50.6% of general PrEP
+    # to general females, remainder to general males (further split uncirc/circ
+    # by circ_prevalence inside compute_prevention_adjustments).
+    prep_general_prop_female = 0.506,
     eff_condom            = 0.80,
     acts_per_year_high    = 100,
     acts_per_year_gen     = 50,

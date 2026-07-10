@@ -162,7 +162,9 @@ test_that("FOI roundtrip with matching baseline & scenario reproduces observed",
 #   cov_msm_oral  = 1,710/8,550 = 0.20 -> protection_msm  = 1-(1-0.20*0.6) = 0.12
 #   cov_agyw_oral = 3,249/32,490= 0.10 -> protection_agyw = 1-(1-0.10*0.4) = 0.04
 
-#       protection_gen_female should remain 0 (no condoms, no PrEP for general pool).
+#       protection_gen_female should remain 0 here: this test allocates no
+#       general PrEP (prep_oral_general defaults to 0) and no condoms, so the
+#       general strata get no protection. General PrEP is exercised in 2.5b.
 test_that("compute_prevention_adjustments targets FSW/MSM/AGYW independently (direct coverage)", {
   with_hiv_params(list(sexually_active_frac = SAFR))
   ctx     <- make_fixture_context(prop_agyw = 0.20)
@@ -180,6 +182,52 @@ test_that("compute_prevention_adjustments targets FSW/MSM/AGYW independently (di
   expect_close(adj$protection_agyw,       0.04, tolerance = 1e-6)
   expect_close(adj$protection_gen_female, 0,    tolerance = 1e-9)
   expect_close(adj$vmmc_coverage_frac,    0)
+})
+
+# ---------------------------------------------------------------------------
+# 2.5b compute_prevention_adjustments: GENERAL PrEP split across general strata
+# ---------------------------------------------------------------------------
+# WHAT: A single general PrEP total is split female/male by
+#       prep_general_prop_female (fixture default 0.506), then the male share
+#       is sub-split uncirc/circ by circ_prevalence. Each general stratum's
+#       protection then stacks that PrEP coverage with condoms (0 here).
+#       KP strata (FSW/MSM/AGYW) must be UNTOUCHED by general PrEP.
+# HOW:  prop_agyw = 0 (fixture default) so general_female holds all general
+#       women. From test 2.2 partition (SAFR):
+#         n_general_female      = 162,450
+#         n_general_male_uncirc = 113,715   (circ_prevalence = 0.30)
+#         n_general_male_circ   =  48,735
+#       eff_prep_oral_general = 0.7 (fixture). Enter prep_oral_general = 16,245:
+#         female slice = 16,245 * 0.506 = 8,219.97
+#           cov_genf = 8,219.97 / 162,450 = 0.050600
+#           protection_gen_female = 1-(1-0.050600*0.7) = 0.035420
+#         male slice   = 16,245 * 0.494 = 8,025.03
+#           uncirc = 8,025.03 * (1-0.30) = 5,617.52
+#             cov = 5,617.52 / 113,715 = 0.049400
+#             protection_gen_male_unc = 1-(1-0.049400*0.7) = 0.034580
+#           circ   = 8,025.03 * 0.30 = 2,407.51
+#             cov = 2,407.51 / 48,735 = 0.049400
+#             protection_gen_male_circ = 1-(1-0.049400*0.7) = 0.034580
+#       (uncirc and circ coverages are equal: each male sub-slice is scaled by
+#        circ_prevalence and divided by a pool also scaled by it.)
+# ---------------------------------------------------------------------------
+test_that("general PrEP splits across general strata by female share and circ_prevalence", {
+  with_hiv_params(list(sexually_active_frac = SAFR))
+  ctx     <- make_fixture_context()   # prop_agyw = 0 default
+  pops    <- calculate_populations(ctx)
+  sp      <- define_strata_params(ctx)
+  strata  <- partition_into_strata(pops, sp)
+  
+  interv  <- make_fixture_interventions(prep_oral_general = 16245)
+  adj     <- compute_prevention_adjustments(interv, strata, pops, sp)
+  
+  expect_close(adj$protection_gen_female,    0.035420, tolerance = 1e-5)
+  expect_close(adj$protection_gen_male_unc,  0.034580, tolerance = 1e-5)
+  expect_close(adj$protection_gen_male_circ, 0.034580, tolerance = 1e-5)
+  # KP strata untouched by general PrEP
+  expect_close(adj$protection_fsw, 0, tolerance = 1e-9)
+  expect_close(adj$protection_msm, 0, tolerance = 1e-9)
+  expect_close(adj$protection_agyw, 0, tolerance = 1e-9)
 })
 
 # ---------------------------------------------------------------------------
