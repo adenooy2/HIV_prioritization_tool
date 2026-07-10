@@ -317,6 +317,25 @@ ui <- page_sidebar(
       "Baseline Coverage",
       h4("Adjust baseline coverage values"),
       p(strong("Note:"),"Baseline coverage values should reflect services that were delivered in the most recent year. Current values were pre-populated using available data (e.g GAM) and literature where relvant. Please review the values below, and update any for which you have more accurate values."),
+      # PrEP entry-mode toggle (GLOBAL): governs the Baseline tab AND both
+      # Scenarios. Rendered here in the static UI (created once) so its state
+      # in input$prep_entry_mode is stable and never reset by a re-render.
+      #   "disaggregated" = enter FSW/MSM/AGYW/General oral + lenacapavir directly.
+      #   "total"         = enter one oral total and one lenacapavir total; each
+      #                     is auto-split across groups using PEPFAR FY22-24
+      #                     programme-allocation shares (see prep_alloc_shares()).
+      div(
+        style = "margin-bottom: 12px; padding: 10px; background:#eef3f8; border-radius:5px;",
+        shinyWidgets::radioGroupButtons(
+          inputId      = "prep_entry_mode",
+          label        = "PrEP entry mode (applies to Baseline and both Scenarios):",
+          choiceNames  = c("By group (FSW / MSM / AGYW / General)", "Total (auto-split to groups)"),
+          choiceValues = c("disaggregated", "total"),
+          selected     = "disaggregated",
+          justified    = TRUE, size = "sm",
+          checkIcon    = list(yes = icon("check"))
+        )
+      ),
       uiOutput("baseline_ui")
     ),
     
@@ -590,6 +609,106 @@ server <- function(input, output, session) {
     if (is.null(val) || is.na(val)) NA else val
   }
   
+  # ── PrEP total→group allocation (used ONLY in "total" entry mode) ──────────
+  # Programme-allocation shares from PEPFAR PrEP-by-risk-population FY2022-24
+  # (fy2224_pepfarprepbyriskpopulation.xlsx, PrEP_CT+PrEP_NEW grand totals):
+  #   FSW 13.86%, MSM 5.28%, AGYW (Female 15-24) 26.11%, General (residual)
+  #   54.75%. Overridable via the Excel general_values sheet (keys
+  #   prep_alloc_share_fsw / _msm / _agyw / _general); the defaults below match
+  #   the workbook so behaviour is unchanged when those rows are absent.
+  # NOT a fabricated number: these are the FY22-24 shares in that file; if you
+  # change the source, change both these defaults and the Excel rows.
+  prep_alloc_shares <- function() {
+    sh <- list(
+      fsw     = hiv_params$prep_alloc_share_fsw     %||% 0.1386,
+      msm     = hiv_params$prep_alloc_share_msm     %||% 0.0528,
+      agyw    = hiv_params$prep_alloc_share_agyw    %||% 0.2611,
+      general = hiv_params$prep_alloc_share_general %||% 0.5475
+    )
+    # Renormalise to sum to 1 so an entered total is fully distributed even if
+    # an Excel override doesn't sum exactly to 1. Defaults already sum to 1.
+    ssum <- sh$fsw + sh$msm + sh$agyw + sh$general
+    if (is.na(ssum) || ssum <= 0) return(list(fsw = 0.1386, msm = 0.0528, agyw = 0.2611, general = 0.5475))
+    lapply(sh, function(x) x / ssum)
+  }
+  
+  # Total DELIVERABLE capacity = combined HIV-negative population across all
+  # PrEP groups. With overflow cascading into General (see split_prep_total),
+  # this is the largest total that can be fully delivered; beyond it, even a
+  # saturated General can't absorb more and the remainder is discarded.
+  # Returns Inf if no population is known yet (nothing to cap against).
+  prep_total_cap <- function() {
+    caps <- tryCatch(
+      c(group_pop("fsw"), group_pop("msm"), group_pop("agyw"), group_pop("general")),
+      error = function(e) rep(NA_real_, 4))
+    if (all(is.na(caps))) return(Inf)
+    sum(caps, na.rm = TRUE)
+  }
+  
+  # Split entered oral + lenacapavir totals into the 8 group buckets the logic
+  # consumes. Allocation (per Alex, 2026-07):
+  #   1. Allocate each product by PEPFAR share to FSW/MSM/AGYW/General.
+  #   2. Clip FSW/MSM/AGYW to their population (combined oral+lena); the
+  #      overflow — oral and lenacapavir kept separate so the product mix is
+  #      preserved — CASCADES into General.
+  #   3. General absorbs its own share plus all cascaded overflow, then is
+  #      clipped last. Anything beyond General's population has nowhere else to
+  #      go and is discarded (flagged to the user; the total input is clamped
+  #      at prep_total_cap() so this normally can't happen via the UI).
+  # NOTE: the logic further splits General into female/male/circ and clips each
+  # sub-stratum, so a small residual clip can still occur inside General.
+  split_prep_total <- function(total_oral, total_lena) {
+    total_oral <- max(0, total_oral %||% 0); if (is.na(total_oral)) total_oral <- 0
+    total_lena <- max(0, total_lena %||% 0); if (is.na(total_lena)) total_lena <- 0
+    sh   <- prep_alloc_shares()
+    caps <- list(fsw = group_pop("fsw"), msm = group_pop("msm"),
+                 agyw = group_pop("agyw"), general = group_pop("general"))
+    
+    o <- list(); l <- list()
+    for (g in c("fsw", "msm", "agyw", "general")) {
+      o[[g]] <- total_oral * sh[[g]]
+      l[[g]] <- total_lena * sh[[g]]
+    }
+    
+    # Clip the three targeted groups; cascade overflow (per product) to General.
+    overflow_o <- 0; overflow_l <- 0
+    for (g in c("fsw", "msm", "agyw")) {
+      cap_g <- caps[[g]]
+      if (!is.null(cap_g) && !is.na(cap_g)) {
+        comb <- o[[g]] + l[[g]]
+        if (comb > cap_g && comb > 0) {
+          keep <- cap_g / comb
+          overflow_o <- overflow_o + o[[g]] * (1 - keep)
+          overflow_l <- overflow_l + l[[g]] * (1 - keep)
+          o[[g]] <- o[[g]] * keep; l[[g]] <- l[[g]] * keep
+        }
+      }
+    }
+    o[["general"]] <- o[["general"]] + overflow_o
+    l[["general"]] <- l[["general"]] + overflow_l
+    
+    # Clip General last; any excess is discarded (no remaining group).
+    discarded <- 0
+    cap_gen <- caps[["general"]]
+    if (!is.null(cap_gen) && !is.na(cap_gen)) {
+      comb_gen <- o[["general"]] + l[["general"]]
+      if (comb_gen > cap_gen && comb_gen > 0) {
+        keep <- cap_gen / comb_gen
+        discarded <- comb_gen - cap_gen
+        o[["general"]] <- o[["general"]] * keep; l[["general"]] <- l[["general"]] * keep
+      }
+    }
+    
+    list(
+      prep_oral_fsw            = o$fsw,  prep_oral_msm            = o$msm,
+      prep_oral_agyw           = o$agyw, prep_oral_general        = o$general,
+      prep_lenacapavir_fsw     = l$fsw,  prep_lenacapavir_msm     = l$msm,
+      prep_lenacapavir_agyw    = l$agyw, prep_lenacapavir_general = l$general,
+      overflow_to_general = overflow_o + overflow_l,
+      discarded = discarded
+    )
+  }
+  
   # Registers the oral/lenacapavir cross-validation pair for one scenario +
   # group (FSW/MSM/AGYW), replacing the old single adult_pop cap that used
   # to cross-validate baseline_prep_oral against baseline_prep_lenacapavir
@@ -643,6 +762,46 @@ server <- function(input, output, session) {
     register_prep_group_validation(input, session, sp, "agyw",    "AGYW")
     register_prep_group_validation(input, session, sp, "general", "General")
   }
+  
+  # Total-mode hard cap: when the entered oral + lenacapavir totals would push
+  # any group over 100% of its population, rewrite the just-edited field down to
+  # the maximum feasible value (mirrors the per-group cross-validation above).
+  register_prep_total_validation <- function(scenario_prefix) {
+    oral_id <- paste0(scenario_prefix, "_prep_total_oral")
+    lena_id <- paste0(scenario_prefix, "_prep_total_lena")
+    
+    observe({
+      t_max <- prep_total_cap(); if (!is.finite(t_max)) return()
+      isolate({
+        o <- input[[oral_id]]; l <- input[[lena_id]]
+        if (!is.null(o) && !is.null(l) && !is.na(o) && !is.na(l) && (o + l) > t_max) {
+          new_o <- max(0, t_max - l)
+          updateNumericInput(session, oral_id, value = round(new_o), max = round(t_max))
+          showNotification(
+            paste0(scenario_prefix, ": Total oral PrEP capped at ",
+                   format(round(new_o), big.mark = ","),
+                   " — the combined total can't exceed the HIV-negative population across all PrEP groups."),
+            type = "warning", duration = 4)
+        }
+      })
+    }) %>% bindEvent(input[[oral_id]])
+    
+    observe({
+      t_max <- prep_total_cap(); if (!is.finite(t_max)) return()
+      isolate({
+        o <- input[[oral_id]]; l <- input[[lena_id]]
+        if (!is.null(o) && !is.null(l) && !is.na(o) && !is.na(l) && (o + l) > t_max) {
+          new_l <- max(0, t_max - o)
+          updateNumericInput(session, lena_id, value = round(new_l), max = round(t_max))
+          showNotification(
+            paste0(scenario_prefix, ": Total lenacapavir capped at ",
+                   format(round(new_l), big.mark = ",")),
+            type = "warning", duration = 4)
+        }
+      })
+    }) %>% bindEvent(input[[lena_id]])
+  }
+  for (sp in c("baseline", "scenario1", "scenario2")) register_prep_total_validation(sp)
   
   # Store original baseline to scale proportionally
   original_population <- reactiveVal(5000000)
@@ -1334,11 +1493,20 @@ server <- function(input, output, session) {
     baseline <- baseline_values()
     if (length(baseline) == 0) return(NULL)
     
+    # PrEP entry mode drives whether the per-group PrEP fields or a single
+    # oral/lenacapavir total pair are shown (see prevention block below).
+    prep_mode <- input$prep_entry_mode %||% "disaggregated"
+    prep_group_keys <- c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general",
+                         "prep_lenacapavir_fsw", "prep_lenacapavir_msm", "prep_lenacapavir_agyw", "prep_lenacapavir_general")
+    
     ui_elements <- lapply(names(intervention_groups), function(group_key) {
       group <- intervention_groups[[group_key]]
       
       interventions_ui <- lapply(names(group$interventions), function(int_key) {
         intervention <- group$interventions[[int_key]]
+        # In "total" mode the per-group PrEP fields are hidden; the oral +
+        # lenacapavir totals are rendered in the prevention block instead.
+        if (identical(prep_mode, "total") && int_key %in% prep_group_keys) return(NULL)
         value <- ifelse(is.null(baseline[[int_key]]), 0, baseline[[int_key]])
         
         # Set min and max based on type
@@ -1381,6 +1549,26 @@ server <- function(input, output, session) {
       })
       
       if (group_key == "prevention") {
+        if (identical(prep_mode, "total")) {
+          interventions_ui <- c(list(
+            div(
+              style = "margin-top: 10px; padding: 8px; background:#f3f7fb; border-radius:5px;",
+              commaNumericInput("baseline_prep_total_oral",
+                                label = "Total oral PrEP (all groups):",
+                                value = ifelse(is.null(baseline[["prep_oral_fsw"]]), 0,
+                                               (baseline[["prep_oral_fsw"]] %||% 0) + (baseline[["prep_oral_msm"]] %||% 0) +
+                                                 (baseline[["prep_oral_agyw"]] %||% 0) + (baseline[["prep_oral_general"]] %||% 0)),
+                                min = 0),
+              commaNumericInput("baseline_prep_total_lena",
+                                label = "Total lenacapavir (all groups):",
+                                value = ifelse(is.null(baseline[["prep_lenacapavir_fsw"]]), 0,
+                                               (baseline[["prep_lenacapavir_fsw"]] %||% 0) + (baseline[["prep_lenacapavir_msm"]] %||% 0) +
+                                                 (baseline[["prep_lenacapavir_agyw"]] %||% 0) + (baseline[["prep_lenacapavir_general"]] %||% 0)),
+                                min = 0),
+              tags$small(style = "color:#666;", "Split to FSW/MSM/AGYW/General using PEPFAR FY22-24 shares; capped so no group exceeds its population.")
+            )
+          ), interventions_ui)
+        }
         interventions_ui <- c(interventions_ui, list(
           div(
             style = "margin-top: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;",
@@ -1415,11 +1603,16 @@ server <- function(input, output, session) {
     baseline <- baseline_input_values()
     if (length(baseline) == 0) return(NULL)
     
+    prep_mode <- input$prep_entry_mode %||% "disaggregated"
+    prep_group_keys <- c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general",
+                         "prep_lenacapavir_fsw", "prep_lenacapavir_msm", "prep_lenacapavir_agyw", "prep_lenacapavir_general")
+    
     scenario_columns <- lapply(names(intervention_groups), function(group_key) {
       group <- intervention_groups[[group_key]]
       
       interventions_ui <- lapply(names(group$interventions), function(int_key) {
         intervention <- group$interventions[[int_key]]
+        if (identical(prep_mode, "total") && int_key %in% prep_group_keys) return(NULL)
         base_value <- ifelse(is.null(baseline[[int_key]]), 0, baseline[[int_key]])
         
         # Set min and max based on type
@@ -1487,6 +1680,33 @@ server <- function(input, output, session) {
       })
       
       if (group_key == "prevention") {
+        if (identical(prep_mode, "total")) {
+          base_oral_total <- (baseline[["prep_oral_fsw"]] %||% 0) + (baseline[["prep_oral_msm"]] %||% 0) +
+            (baseline[["prep_oral_agyw"]] %||% 0) + (baseline[["prep_oral_general"]] %||% 0)
+          base_lena_total <- (baseline[["prep_lenacapavir_fsw"]] %||% 0) + (baseline[["prep_lenacapavir_msm"]] %||% 0) +
+            (baseline[["prep_lenacapavir_agyw"]] %||% 0) + (baseline[["prep_lenacapavir_general"]] %||% 0)
+          total_rows <- list(
+            layout_columns(
+              col_widths = c(4, 4, 4),
+              div(style = "padding-top: 25px; font-size: 0.9em;",
+                  strong("Total oral PrEP"), br(),
+                  span(style = "color: #666;", "Baseline: ", format(round(base_oral_total), big.mark = ",")), br(),
+                  span(style = "color: #999; font-size: 0.85em;", "people (all groups)")),
+              div(commaNumericInput("scenario1_prep_total_oral", label = "Scenario 1", value = base_oral_total, min = 0)),
+              div(commaNumericInput("scenario2_prep_total_oral", label = "Scenario 2", value = base_oral_total, min = 0))
+            ),
+            layout_columns(
+              col_widths = c(4, 4, 4),
+              div(style = "padding-top: 25px; font-size: 0.9em;",
+                  strong("Total lenacapavir"), br(),
+                  span(style = "color: #666;", "Baseline: ", format(round(base_lena_total), big.mark = ",")), br(),
+                  span(style = "color: #999; font-size: 0.85em;", "people (all groups)")),
+              div(commaNumericInput("scenario1_prep_total_lena", label = "Scenario 1", value = base_lena_total, min = 0)),
+              div(commaNumericInput("scenario2_prep_total_lena", label = "Scenario 2", value = base_lena_total, min = 0))
+            )
+          )
+          interventions_ui <- c(total_rows, interventions_ui)
+        }
         interventions_ui <- c(interventions_ui, list(
           layout_columns(
             col_widths = c(4, 4, 4),
@@ -1543,24 +1763,51 @@ server <- function(input, output, session) {
     ctx <- context()
     if (is.null(ctx$total_population) || is.null(ctx$prop_pop_under_14)) return(NULL)
     
+    prep_mode <- input$prep_entry_mode %||% "disaggregated"
+    # In total mode the per-group inputs don't exist; read the derived split.
+    sp <- NULL; cap_note <- NULL
+    if (identical(prep_mode, "total")) {
+      to <- input[[paste0(scenario_prefix, "_prep_total_oral")]] %||% 0
+      tl <- input[[paste0(scenario_prefix, "_prep_total_lena")]] %||% 0
+      sp <- split_prep_total(to, tl)
+      notes <- list()
+      if ((sp$overflow_to_general %||% 0) > 0.5) {
+        notes <- c(notes, list(tags$div(
+          style = "color:#b8860b; font-size:0.8em; margin-bottom:3px;",
+          paste0(format(round(sp$overflow_to_general), big.mark = ","),
+                 " reallocated to General (a targeted group was at 100%)."))))
+      }
+      if ((sp$discarded %||% 0) > 0.5) {
+        notes <- c(notes, list(tags$div(
+          style = "color:red; font-size:0.8em; margin-bottom:3px;",
+          paste0(format(round(sp$discarded), big.mark = ","),
+                 " not delivered — all groups at 100%."))))
+      }
+      cap_note <- tagList(notes)
+    }
+    
     groups <- list(fsw = "FSW", msm = "MSM", agyw = "AGYW", general = "General")
     rows <- lapply(names(groups), function(group) {
-      oral_val <- input[[paste0(scenario_prefix, "_prep_oral_", group)]] %||% 0
-      lena_val <- input[[paste0(scenario_prefix, "_prep_lenacapavir_", group)]] %||% 0
+      if (identical(prep_mode, "total")) {
+        oral_val <- sp[[paste0("prep_oral_", group)]] %||% 0
+        lena_val <- sp[[paste0("prep_lenacapavir_", group)]] %||% 0
+      } else {
+        oral_val <- input[[paste0(scenario_prefix, "_prep_oral_", group)]] %||% 0
+        lena_val <- input[[paste0(scenario_prefix, "_prep_lenacapavir_", group)]] %||% 0
+      }
       n_group  <- group_pop(group)
       if (is.na(n_group) || n_group <= 0) return(NULL)
       
       total <- oral_val + lena_val
       pct   <- (total / n_group) * 100
-      color <- if (total > n_group) "red" else if (pct > 90) "orange" else "green"
       
       tags$div(
-        style = paste0("color: ", color, "; font-size: 0.85em; margin-bottom: 2px;"),
+        style = "font-size: 0.85em; margin-bottom: 2px;",
         paste0(groups[[group]], ": ", format(round(total), big.mark = ","),
                " (", round(pct, 1), "% of approx. ", groups[[group]], " pop.)")
       )
     })
-    tagList(rows)
+    tagList(cap_note, rows)
   }
   
   output$prep_total_baseline  <- renderUI({ render_prep_group_summary("baseline") })
@@ -1650,6 +1897,16 @@ server <- function(input, output, session) {
         baseline[[int_key]] <- value
       }
     }
+    # In "total" entry mode the per-group PrEP inputs aren't rendered; derive
+    # the 8 group buckets from the entered oral/lenacapavir totals here so the
+    # rest of the pipeline (and the logic file) is unchanged.
+    if (identical(input$prep_entry_mode %||% "disaggregated", "total")) {
+      sp <- split_prep_total(input[["baseline_prep_total_oral"]] %||% 0,
+                             input[["baseline_prep_total_lena"]] %||% 0)
+      for (k in c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general",
+                  "prep_lenacapavir_fsw", "prep_lenacapavir_msm", "prep_lenacapavir_agyw", "prep_lenacapavir_general"))
+        baseline[[k]] <- sp[[k]]
+    }
     baseline
   })
   
@@ -1702,6 +1959,13 @@ server <- function(input, output, session) {
         scenario[[int_key]] <- value
       }
     }
+    if (identical(input$prep_entry_mode %||% "disaggregated", "total")) {
+      sp <- split_prep_total(input[["scenario1_prep_total_oral"]] %||% 0,
+                             input[["scenario1_prep_total_lena"]] %||% 0)
+      for (k in c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general",
+                  "prep_lenacapavir_fsw", "prep_lenacapavir_msm", "prep_lenacapavir_agyw", "prep_lenacapavir_general"))
+        scenario[[k]] <- sp[[k]]
+    }
     scenario
   })
   
@@ -1724,6 +1988,13 @@ server <- function(input, output, session) {
         if (int_key == "clinical_visit_12month") value <- as.numeric(value)
         scenario[[int_key]] <- value
       }
+    }
+    if (identical(input$prep_entry_mode %||% "disaggregated", "total")) {
+      sp <- split_prep_total(input[["scenario2_prep_total_oral"]] %||% 0,
+                             input[["scenario2_prep_total_lena"]] %||% 0)
+      for (k in c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general",
+                  "prep_lenacapavir_fsw", "prep_lenacapavir_msm", "prep_lenacapavir_agyw", "prep_lenacapavir_general"))
+        scenario[[k]] <- sp[[k]]
     }
     scenario
   })
