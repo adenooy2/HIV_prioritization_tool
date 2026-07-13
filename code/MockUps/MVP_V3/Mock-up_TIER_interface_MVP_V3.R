@@ -328,8 +328,8 @@ ui <- page_sidebar(
         style = "margin-bottom: 12px; padding: 10px; background:#eef3f8; border-radius:5px;",
         shinyWidgets::radioGroupButtons(
           inputId      = "prep_entry_mode",
-          label        = "PrEP entry mode (applies to Baseline and both Scenarios):",
-          choiceNames  = c("By group (FSW / MSM / AGYW / General)", "Total (auto-split to groups)"),
+          label        = "PrEP data availability (applies to Baseline and both Scenarios):",
+          choiceNames  = c("By group (FSW / MSM / AGYW / General)", "Total"),
           choiceValues = c("disaggregated", "total"),
           selected     = "disaggregated",
           justified    = TRUE, size = "sm",
@@ -1565,7 +1565,7 @@ server <- function(input, output, session) {
                                                (baseline[["prep_lenacapavir_fsw"]] %||% 0) + (baseline[["prep_lenacapavir_msm"]] %||% 0) +
                                                  (baseline[["prep_lenacapavir_agyw"]] %||% 0) + (baseline[["prep_lenacapavir_general"]] %||% 0)),
                                 min = 0),
-              tags$small(style = "color:#666;", "Split to FSW/MSM/AGYW/General using PEPFAR FY22-24 shares; capped so no group exceeds its population.")
+              tags$small(style = "color:#666;", "Split to FSW/MSM/AGYW/General groups; capped so no group exceeds its estimated population.")
             )
           ), interventions_ui)
         }
@@ -1773,13 +1773,13 @@ server <- function(input, output, session) {
       notes <- list()
       if ((sp$overflow_to_general %||% 0) > 0.5) {
         notes <- c(notes, list(tags$div(
-          style = "color:#b8860b; font-size:0.8em; margin-bottom:3px;",
+          style = "font-size:0.8em; margin-bottom:3px;",
           paste0(format(round(sp$overflow_to_general), big.mark = ","),
                  " reallocated to General (a targeted group was at 100%)."))))
       }
       if ((sp$discarded %||% 0) > 0.5) {
         notes <- c(notes, list(tags$div(
-          style = "color:red; font-size:0.8em; margin-bottom:3px;",
+          style = "font-size:0.8em; margin-bottom:3px;",
           paste0(format(round(sp$discarded), big.mark = ","),
                  " not delivered — all groups at 100%."))))
       }
@@ -2986,6 +2986,47 @@ server <- function(input, output, session) {
   }, striped = TRUE, hover = TRUE, bordered = TRUE, align = "lrrr",
   colnames = TRUE)
   
+  # Per-scenario PrEP allocation table for the PDF report. Mirrors
+  # render_prep_group_summary(): in total mode it splits the entered oral/lena
+  # totals; in by-group mode it reads the per-group inputs directly. Returns a
+  # ready-to-render table plus the entered totals and overflow/discard so the
+  # report can explain where a "total" entry landed. Called under isolate().
+  prep_delivery_summary <- function(scenario_prefix) {
+    mode   <- input$prep_entry_mode %||% "disaggregated"
+    groups <- c("fsw", "msm", "agyw", "general")
+    glab   <- c(fsw = "FSW", msm = "MSM", agyw = "AGYW", general = "General")
+    
+    if (identical(mode, "total")) {
+      to <- input[[paste0(scenario_prefix, "_prep_total_oral")]] %||% 0
+      tl <- input[[paste0(scenario_prefix, "_prep_total_lena")]] %||% 0
+      sp <- split_prep_total(to, tl)
+      oral <- vapply(groups, function(g) sp[[paste0("prep_oral_", g)]] %||% 0, numeric(1))
+      lena <- vapply(groups, function(g) sp[[paste0("prep_lenacapavir_", g)]] %||% 0, numeric(1))
+      entered_oral <- as.numeric(to); entered_lena <- as.numeric(tl)
+      overflow <- sp$overflow_to_general %||% 0; discarded <- sp$discarded %||% 0
+    } else {
+      oral <- vapply(groups, function(g) input[[paste0(scenario_prefix, "_prep_oral_", g)]] %||% 0, numeric(1))
+      lena <- vapply(groups, function(g) input[[paste0(scenario_prefix, "_prep_lenacapavir_", g)]] %||% 0, numeric(1))
+      entered_oral <- NA_real_; entered_lena <- NA_real_
+      overflow <- 0; discarded <- 0
+    }
+    pops  <- vapply(groups, function(g) { pp <- group_pop(g); if (is.null(pp) || is.na(pp)) NA_real_ else as.numeric(pp) }, numeric(1))
+    total <- as.numeric(oral) + as.numeric(lena)
+    covg  <- ifelse(is.na(pops) | pops <= 0, NA_real_, round(100 * total / pops, 1))
+    
+    tbl <- data.frame(
+      Group         = unname(glab[groups]),
+      `Oral PrEP`   = round(as.numeric(oral)),
+      Lenacapavir   = round(as.numeric(lena)),
+      Total         = round(total),
+      Population    = round(pops),
+      `Coverage %`  = covg,
+      check.names = FALSE, stringsAsFactors = FALSE
+    )
+    list(mode = mode, entered_oral = entered_oral, entered_lena = entered_lena,
+         overflow_to_general = overflow, discarded = discarded, table = tbl)
+  }
+  
   # ========================================================================
   # DOWNLOAD REPORT (PDF)
   # ------------------------------------------------------------------------
@@ -3040,7 +3081,14 @@ server <- function(input, output, session) {
         diff_s1         = isolate(diff_scenario1()),
         diff_s2         = isolate(diff_scenario2()),
         populations     = isolate(populations()),
-        interventions   = intervention_groups
+        interventions   = intervention_groups,
+        # Per-scenario PrEP allocation so the report can show where an entered
+        # total landed (delivered per group, coverage, overflow-to-General).
+        prep_delivery   = isolate(list(
+          baseline  = prep_delivery_summary("baseline"),
+          scenario1 = prep_delivery_summary("scenario1"),
+          scenario2 = prep_delivery_summary("scenario2")
+        ))
       )
       
       # Render Rmd -> HTML, then HTML -> PDF via headless Chromium.
@@ -3048,6 +3096,7 @@ server <- function(input, output, session) {
       rmarkdown::render(
         input         = tmp_rmd,
         output_file   = out_html,
+        params        = report_params,
         envir         = new.env(parent = globalenv()),
         quiet         = TRUE
       )

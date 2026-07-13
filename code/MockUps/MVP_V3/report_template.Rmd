@@ -1,0 +1,464 @@
+---
+title: "TIER-Plus — Scenario Comparison Report"
+output:
+  html_document:
+    theme: null
+    self_contained: true
+    mathjax: null
+params:
+  country_name: ""
+  generated_at: ""
+  baseline_vals: !r list()
+  scenario1_vals: !r list()
+  scenario2_vals: !r list()
+  outcomes_base: !r list()
+  outcomes_s1: !r list()
+  outcomes_s2: !r list()
+  diff_s1: !r list()
+  diff_s2: !r list()
+  populations: !r list()
+  interventions: !r list()
+  prep_delivery: !r list()
+---
+
+```{css, echo=FALSE}
+@page {
+  size: A4;
+  margin: 18mm 16mm;
+}
+
+body {
+  font-family: "Calibri", "Helvetica", "Arial", sans-serif;
+  font-size: 10.5pt;
+  color: #1a1a1a;
+  line-height: 1.4;
+  margin: 0;
+}
+
+h1 {
+  font-size: 18pt;
+  color: #1F3864;
+  margin: 0 0 4px 0;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #1F3864;
+}
+
+h2 {
+  font-size: 13pt;
+  color: #1F3864;
+  margin: 18px 0 6px 0;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #BFBFBF;
+  page-break-after: avoid;
+}
+
+h3 {
+  font-size: 11pt;
+  color: #1F3864;
+  margin: 12px 0 4px 0;
+  page-break-after: avoid;
+}
+
+.header-meta {
+  font-size: 9.5pt;
+  color: #595959;
+  margin-bottom: 12px;
+}
+
+.caveat {
+  background-color: #fffbeb;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 10px 0 14px 0;
+  font-size: 9.5pt;
+  color: #78350f;
+}
+
+.caveat strong { color: #92400e; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0 10px 0;
+  font-size: 10pt;
+  page-break-inside: avoid;
+}
+
+th, td {
+  border: 1px solid #d0d0d0;
+  padding: 5px 8px;
+  text-align: right;
+}
+
+th:first-child, td:first-child {
+  text-align: left;
+}
+
+thead th {
+  background-color: #1F3864;
+  color: white;
+  font-weight: bold;
+}
+
+tbody tr:nth-child(even) { background-color: #f7f9fc; }
+
+/* knitr::kable tables share these styles via the report-table class. */
+table.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0 10px 0;
+  font-size: 10pt;
+}
+table.report-table th,
+table.report-table td {
+  border: 1px solid #d0d0d0;
+  padding: 5px 8px;
+}
+table.report-table thead th {
+  background-color: #1F3864;
+  color: white;
+  font-weight: bold;
+  text-align: left;
+}
+table.report-table thead th:not(:first-child) { text-align: right; }
+table.report-table tbody td:first-child { text-align: left; }
+table.report-table tbody td { text-align: right; }
+table.report-table tbody tr:nth-child(even) { background-color: #f7f9fc; }
+table.report-table tbody tr:last-child { background-color: #f0f4fa; }
+
+.section-pair {
+  display: flex;
+  gap: 12px;
+  page-break-inside: avoid;
+}
+
+.section-pair > div { flex: 1; }
+
+.kv-row {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #e5e5e5;
+  padding: 3px 0;
+}
+
+.kv-row .label { color: #333; }
+.kv-row .value { font-weight: bold; }
+
+.delta-positive { color: #b91c1c; }   /* worse than baseline */
+.delta-negative { color: #15803d; }   /* better than baseline */
+.delta-neutral  { color: #6b7280; }
+
+.plot-container {
+  page-break-inside: avoid;
+  margin: 8px 0 14px 0;
+}
+
+.footer-note {
+  font-size: 8.5pt;
+  color: #6b7280;
+  font-style: italic;
+  border-top: 1px solid #d0d0d0;
+  padding-top: 6px;
+  margin-top: 18px;
+}
+
+/* control where we break pages */
+.page-break { page-break-after: always; }
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      dev = "png", dpi = 150)
+
+# Pull params into shorter names
+p           <- params
+base_vals   <- p$baseline_vals
+s1_vals     <- p$scenario1_vals
+s2_vals     <- p$scenario2_vals
+out_base    <- p$outcomes_base
+out_s1      <- p$outcomes_s1
+out_s2      <- p$outcomes_s2
+diff_s1     <- p$diff_s1
+diff_s2     <- p$diff_s2
+pops        <- p$populations
+ig          <- p$interventions
+pd          <- p$prep_delivery
+
+# Formatters
+fmt_n     <- function(x) format(round(as.numeric(x)), big.mark = ",", scientific = FALSE)
+fmt_money <- function(x) paste0("$", fmt_n(x))
+fmt_pct   <- function(x) paste0(format(round(as.numeric(x), 1), nsmall = 1), "%")
+
+# Sign-aware delta string. good_when = "down" means a negative delta is good
+# (infections, deaths, cost). "up" means a positive delta is good (ART
+# initiations, suppressed).
+fmt_delta <- function(value, good_when = "down", money = FALSE) {
+  if (is.null(value) || is.na(value)) return("")
+  formatter <- if (money) fmt_money else fmt_n
+  sign_char <- if (value > 0) "+" else if (value < 0) "-" else ""
+  abs_str   <- formatter(abs(value))
+  cls <- if (value == 0) "delta-neutral"
+         else if ((value > 0 && good_when == "up") ||
+                  (value < 0 && good_when == "down")) "delta-negative"
+         else "delta-positive"
+  sprintf('<span class="%s">(%s%s)</span>', cls, sign_char, abs_str)
+}
+
+# 95-95-95 calculator (matches the on-screen logic)
+calc_95s <- function(o) {
+  d1 <- if (!is.null(o$end_plhiv)    && o$end_plhiv    > 0) o$end_diagnosed  / o$end_plhiv    * 100 else 0
+  d2 <- if (!is.null(o$end_diagnosed)&& o$end_diagnosed> 0) o$end_on_art     / o$end_diagnosed * 100 else 0
+  d3 <- if (!is.null(o$end_on_art)   && o$end_on_art   > 0) o$end_suppressed / o$end_on_art    * 100 else 0
+  list(first = min(d1, 100), second = min(d2, 100), third = min(d3, 100))
+}
+
+g_base <- calc_95s(out_base)
+g_s1   <- calc_95s(out_s1)
+g_s2   <- calc_95s(out_s2)
+```
+
+<div class="header-meta">
+**Regional profile:** `r p$country_name` &nbsp;|&nbsp;
+**Generated:** `r p$generated_at`
+</div>
+
+<div class="caveat">
+<strong>⚠ Interpretation note.</strong> This tool is <em>indicative</em>
+of the direction and rough magnitude of impact of different choices. Outputs may not be accurate to exact numbers and changes to the percentage 95-95-95 targets should be interpreted in conjunction with the absolute change in the number of people in each group. Costs are limited to treatment and included intervention costs only. As a result, many indirect and other programme costs are excluded. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, supported (but not replaced) by this tool.
+</div>
+
+## Progress toward 95-95-95 (end of year)
+
+```{r tbl-95s, results='asis'}
+goals_tbl <- data.frame(
+  Indicator   = c("1st 95 — % of PLHIV diagnosed",
+                  "2nd 95 — % of diagnosed on ART",
+                  "3rd 95 — % on ART suppressed"),
+  Baseline    = c(fmt_pct(g_base$first), fmt_pct(g_base$second), fmt_pct(g_base$third)),
+  `Scenario 1` = c(fmt_pct(g_s1$first),  fmt_pct(g_s1$second),  fmt_pct(g_s1$third)),
+  `Scenario 2` = c(fmt_pct(g_s2$first),  fmt_pct(g_s2$second),  fmt_pct(g_s2$third)),
+  check.names = FALSE
+)
+knitr::kable(goals_tbl, format = "html", escape = FALSE,
+             align = c("l", "r", "r", "r"),
+             table.attr = 'class="report-table"')
+```
+
+## Key epidemiological outcomes (end of year)
+
+```{r tbl-epi, results='asis'}
+# Cell builder: value plus delta span when a delta value is supplied.
+cell <- function(val, delta = NULL, good_when = "down", money = FALSE) {
+  v <- if (money) fmt_money(val) else fmt_n(val)
+  if (is.null(delta)) return(v)
+  paste0(v, " ", fmt_delta(delta, good_when, money))
+}
+
+epi_tbl <- data.frame(
+  Outcome = c("New adult acquisitions", "New infant acquisitions",
+              "HIV-related deaths", "ART initiations",
+              "End-of-year on ART (suppressed)"),
+  Baseline = c(fmt_n(out_base$end_new_infections),
+               fmt_n(out_base$end_infant_infections),
+               fmt_n(out_base$end_deaths),
+               fmt_n(out_base$art_initiations),
+               fmt_n(out_base$end_suppressed)),
+  `Scenario 1` = c(
+    cell(out_s1$end_new_infections,    diff_s1$diff_new_infections,    "down"),
+    cell(out_s1$end_infant_infections, diff_s1$diff_infant_infections, "down"),
+    cell(out_s1$end_deaths,            diff_s1$diff_deaths,            "down"),
+    cell(out_s1$art_initiations,       diff_s1$diff_art_initiations,   "up"),
+    cell(out_s1$end_suppressed,        diff_s1$diff_suppressed,        "up")
+  ),
+  `Scenario 2` = c(
+    cell(out_s2$end_new_infections,    diff_s2$diff_new_infections,    "down"),
+    cell(out_s2$end_infant_infections, diff_s2$diff_infant_infections, "down"),
+    cell(out_s2$end_deaths,            diff_s2$diff_deaths,            "down"),
+    cell(out_s2$art_initiations,       diff_s2$diff_art_initiations,   "up"),
+    cell(out_s2$end_suppressed,        diff_s2$diff_suppressed,        "up")
+  ),
+  check.names = FALSE
+)
+knitr::kable(epi_tbl, format = "html", escape = FALSE,
+             align = c("l", "r", "r", "r"),
+             table.attr = 'class="report-table"')
+```
+
+## Cost analysis
+
+```{r tbl-cost, results='asis'}
+cost_tbl <- data.frame(
+  `Cost category` = c("Intervention costs", "ART provision", "Total programme cost"),
+  Baseline = c(fmt_money(out_base$total_intervention_cost),
+               fmt_money(out_base$art_provision_cost),
+               paste0("<strong>", fmt_money(out_base$total_cost), "</strong>")),
+  `Scenario 1` = c(
+    cell(out_s1$total_intervention_cost, diff_s1$diff_intervention_cost, "down", money = TRUE),
+    cell(out_s1$art_provision_cost,      diff_s1$diff_art_provision_cost, "down", money = TRUE),
+    paste0("<strong>", fmt_money(out_s1$total_cost), "</strong> ",
+           fmt_delta(diff_s1$diff_total_cost, "down", money = TRUE))
+  ),
+  `Scenario 2` = c(
+    cell(out_s2$total_intervention_cost, diff_s2$diff_intervention_cost, "down", money = TRUE),
+    cell(out_s2$art_provision_cost,      diff_s2$diff_art_provision_cost, "down", money = TRUE),
+    paste0("<strong>", fmt_money(out_s2$total_cost), "</strong> ",
+           fmt_delta(diff_s2$diff_total_cost, "down", money = TRUE))
+  ),
+  check.names = FALSE
+)
+knitr::kable(cost_tbl, format = "html", escape = FALSE,
+             align = c("l", "r", "r", "r"),
+             table.attr = 'class="report-table"')
+```
+
+<div class="page-break"></div>
+
+## HIV care cascade — end of year
+
+```{r cascade-plot, fig.width=8, fig.height=4.2, out.width="100%"}
+library(ggplot2)
+library(scales)
+
+cascade_df <- data.frame(
+  Stage    = rep(c("PLHIV", "Diagnosed", "On ART", "Suppressed"), times = 3),
+  Value    = c(out_base$end_plhiv, out_base$end_diagnosed, out_base$end_on_art, out_base$end_suppressed,
+               out_s1$end_plhiv,   out_s1$end_diagnosed,   out_s1$end_on_art,   out_s1$end_suppressed,
+               out_s2$end_plhiv,   out_s2$end_diagnosed,   out_s2$end_on_art,   out_s2$end_suppressed),
+  Scenario = factor(rep(c("Baseline", "Scenario 1", "Scenario 2"), each = 4),
+                    levels = c("Baseline", "Scenario 1", "Scenario 2"))
+)
+cascade_df$Stage <- factor(cascade_df$Stage,
+                           levels = c("PLHIV", "Diagnosed", "On ART", "Suppressed"))
+
+ggplot(cascade_df,
+       aes(x = Stage, y = Value, colour = Scenario, group = Scenario, linetype = Scenario)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2.8) +
+  scale_y_continuous(labels = comma) +
+  scale_colour_manual(values = c("Baseline"  = "#6b7280",
+                                 "Scenario 1" = "#3b82f6",
+                                 "Scenario 2" = "#ef4444")) +
+  labs(x = NULL, y = "Number of people") +
+  theme_minimal(base_size = 10) +
+  theme(legend.position = "bottom",
+        panel.grid.minor = element_blank())
+```
+
+## Impact summary — change from baseline
+
+```{r impact-summary, fig.width=8, fig.height=3.6, out.width="100%"}
+mk_impact_df <- function(diff_obj, scen_label) {
+  data.frame(
+    Outcome = c("Acquisitions", "Deaths", "ART\ninitiations"),
+    Value   = c(diff_obj$diff_new_infections,
+                diff_obj$diff_deaths,
+                diff_obj$diff_art_initiations),
+    is_good = c(diff_obj$diff_new_infections < 0,
+                diff_obj$diff_deaths        < 0,
+                diff_obj$diff_art_initiations >= 0),
+    Scenario = scen_label
+  )
+}
+
+impact_df <- rbind(mk_impact_df(diff_s1, "Scenario 1"),
+                   mk_impact_df(diff_s2, "Scenario 2"))
+
+ggplot(impact_df, aes(x = Outcome, y = Value, fill = is_good)) +
+  geom_col(width = 0.65) +
+  geom_hline(yintercept = 0, colour = "#374151", linewidth = 0.4) +
+  facet_wrap(~ Scenario, nrow = 1) +
+  scale_fill_manual(values = c("TRUE" = "#10b981", "FALSE" = "#ef4444"),
+                    guide = "none") +
+  scale_y_continuous(labels = comma) +
+  labs(x = NULL, y = "People (relative to baseline)") +
+  theme_minimal(base_size = 10) +
+  theme(strip.text = element_text(face = "bold"),
+        panel.grid.minor = element_blank())
+```
+
+## PrEP delivery by group
+
+```{r tbl-prep, results='asis'}
+# Shows where each scenario's PrEP lands across FSW/MSM/AGYW/General. In total
+# entry mode this reflects the split of the entered oral/lenacapavir totals,
+# including any amount reallocated to General or not delivered.
+render_prep_block <- function(label, d) {
+  if (is.null(d) || is.null(d$table) || nrow(d$table) == 0) return(invisible())
+  t <- d$table
+  cat(sprintf('<h3 style="font-size:11pt;color:#1F3864;margin:10px 0 2px;">%s</h3>',
+              htmltools::htmlEscape(label)))
+  if (identical(d$mode, "total")) {
+    cat(sprintf(paste0('<p style="margin:0 0 4px;">Entered as programme totals ',
+                       '&mdash; oral PrEP: <strong>%s</strong>; lenacapavir: ',
+                       '<strong>%s</strong>; split across groups using PEPFAR ',
+                       'FY22&ndash;24 shares.</p>'),
+                fmt_n(d$entered_oral), fmt_n(d$entered_lena)))
+    if (!is.null(d$overflow_to_general) && d$overflow_to_general > 0.5)
+      cat(sprintf('<p style="margin:0 0 4px;">%s reallocated to General (a targeted group reached 100%%).</p>',
+                  fmt_n(d$overflow_to_general)))
+    if (!is.null(d$discarded) && d$discarded > 0.5)
+      cat(sprintf('<p style="margin:0 0 4px;">%s not delivered &mdash; all groups at 100%%.</p>',
+                  fmt_n(d$discarded)))
+  } else {
+    cat('<p style="margin:0 0 4px;">Entered directly by group.</p>')
+  }
+  body <- paste(vapply(seq_len(nrow(t)), function(i) sprintf(
+    '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
+    htmltools::htmlEscape(t$Group[i]),
+    fmt_n(t[["Oral PrEP"]][i]), fmt_n(t$Lenacapavir[i]), fmt_n(t$Total[i]),
+    if (is.na(t$Population[i]))   "&mdash;" else fmt_n(t$Population[i]),
+    if (is.na(t[["Coverage %"]][i])) "&mdash;" else sprintf("%.1f%%", t[["Coverage %"]][i])
+  ), character(1)), collapse = "\n")
+  cat('<table class="report-table">\n',
+      '<thead><tr><th>Group</th><th>Oral PrEP</th><th>Lenacapavir</th>',
+      '<th>Total</th><th>Population</th><th>Coverage</th></tr></thead>\n<tbody>\n',
+      body, '\n</tbody>\n</table>\n', sep = "")
+}
+if (!is.null(pd) && length(pd) > 0) {
+  render_prep_block("Baseline",   pd$baseline)
+  render_prep_block("Scenario 1", pd$scenario1)
+  render_prep_block("Scenario 2", pd$scenario2)
+} else {
+  cat("<p><em>PrEP delivery detail unavailable.</em></p>")
+}
+```
+
+## Intervention volumes by scenario
+
+```{r interv-table, results='asis'}
+# Build a long table of every intervention with its baseline/scenario volumes.
+rows <- list()
+for (gkey in names(ig)) {
+  grp <- ig[[gkey]]
+  # group header row
+  rows[[length(rows) + 1]] <- sprintf(
+    '<tr style="background-color:#eef2f7;"><td colspan="4"><strong>%s</strong></td></tr>',
+    htmltools::htmlEscape(grp$name)
+  )
+  for (ikey in names(grp$interventions)) {
+    int <- grp$interventions[[ikey]]
+    bv  <- base_vals[[ikey]]; if (is.null(bv)) bv <- 0
+    s1v <- s1_vals[[ikey]];   if (is.null(s1v)) s1v <- 0
+    s2v <- s2_vals[[ikey]];   if (is.null(s2v)) s2v <- 0
+    is_pct <- isTRUE(int$type == "coverage")
+    fmt_v <- function(x) if (is_pct) sprintf("%.1f%%", x) else fmt_n(x)
+    rows[[length(rows) + 1]] <- sprintf(
+      "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",
+      htmltools::htmlEscape(int$name),
+      fmt_v(bv), fmt_v(s1v), fmt_v(s2v)
+    )
+  }
+}
+cat('<table>\n<thead>',
+    '<tr><th>Intervention</th><th>Baseline</th><th>Scenario 1</th><th>Scenario 2</th></tr>',
+    '</thead>\n<tbody>\n',
+    paste(rows, collapse = "\n"),
+    '\n</tbody>\n</table>',
+    sep = "")
+```
+
+<div class="footer-note">
+Use the tool to compare directions and trade-offs. Use country processes for the exact numbers in your plan. Report generated by the
+TIER-Plus Tool.
+</div>
