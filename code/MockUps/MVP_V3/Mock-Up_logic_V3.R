@@ -940,7 +940,32 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
           }
           test_cost_out  # named list; absent keys mean "use global default"
         },
-        
+        # Country-specific PrEP unit cost overrides (USD per person initiated/
+        # currently using, per group × product). Same mechanism and validation
+        # as cost_overrides_test above: parse cost_<intervention_key> from the
+        # CSV, keep only non-negative numeric values; absent/blank/NA/negative
+        # means "use the global intervention_params value". Keyed by the eight
+        # PrEP intervention_keys so the prevention cost loop can look up via
+        # context$cost_overrides_prep[[int_key]]. See basic_hiv_data.csv columns
+        # cost_prep_oral_{fsw,msm,agyw,general} and
+        # cost_prep_lenacapavir_{fsw,msm,agyw,general}.
+        cost_overrides_prep = {
+          prep_cost_keys <- c("prep_oral_fsw", "prep_oral_msm",
+                              "prep_oral_agyw", "prep_oral_general",
+                              "prep_lenacapavir_fsw", "prep_lenacapavir_msm",
+                              "prep_lenacapavir_agyw", "prep_lenacapavir_general")
+          prep_cost_out <- list()
+          for (key_name in prep_cost_keys) {
+            csv_col <- paste0("cost_", key_name)
+            if (!is.null(row[[csv_col]])) {
+              parsed_val <- suppressWarnings(as.numeric(as.character(row[[csv_col]])))
+              if (!is.na(parsed_val) && parsed_val >= 0) {
+                prep_cost_out[[key_name]] <- parsed_val
+              }
+            }
+          }
+          prep_cost_out  # named list; absent keys mean "use global default"
+        },
         percent_suppressed = row$percent_suppressed,
         aids_deaths_per_year = row$aids_deaths_per_year,
         birth_rate = row$birth_rate,
@@ -2940,7 +2965,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       } else {
         number_reached
       }
-      charge_cost("prevention", units_costed * intervention$unit_cost)
+      # Country-specific PrEP unit cost override (named list keyed by
+      # intervention_key), same mechanism as cost_overrides_test. Absent key
+      # (or no preset) -> NULL -> falls back to intervention$unit_cost, which
+      # itself already encodes the Excel per-group -> blended -> 0 chain.
+      # Non-PrEP keys (condoms, vmmc, ...) never appear in cost_overrides_prep,
+      # so they transparently keep the global cost.
+      unit_cost_eff <- context$cost_overrides_prep[[int_key]] %||% intervention$unit_cost
+      charge_cost("prevention", units_costed * unit_cost_eff)
     }
   }
   # ========================================================================

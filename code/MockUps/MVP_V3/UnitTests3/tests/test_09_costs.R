@@ -503,7 +503,95 @@ test_that("art_provision_cost falls back to ART_COST_STANDARD when context value
   
   expect_lte(abs(result$art_provision_cost - result$end_on_art * 200), 200)
 })
+# ---------------------------------------------------------------------------
+# 9.7d PrEP prevention cost uses context$cost_overrides_prep when supplied
+# ---------------------------------------------------------------------------
+# WHAT: The prevention cost loop charges units_costed × unit_cost_eff, where
+#       unit_cost_eff = context$cost_overrides_prep[[int_key]] %||%
+#       intervention$unit_cost. A country-specific PrEP cost from the CSV must
+#       override the global intervention_params value.
+#
+# WHY: The 8 cost_prep_* CSV columns were added so per-country PrEP unit costs
+#      (oral/lenacapavir × FSW/MSM/AGYW/general) replace a single global figure.
+#      A refactor that forgets the override would silently reintroduce uniform
+#      PrEP costing.
+#
+# HOW: Global prep_oral_fsw unit_cost = 80 (via intervention_groups). Run twice
+#      with identical inputs (prep_oral_fsw = 5000, so units_costed hits the
+#      same n_fsw cap in both runs): once with no override, once with
+#      override = 50. Because units_costed is identical across runs,
+#        prevention_cost(override) / prevention_cost(global) == 50/80
+#      exactly, independent of the actual capped unit count.
+# ---------------------------------------------------------------------------
+test_that("prevention cost uses context$cost_overrides_prep when supplied", {
+  with_hiv_params(LIVE_PARAMS_COSTS)
+  override_cost_globals()
+  
+  ig_new <- intervention_groups
+  ig_new$prevention$interventions$prep_oral_fsw$unit_cost <- 80  # global
+  with_intervention_groups(list(prevention = ig_new$prevention))
+  
+  pops   <- calculate_populations(base_ctx())
+  interv <- zero_interventions(); interv$prep_oral_fsw <- 5000
+  
+  # (a) no override -> global 80 (confirm fallback precondition)
+  ctx_global <- base_ctx()
+  expect_null(ctx_global$cost_overrides_prep)
+  r_global <- calculate_scenario_outcomes(
+    ctx_global, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # (b) country override -> 50
+  ctx_ovr <- base_ctx()
+  ctx_ovr$cost_overrides_prep <- list(prep_oral_fsw = 50)
+  r_ovr <- calculate_scenario_outcomes(
+    ctx_ovr, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  # units_costed identical across runs, so cost ratio == unit-cost ratio.
+  expect_gt(r_global$prevention_cost, 0)  # guard: non-trivial baseline
+  expect_lte(
+    abs(r_ovr$prevention_cost - r_global$prevention_cost * (50 / 80)),
+    2  # independent rounding of each returned cost
+  )
+  # And the override genuinely diverges from the global path.
+  expect_gt(abs(r_ovr$prevention_cost - r_global$prevention_cost), 1000)
+})
 
+# ---------------------------------------------------------------------------
+# 9.7e PrEP prevention cost falls back to global unit_cost when override absent
+# ---------------------------------------------------------------------------
+# WHAT: When context$cost_overrides_prep is NULL (legacy CSVs without the
+#       cost_prep_* columns, or all blank/NA), the global intervention$unit_cost
+#       is used unchanged.
+#
+# WHY: Backwards compatibility — CSVs predating the cost_prep_* columns must
+#      behave exactly as before. Kept separate from 9.7d so a future change to
+#      the fallback path triggers an explicit, named failure.
+#
+# HOW: base_ctx() (no cost_overrides_prep). Global prep_oral_fsw = 80. With a
+#      1-unit initiation below the n_fsw cap, prevention_cost == 1 × 80 = 80.
+# ---------------------------------------------------------------------------
+test_that("prevention cost falls back to global unit_cost when cost_overrides_prep absent", {
+  with_hiv_params(LIVE_PARAMS_COSTS)
+  override_cost_globals()
+  
+  ig_new <- intervention_groups
+  ig_new$prevention$interventions$prep_oral_fsw$unit_cost <- 80
+  with_intervention_groups(list(prevention = ig_new$prevention))
+  
+  ctx <- base_ctx()
+  expect_null(ctx$cost_overrides_prep)  # confirm precondition
+  
+  pops   <- calculate_populations(ctx)
+  interv <- zero_interventions(); interv$prep_oral_fsw <- 1  # below n_fsw cap
+  
+  result <- calculate_scenario_outcomes(
+    ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  
+  expect_lte(abs(result$prevention_cost - 1 * 80), 1)  # 1 unit × global 80
+})
 # ---------------------------------------------------------------------------
 # 9.8 total_cost = total_intervention_cost + art_provision_cost
 # ---------------------------------------------------------------------------

@@ -878,8 +878,9 @@ server <- function(input, output, session) {
       use_mortality_calibration = preset$context$use_mortality_calibration,  # per-country mortality calibration flag
       art_cost_standard = preset$context$art_cost_standard,   # per-country ART unit cost (USD/PY); NULL/NA falls back to global in logic
       cost_overrides_test = preset$context$cost_overrides_test,  # named list of country-specific test unit cost overrides; absent/NULL means use global defaults
+      cost_overrides_prep = preset$context$cost_overrides_prep,  # named list of country-specific PrEP unit cost overrides (8 keys); absent/NULL -> global defaults
       bf_duration_months = preset$context$bf_duration_months  # country-specific BF duration (months); NULL falls back to hiv_params in logic
-    ))
+      ))
   }, ignoreInit = FALSE)
   
   # Reactive context
@@ -940,6 +941,11 @@ server <- function(input, output, session) {
       # logic file's `context$cost_overrides_test[[int_key]] %||% intervention$unit_cost`
       # lookup safely returns NULL and falls back to the global value.
       cost_overrides_test = if (!is.null(cc)) cc$cost_overrides_test else NULL,
+      # Country-specific PrEP unit cost overrides (named list, 8 PrEP keys).
+      # NULL when no preset selected; logic file's
+      # `context$cost_overrides_prep[[int_key]] %||% intervention$unit_cost`
+      # then falls back to the global value.
+      cost_overrides_prep = if (!is.null(cc)) cc$cost_overrides_prep else NULL,
       # Country-specific breastfeeding duration in months. NULL when no preset
       # selected or when the CSV column is missing/blank -- logic file's
       # `%||% hiv_params$bf_duration_months %||% 18` chain handles the fallback.
