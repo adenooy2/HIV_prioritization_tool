@@ -163,6 +163,12 @@ test_that("EAC cost uses eac_reach (layered VL × unsuppressed × EAC coverage)"
   
   # 36,000 × 8 (VL) + 3,600 × 25 (EAC) = 288,000 + 90,000 = 378,000
   expect_close(result$total_intervention_cost, 378000)
+  
+  tol <- 1
+  expect_lte(abs(result$treatment_monitoring_cost - 288000), tol)  # 36,000 × 8
+  expect_lte(abs(result$retention_cost            -  90000), tol)  #  3,600 × 25
+  expect_lte(abs(result$prevention_cost),        tol)
+  expect_lte(abs(result$advanced_disease_cost),  tol)
 })
 
 # ---------------------------------------------------------------------------
@@ -260,7 +266,7 @@ test_that("CD4 testing cost = n_cd4_tested × cd4 unit_cost", {
   )
   
   # 500 × 12 = 6,000
-  expect_lte(abs(result$total_intervention_cost - 6000), 5)
+  expect_lte(abs(result$total_intervention_cost - 6000), 1)
 })
 
 # ---------------------------------------------------------------------------
@@ -889,4 +895,22 @@ test_that("cost_overrides_test replaces intervention$unit_cost at the testing co
           r_fac_nofix$total_intervention_cost),
     5
   )
+})
+
+
+###############
+test_that("cost category split reconstitutes total_intervention_cost and total_cost", {
+  with_hiv_params(LIVE_PARAMS_COSTS)
+  override_cost_globals()
+  
+  pops   <- calculate_populations(base_ctx())
+  interv <- default_baseline_interventions          # a fully populated scenario
+  result <- calculate_scenario_outcomes(
+    base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv)
+  
+  tol <- 5   # six independently round()ed fields => ±0.5 each
+  cat_sum <- with(result, prevention_cost + testing_cost + treatment_monitoring_cost +
+                    retention_cost + advanced_disease_cost)
+  expect_lte(abs(cat_sum - result$total_intervention_cost), tol)
+  expect_lte(abs(cat_sum + result$art_provision_cost - result$total_cost), tol)
 })

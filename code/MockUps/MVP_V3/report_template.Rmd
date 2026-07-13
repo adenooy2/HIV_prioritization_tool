@@ -459,8 +459,7 @@ render_prep_block <- function(label, d) {
   if (identical(d$mode, "total")) {
     cat(sprintf(paste0('<p style="margin:0 0 4px;">Entered as programme totals ',
                        '&mdash; oral PrEP: <strong>%s</strong>; lenacapavir: ',
-                       '<strong>%s</strong>; split across groups using PEPFAR ',
-                       'FY22&ndash;24 shares.</p>'),
+                       '<strong>%s</strong>; split across groups using.</p>'),
                 fmt_n(d$entered_oral), fmt_n(d$entered_lena)))
     if (!is.null(d$overflow_to_general) && d$overflow_to_general > 0.5)
       cat(sprintf('<p style="margin:0 0 4px;">%s reallocated to General (a targeted group reached 100%%).</p>',
