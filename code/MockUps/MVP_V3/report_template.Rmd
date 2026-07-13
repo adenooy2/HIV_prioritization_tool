@@ -312,6 +312,74 @@ knitr::kable(cost_tbl, format = "html", escape = FALSE,
              table.attr = 'class="report-table"')
 ```
 
+### Cost by programme area (US$)
+
+```{r cost-breakdown-plot, fig.width=8, fig.height=3.6, out.width="100%"}
+library(ggplot2)
+library(scales)
+
+cost_cat_levels <- c("ART provision", "Prevention", "Testing",
+                     "Treatment monitoring & quality",
+                     "Retention & Adherence", "Advanced HIV")
+cost_cat_colors <- c(
+  "ART provision"                  = "#475569",
+  "Prevention"                     = "#10b981",
+  "Testing"                        = "#3b82f6",
+  "Treatment monitoring & quality" = "#f59e0b",
+  "Retention & Adherence"          = "#ec4899",
+  "Advanced HIV"                   = "#8b5cf6"
+)
+pull_cost <- function(o) c(o$art_provision_cost, o$prevention_cost, o$testing_cost,
+                           o$treatment_monitoring_cost, o$retention_cost,
+                           o$advanced_disease_cost)
+
+cost_bd <- data.frame(
+  Scenario = factor(rep(c("Baseline", "Scenario 1", "Scenario 2"),
+                        each = length(cost_cat_levels)),
+                    levels = c("Baseline", "Scenario 1", "Scenario 2")),
+  Category = factor(rep(cost_cat_levels, times = 3), levels = cost_cat_levels),
+  Cost     = c(pull_cost(out_base), pull_cost(out_s1), pull_cost(out_s2))
+)
+
+cost_bd$bar_total <- as.numeric(tapply(cost_bd$Cost, cost_bd$Scenario, sum)[as.character(cost_bd$Scenario)])
+cost_bd$frac      <- ifelse(cost_bd$bar_total > 0, cost_bd$Cost / cost_bd$bar_total, 0)
+cost_tot <- data.frame(
+  Scenario  = factor(levels(cost_bd$Scenario), levels = levels(cost_bd$Scenario)),
+  bar_total = as.numeric(tapply(cost_bd$Cost, cost_bd$Scenario, sum))
+)
+
+ggplot(cost_bd, aes(x = Scenario, y = Cost, fill = Category)) +
+  # reverse => first level (ART provision) at the BOTTOM (cascade order)
+  geom_col(width = 0.62, position = position_stack(reverse = TRUE)) +
+  geom_text(aes(label = ifelse(frac >= 0.03, scales::dollar(Cost, accuracy = 1), "")),
+            position = position_stack(vjust = 0.5, reverse = TRUE),
+            colour = "white", fontface = "bold", size = 2.7) +
+  geom_text(data = cost_tot, inherit.aes = FALSE,
+            aes(x = Scenario, y = bar_total, label = scales::dollar(bar_total, accuracy = 1)),
+            vjust = -0.4, fontface = "bold", size = 3) +
+  scale_fill_manual(values = cost_cat_colors, breaks = cost_cat_levels) +
+  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.10))) +
+  labs(x = NULL, y = "Cost (US$)", fill = NULL) +
+  theme_minimal(base_size = 10) +
+  theme(legend.position = "right", panel.grid.major.x = element_blank())
+```
+
+```{r tbl-cost-breakdown, results='asis'}
+vb  <- pull_cost(out_base)
+v1  <- pull_cost(out_s1)
+v2  <- pull_cost(out_s2)
+bd_tbl <- data.frame(
+  `Cost category` = c(cost_cat_levels, "Total programme cost"),
+  Baseline        = c(fmt_money(vb), paste0("<strong>", fmt_money(sum(vb)), "</strong>")),
+  `Scenario 1`    = c(fmt_money(v1), paste0("<strong>", fmt_money(sum(v1)), "</strong>")),
+  `Scenario 2`    = c(fmt_money(v2), paste0("<strong>", fmt_money(sum(v2)), "</strong>")),
+  check.names = FALSE
+)
+knitr::kable(bd_tbl, format = "html", escape = FALSE,
+             align = c("l", "r", "r", "r"),
+             table.attr = 'class="report-table"')
+```
+
 <div class="page-break"></div>
 
 ## HIV care cascade — end of year

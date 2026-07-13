@@ -1788,6 +1788,15 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   deferred_tracking_efficacy <- 0  # efficacy parameter from intervention spec
   deferred_tracking_unit_cost <- 0 # unit cost for cost calculation against full pool
   total_intervention_cost <- 0
+  # NEW - per-category cost split. Keys mirror intervention_groups names.
+  # Sum(cost_by_cat) must equal total_intervention_cost (guarded before return).
+  cost_by_cat <- list(prevention = 0, testing = 0, treatment_monitoring = 0,
+                      retention_support = 0, advanced_disease = 0)
+  # Charge an amount to BOTH the running total and its category, in one place.
+  charge_cost <- function(cat, amt) {
+    total_intervention_cost <<- total_intervention_cost + amt
+    cost_by_cat[[cat]]      <<- cost_by_cat[[cat]] + amt
+  }
   dsd_cost_adjustment <- 0
   clinical_visit_cost_adjustment <- 0
   dsd_bundle_done     <- FALSE  # one-shot guard for the DSD bundle calculation
@@ -1829,10 +1838,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   
   # Flatten intervention structure
   all_interventions <- list()
+  int_to_cat        <- list()                       # key -> group/category
   for (group_name in names(intervention_groups)) {
     group <- intervention_groups[[group_name]]
     for (int_name in names(group$interventions)) {
       all_interventions[[int_name]] <- group$interventions[[int_name]]
+      int_to_cat[[int_name]]        <- group_name    # NEW
     }
   }
   
@@ -1986,15 +1997,13 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         # Country-specific unit cost override applied via context$cost_overrides_test;
         # falls back to intervention$unit_cost when no override is supplied for int_key.
         unit_cost_eff <- context$cost_overrides_test[[int_key]] %||% intervention$unit_cost
-        total_intervention_cost <- total_intervention_cost +
-          number_reached * unit_cost_eff
+        charge_cost(int_to_cat[[int_key]], number_reached * unit_cost_eff)
       } else {
         # ANC/PNC: unit cost per test only; linkage cost charged in post-loop block.
         # Country-specific override via context$cost_overrides_test (anc_hiv_testing,
         # pnc_hiv_testing). Falls back to intervention$unit_cost when absent.
         unit_cost_eff <- context$cost_overrides_test[[int_key]] %||% intervention$unit_cost
-        total_intervention_cost <- total_intervention_cost +
-          number_reached * unit_cost_eff
+        charge_cost(int_to_cat[[int_key]], number_reached * unit_cost_eff)
       }
       
       # ── ANC HIV testing: route newly diagnosed HIV+ pregnant women into PMTCT cascade ──
@@ -2029,8 +2038,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       infant_prophy_cov_frac <- min(1, infant_prophy_cov_frac +
                                       (number_reached / max(populations$hiv_exposed_infants, 1)) )
       
-      total_intervention_cost <- total_intervention_cost +
-        number_reached * intervention$unit_cost
+      charge_cost(int_to_cat[[int_key]], number_reached * intervention$unit_cost)
       
     } else if ("infant_diagnosis" %in% intervention$outcomes) {
       # EID: tests HIV-exposed infants to identify HIV+ infants for early ART initiation.
@@ -2044,8 +2052,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       # Adherence Counselling (EAC), which acts on the VL-identified unsuppressed
       # pool. The VL test cost still applies here.
       if (int_key == "vl_monitoring_routine") {
-        total_intervention_cost <- total_intervention_cost +
-          number_reached * intervention$unit_cost
+        charge_cost(int_to_cat[[int_key]], number_reached * intervention$unit_cost)
         next
       }
       
@@ -2066,8 +2073,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
         additional_suppressed <- additional_suppressed +
           eac_reach * intervention$efficacy
         
-        total_intervention_cost <- total_intervention_cost +
-          eac_reach * intervention$unit_cost
+        charge_cost(int_to_cat[[int_key]], eac_reach * intervention$unit_cost)
         
         next
       }
@@ -2091,8 +2097,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       additional_suppressed <- additional_suppressed +
         number_reached * (1 - context$percent_suppressed / 100) * intervention$efficacy
       
-      total_intervention_cost <- total_intervention_cost +
-        number_reached * intervention$unit_cost
+      charge_cost(int_to_cat[[int_key]], number_reached * intervention$unit_cost)
       
       # ── ANC / PNC VL testing: track pregnant/postpartum women on ART reached for MTCT cascade ──
       if (int_key == "anc_vl_testing") {
@@ -2222,13 +2227,11 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       # DSD bundle (eligible_pop == "on_art_stable") handled above via `next`.
       if (intervention$eligible_pop != "ltfu" &&
           intervention$eligible_pop != "on_art_stable") {
-        total_intervention_cost <- total_intervention_cost +
-          number_reached * intervention$unit_cost
+        charge_cost(int_to_cat[[int_key]], number_reached * intervention$unit_cost)
       }
       
     } else if ("ahd_screening" %in% intervention$outcomes) {
-      total_intervention_cost <- total_intervention_cost +
-        number_reached * intervention$unit_cost
+      charge_cost(int_to_cat[[int_key]], number_reached * intervention$unit_cost)
     }
   }
   
@@ -2323,8 +2326,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # currently disengaged, not just last year's leftovers.
   tracking_reached <- total_ltfu_pool * deferred_tracking_coverage
   ltfu_reengaged   <- ltfu_reengaged + tracking_reached * deferred_tracking_efficacy
-  total_intervention_cost <- total_intervention_cost +
-    tracking_reached * deferred_tracking_unit_cost
+  charge_cost("retention_support", tracking_reached * deferred_tracking_unit_cost)
   
   # ── SPONTANEOUS RE-ENGAGEMENT (computed FIRST) ───────────────────────────
   # Background return to care (silent transfers + self-initiated return) is
@@ -2416,9 +2418,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Linkage cost (post-cap): scaled per component, same shrinkage as the
   # corresponding linked count, so cost per linked patient is preserved
   # per-modality in the uncapped case and proportionally scaled under capping.
-  total_intervention_cost <- total_intervention_cost +
-    shrinkage_new      * new_dx_linkage_cost_uncapped +
-    shrinkage_reengage * retest_pos_linkage_cost_uncapped
+  charge_cost("testing",
+              shrinkage_new      * new_dx_linkage_cost_uncapped +
+                shrinkage_reengage * retest_pos_linkage_cost_uncapped)
   
   # Additional suppressed from testing (post-cap): scaled per component. The
   # supp_uncapped accumulators carry per-source suppression rates baked in
@@ -2474,7 +2476,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     n_cd4_tested      <- min(art_initiations * (cd4_value / 100), art_initiations)
     cd4_coverage_frac <- n_cd4_tested / art_initiations
     cd4_cost          <- n_cd4_tested * all_interventions$cd4_testing$unit_cost
-    total_intervention_cost <- total_intervention_cost + cd4_cost
+    charge_cost("advanced_disease", cd4_cost)
   }
   
   # ── AHD package (only those diagnosed with AHD via CD4 test) ─────────────
@@ -2495,8 +2497,8 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     ahd_pkg_eff_reduction   <- cd4_ahd_detection_frac * ahd_pkg_cov_frac_of_ahd *
       all_interventions$ahd_package$efficacy
     
-    total_intervention_cost <- total_intervention_cost +
-      n_ahd_pkg_reached * all_interventions$ahd_package$unit_cost
+    charge_cost("advanced_disease",
+                n_ahd_pkg_reached * all_interventions$ahd_package$unit_cost)
   }
   
   # ========================================================================
@@ -2938,8 +2940,7 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       } else {
         number_reached
       }
-      total_intervention_cost <- total_intervention_cost +
-        units_costed * intervention$unit_cost
+      charge_cost("prevention", units_costed * intervention$unit_cost)
     }
   }
   # ========================================================================
@@ -3105,9 +3106,9 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   }
   # Testing cost: all HIV-exposed infants reached (infected or not)
   # Linkage cost: HIV+ infants identified 
-  total_intervention_cost <- total_intervention_cost +
-    eid_infants_reached   * (all_interventions$eid$unit_cost    %||% 0) +
-    eid_infants_diagnosed * (all_interventions$eid$linkage_cost %||% 0)
+  charge_cost("testing",
+              eid_infants_reached   * (all_interventions$eid$unit_cost    %||% 0) +
+                eid_infants_diagnosed * (all_interventions$eid$linkage_cost %||% 0))
   
   # ========================================================================
   # INFANT MORTALITY CASCADE
@@ -3164,6 +3165,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   }
   # Total cost
   total_cost <- total_intervention_cost + art_provision_cost
+  
+  # NEW - the category split must reconstitute the intervention total.
+  cat_sum <- sum(unlist(cost_by_cat))
+  if (abs(cat_sum - total_intervention_cost) > 1e-6) {
+    warning(sprintf(
+      "Cost-category split mismatch: Sum(categories)=%.2f vs total_intervention_cost=%.2f (delta=%.2f). Unattributed cost site.",
+      cat_sum, total_intervention_cost, cat_sum - total_intervention_cost))
+  }
   
   # ========================================================================
   # FINAL SANITY CHECKS - ENSURE NO NaN OR INVALID VALUES
@@ -3378,9 +3387,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
     end_deaths = round(end_deaths),
     
     # Costs
-    total_intervention_cost = round(total_intervention_cost),
-    art_provision_cost = round(art_provision_cost),
-    total_cost = round(total_cost)
+    total_intervention_cost   = round(total_intervention_cost),
+    prevention_cost           = round(cost_by_cat$prevention),           # NEW
+    testing_cost              = round(cost_by_cat$testing),              # NEW
+    treatment_monitoring_cost = round(cost_by_cat$treatment_monitoring), # NEW
+    retention_cost            = round(cost_by_cat$retention_support),    # NEW
+    advanced_disease_cost     = round(cost_by_cat$advanced_disease),     # NEW
+    art_provision_cost        = round(art_provision_cost),
+    total_cost                = round(total_cost)
   )
 }
 

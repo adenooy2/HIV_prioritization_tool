@@ -437,6 +437,15 @@ ui <- page_sidebar(
           )
         ),
         
+        # Cost by programme area (stacked) - sits below the Cost Analysis cards
+        h3("Cost by Programme Area (US$)", class = "mt-4 mb-3"),
+        card(
+          card_header("Stacked cost breakdown: Baseline vs Scenarios"),
+          card_body(
+            plotOutput("cost_breakdown_stacked", height = "400px")
+          )
+        ),
+        
         # Cascade Chart - Combined
         h3("HIV Care Cascade: Baseline vs Scenarios (End of Year)", class = "mt-4 mb-3"),
         card(
@@ -2844,6 +2853,62 @@ server <- function(input, output, session) {
   # ========================================================================
   # SUMMARY PLOTS
   # ========================================================================
+  
+  # ---- Cost by programme area -------------------------------------------------
+  cost_cat_levels <- c("ART provision", "Prevention", "Testing",
+                       "Treatment monitoring & quality",
+                       "Retention & Adherence", "Advanced HIV")
+  cost_cat_colors <- c(
+    "ART provision"                  = "#475569",  # slate (new)
+    "Prevention"                     = "#10b981",  # group colours, reused
+    "Testing"                        = "#3b82f6",
+    "Treatment monitoring & quality" = "#f59e0b",
+    "Retention & Adherence"          = "#ec4899",
+    "Advanced HIV"                   = "#8b5cf6"
+  )
+  
+  cost_breakdown_df <- reactive({
+    pull <- function(o) c(o$art_provision_cost, o$prevention_cost, o$testing_cost,
+                          o$treatment_monitoring_cost, o$retention_cost,
+                          o$advanced_disease_cost)
+    data.frame(
+      Scenario = factor(rep(c("Baseline", "Scenario 1", "Scenario 2"),
+                            each = length(cost_cat_levels)),
+                        levels = c("Baseline", "Scenario 1", "Scenario 2")),
+      Category = factor(rep(cost_cat_levels, times = 3), levels = cost_cat_levels),
+      Cost     = c(pull(outcomes_baseline()),
+                   pull(outcomes_scenario1()),
+                   pull(outcomes_scenario2()))
+    )
+  })
+  
+  output$cost_breakdown_stacked <- renderPlot({
+    df  <- cost_breakdown_df()
+    tot <- tapply(df$Cost, df$Scenario, sum)
+    df$bar_total <- as.numeric(tot[as.character(df$Scenario)])
+    df$frac      <- ifelse(df$bar_total > 0, df$Cost / df$bar_total, 0)
+    totals <- data.frame(Scenario  = factor(names(tot), levels = levels(df$Scenario)),
+                         bar_total = as.numeric(tot))
+    
+    ggplot(df, aes(x = Scenario, y = Cost, fill = Category)) +
+      # reverse => first level (ART provision) sits at the BOTTOM (cascade order)
+      geom_col(width = 0.62, position = position_stack(reverse = TRUE)) +
+      # full-dollar value per segment; hidden on slivers (<3% of the bar) to avoid overlap
+      geom_text(aes(label = ifelse(frac >= 0.03, scales::dollar(Cost, accuracy = 1), "")),
+                position = position_stack(vjust = 0.5, reverse = TRUE),
+                colour = "white", fontface = "bold", size = 3.2) +
+      # grand total above each bar
+      geom_text(data = totals, inherit.aes = FALSE,
+                aes(x = Scenario, y = bar_total,
+                    label = scales::dollar(bar_total, accuracy = 1)),
+                vjust = -0.4, fontface = "bold", size = 3.5) +
+      scale_fill_manual(values = cost_cat_colors, breaks = cost_cat_levels) +
+      scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.10))) +
+      labs(x = NULL, y = "Cost (US$)", fill = NULL) +
+      theme_minimal(base_size = 13) +
+      theme(legend.position = "right",
+            panel.grid.major.x = element_blank())
+  })
   
   output$plot_scenario1 <- renderPlot({
     outcomes <- outcomes_scenario1()
