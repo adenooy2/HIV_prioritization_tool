@@ -763,6 +763,125 @@ calculate_populations <- function(context) {
 }
 
 # ============================================================================
+# PrEP TOTAL -> GROUP ALLOCATION
+# ----------------------------------------------------------------------------
+# Shared by (a) build_country_presets(), which splits the product TOTALS that
+# countries report in baseline_testing.csv (prep_oral / prep_lenacapavir), and
+# (b) the interface's "total" PrEP entry mode (see split_prep_total() there,
+# now a thin wrapper). Single implementation so the two cannot drift.
+#
+# SHARE PROVENANCE -- READ BEFORE TRUSTING THESE NUMBERS.
+# The defaults below are the FY22-24 PEPFAR shares in Sheet2 of
+# fy2224_pepfarprepbyriskpopulation.xlsx (FSW 13.86%, MSM 5.28%,
+# AGYW/Female 15-24 26.11%, General = 100 - the other three = 54.75%).
+# Those shares are computed against a denominator that SUMS FOUR OVERLAPPING
+# MER disaggregates of the same clients:
+#     Age/Sex                     7,849,226
+#     KeyPop                        651,810
+#     KeyPopAbr                   1,773,146
+#     Sex/PregnantBreastfeeding     205,900
+#     Grand total                10,480,082   <- Sheet2's denominator
+# Age/Sex alone is already a complete, mutually exclusive census of PrEP
+# clients; KeyPop/KeyPopAbr and PBFW are ALTERNATIVE disaggregations of those
+# same people, not additional ones. So an FSW client is counted 2-3x in the
+# denominator and once in the numerator. Check: FSW = 367,429 + 1,010,828 =
+# 1,378,257; 1,378,257 / 10,480,082 = 13.15%, which reproduces Sheet2's 13.86%
+# to within its region filter -- confirming the denominator. On the honest
+# Age/Sex denominator the same numerators give FSW 17.6%, MSM 10.3%,
+# AGYW 32.5%.
+# CONSEQUENCE: FSW/MSM/AGYW are UNDERSTATED and the General residual is
+# OVERSTATED. Renormalising to 1 (below) does not fix this -- the relative mix
+# is wrong. Retained only for behavioural continuity with the existing UI total
+# mode; DO NOT cite these as the PEPFAR programme mix. Override via the Excel
+# general_values sheet (prep_alloc_share_fsw / _msm / _agyw / _general) once a
+# defensible split is agreed. Note that a clean four-way split is NOT derivable
+# from this file even on the right denominator: FSW is a subset of females and
+# MSM of males, so FSW overlaps AGYW (Female 15-24) and the file's KeyPop rows
+# carry no age disaggregation to net the overlap out.
+prep_alloc_shares <- function() {
+  sh <- list(
+    fsw     = hiv_params$prep_alloc_share_fsw     %||% 0.1386,
+    msm     = hiv_params$prep_alloc_share_msm     %||% 0.0528,
+    agyw    = hiv_params$prep_alloc_share_agyw    %||% 0.2611,
+    general = hiv_params$prep_alloc_share_general %||% 0.5475
+  )
+  # Renormalise to sum to 1 so an entered total is fully distributed even if an
+  # Excel override doesn't sum exactly to 1. The defaults already sum to 1.
+  ssum <- sh$fsw + sh$msm + sh$agyw + sh$general
+  if (is.na(ssum) || ssum <= 0) return(list(fsw = 0.1386, msm = 0.0528, agyw = 0.2611, general = 0.5475))
+  lapply(sh, function(x) x / ssum)
+}
+
+# Pure splitter: turns an oral total + a lenacapavir total into the 8 group
+# keys the model consumes.
+#   caps: named list (fsw / msm / agyw / general) of HIV-negative population
+#         sizes. NULL or NA for a group means "no clip for that group".
+#         Callers must pass the SAME denominators the cost loop and
+#         compute_prevention_adjustments() use, i.e. partition_into_strata()
+#         output -- NOT adult_pop x prop_*.
+# Allocation rules (per Alex, 2026-07), unchanged from the interface
+# implementation this replaces:
+#   1. Allocate each product across FSW/MSM/AGYW/General by share.
+#   2. Clip FSW/MSM/AGYW on the COMBINED oral+lena total (oral and lenacapavir
+#      scaled by the same factor, so the product mix is preserved); the
+#      overflow CASCADES into General, product mix intact.
+#   3. General absorbs its own share plus all cascaded overflow, then is
+#      clipped last. Anything beyond General's population has nowhere to go and
+#      is discarded (returned in $discarded so callers can flag it).
+# NOTE: the logic further splits General into female / male-uncirc / male-circ
+# and clips each sub-stratum, so a small residual clip can still occur inside
+# General downstream. Sum invariance holds for THIS function, not end to end.
+allocate_prep_totals <- function(total_oral, total_lena, caps,
+                                 shares = prep_alloc_shares()) {
+  total_oral <- max(0, total_oral %||% 0); if (is.na(total_oral)) total_oral <- 0
+  total_lena <- max(0, total_lena %||% 0); if (is.na(total_lena)) total_lena <- 0
+  
+  o <- list(); l <- list()
+  for (g in c("fsw", "msm", "agyw", "general")) {
+    o[[g]] <- total_oral * shares[[g]]
+    l[[g]] <- total_lena * shares[[g]]
+  }
+  
+  # Clip the three targeted groups; cascade overflow (per product) to General.
+  overflow_o <- 0; overflow_l <- 0
+  for (g in c("fsw", "msm", "agyw")) {
+    cap_g <- caps[[g]]
+    if (!is.null(cap_g) && !is.na(cap_g)) {
+      comb <- o[[g]] + l[[g]]
+      if (comb > cap_g && comb > 0) {
+        keep <- cap_g / comb
+        overflow_o <- overflow_o + o[[g]] * (1 - keep)
+        overflow_l <- overflow_l + l[[g]] * (1 - keep)
+        o[[g]] <- o[[g]] * keep; l[[g]] <- l[[g]] * keep
+      }
+    }
+  }
+  o[["general"]] <- o[["general"]] + overflow_o
+  l[["general"]] <- l[["general"]] + overflow_l
+  
+  # Clip General last; any excess is discarded (no remaining group).
+  discarded <- 0
+  cap_gen <- caps[["general"]]
+  if (!is.null(cap_gen) && !is.na(cap_gen)) {
+    comb_gen <- o[["general"]] + l[["general"]]
+    if (comb_gen > cap_gen && comb_gen > 0) {
+      keep <- cap_gen / comb_gen
+      discarded <- comb_gen - cap_gen
+      o[["general"]] <- o[["general"]] * keep; l[["general"]] <- l[["general"]] * keep
+    }
+  }
+  
+  list(
+    prep_oral_fsw            = o$fsw,  prep_oral_msm            = o$msm,
+    prep_oral_agyw           = o$agyw, prep_oral_general        = o$general,
+    prep_lenacapavir_fsw     = l$fsw,  prep_lenacapavir_msm     = l$msm,
+    prep_lenacapavir_agyw    = l$agyw, prep_lenacapavir_general = l$general,
+    overflow_to_general = overflow_o + overflow_l,
+    discarded = discarded
+  )
+}
+
+# ============================================================================
 # DEFAULT BASELINE INTERVENTIONS
 # ============================================================================
 default_baseline_interventions <- list(
@@ -1097,6 +1216,70 @@ build_country_presets <- function(csv_data, baseline_csv = NULL) {
         # Only override when the source has an explicit non-NA value
         if (int_name %in% src_names && !is.null(csv_val) && !is.na(csv_val)) {
           baseline[[int_name]] <- csv_val
+        }
+      }
+      
+      # -- PrEP: countries report PRODUCT TOTALS, model consumes 8 group keys --
+      # The loop above iterates over names(default_baseline_interventions),
+      # which since the FSW/MSM/AGYW re-stratification are the eight
+      # disaggregated PrEP keys. The baseline CSV supplies prep_oral /
+      # prep_lenacapavir (national product totals), names that are no longer in
+      # that list -- so before this block those columns were SILENTLY DROPPED
+      # and every country loaded with baseline PrEP = 0.
+      #
+      # Precedence:
+      #   1. Explicit disaggregated columns present and non-NA -> they win
+      #      (already applied by the loop above; nothing to do here).
+      #   2. Otherwise, split the reported prep_oral / prep_lenacapavir totals.
+      #   3. Neither present -> leave the default of 0.
+      # This lets countries upgrade to real disaggregation one at a time with
+      # no code change.
+      #
+      # BEHAVIOUR CHANGE, DELIBERATE: baseline PrEP feeds calibrate_beta() via
+      # baseline_prev_adj. With baseline PrEP at 0, beta absorbed existing PrEP
+      # protection into the "biological" rate. Populating it recalibrates beta
+      # upward -- baseline still reproduces observed new_infections_per_year by
+      # construction, but every SCENARIO DELTA shifts. That is the mechanism
+      # working as designed, not a regression, but it is a step change from
+      # previously published outputs.
+      prep_group_keys <- c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general",
+                           "prep_lenacapavir_fsw", "prep_lenacapavir_msm",
+                           "prep_lenacapavir_agyw", "prep_lenacapavir_general")
+      prep_src <- if (!is.null(b_row) && nrow(b_row) == 1) b_row else row
+      has_disagg <- any(vapply(prep_group_keys, function(k)
+        k %in% names(prep_src) && !is.na(prep_src[[k]]), logical(1)))
+      tot_oral <- if ("prep_oral" %in% names(prep_src))
+        suppressWarnings(as.numeric(as.character(prep_src[["prep_oral"]]))) else NA_real_
+      tot_lena <- if ("prep_lenacapavir" %in% names(prep_src))
+        suppressWarnings(as.numeric(as.character(prep_src[["prep_lenacapavir"]]))) else NA_real_
+      
+      if (has_disagg && ((!is.na(tot_oral) && tot_oral > 0) || (!is.na(tot_lena) && tot_lena > 0))) {
+        warning(sprintf(
+          "%s: baseline CSV supplies BOTH disaggregated PrEP columns and prep_oral/prep_lenacapavir totals. The totals are ignored; the disaggregated columns win.",
+          country_name))
+      }
+      
+      if (!has_disagg && (!is.na(tot_oral) || !is.na(tot_lena))) {
+        # Caps use the SAME denominators as the cost loop and
+        # compute_prevention_adjustments()'s cov() clip.
+        prep_strata <- partition_into_strata(pops, define_strata_params(context))
+        prep_caps <- list(
+          fsw     = prep_strata$n_fsw,
+          msm     = prep_strata$n_msm,
+          agyw    = prep_strata$n_agyw,
+          # General PrEP is capped against the COMBINED general population --
+          # the same denominator the female / male-uncirc / male-circ split
+          # distributes across downstream.
+          general = (prep_strata$n_general_female      %||% 0) +
+            (prep_strata$n_general_male_uncirc %||% 0) +
+            (prep_strata$n_general_male_circ   %||% 0)
+        )
+        sp <- allocate_prep_totals(tot_oral %||% 0, tot_lena %||% 0, prep_caps)
+        for (k in prep_group_keys) baseline[[k]] <- sp[[k]]
+        if (sp$discarded > 1) {
+          warning(sprintf(
+            "%s: reported PrEP total exceeds the HIV-negative population across all PrEP groups; %s people discarded.",
+            country_name, format(round(sp$discarded), big.mark = ",")))
         }
       }
       
