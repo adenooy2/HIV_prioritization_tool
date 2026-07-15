@@ -58,15 +58,56 @@ load_intervention_params <- function(){
   intervention_params <- intervention_params[-1, ]
   intervention_params <- intervention_params[-1, ]
   
-  intervention_params <- intervention_params %>% 
+  # Values: spread parameter_type -> one column per parameter, one row per key.
+  vals <- intervention_params %>% 
     select(category, intervention, intervention_key, parameter_type, current_value) %>% 
     spread(parameter_type, current_value)
+  
+  # Sources: spread into their own src_* columns, then joined back on
+  # intervention_key. Keeping tool_tip_source inside the select() above would
+  # make it an identifier for spread() (which groups on every non-key/value
+  # column), fanning the data out to one row per (key, source) pair and breaking
+  # the one-row-per-key assumption that every
+  # subset(intervention_params, intervention_key == "x")$col call downstream
+  # relies on. Guarded so the file still loads against a sheet predating the column.
+  if ("tool_tip_source" %in% names(intervention_params)) {
+    srcs <- intervention_params %>% 
+      select(intervention_key, parameter_type, tool_tip_source) %>% 
+      mutate(parameter_type = paste0("src_", parameter_type)) %>% 
+      spread(parameter_type, tool_tip_source)
+    intervention_params <- left_join(vals, srcs, by = "intervention_key")
+  } else {
+    warning("intervention_params sheet has no 'tool_tip_source' column; ",
+            "parameter info bubbles will be blank.")
+    intervention_params <- vals
+  }
   
   intervention_params$efficacy <- as.numeric(intervention_params$efficacy)
   intervention_params$unit_cost <- as.numeric(intervention_params$unit_cost)
   intervention_params$linkage_cost <- as.numeric(intervention_params$linkage_cost)
   intervention_params$linkage_rate <- as.numeric(intervention_params$linkage_rate)
   #intervention_params$multiplier <- as.numeric(intervention_params$multiplier)
+  
+  # NEW -- PrEP efficacy sub-assumptions (see derive_prep_efficacy()). Coerced
+  # defensively: absent columns are skipped so the file loads against a sheet
+  # that predates these rows.
+  for (.c in c("eff_adherent", "person_years_on_prep",
+               "second_shot_return_rate", "shot_coverage_years")) {
+    if (.c %in% names(intervention_params))
+      intervention_params[[.c]] <- as.numeric(intervention_params[[.c]])
+  }
+  
+  # spread() groups on (category, intervention, intervention_key). Any spelling
+  # drift in category/intervention across rows sharing a key silently splits it
+  # into two half-NA rows. `%||%` cannot catch that -- it only tests length-1 NA,
+  # so a length-2 vector sails straight through into the model. Fail loudly.
+  if (anyDuplicated(intervention_params$intervention_key)) {
+    stop("intervention_params: duplicate intervention_key after spread() -- ",
+         "check for inconsistent 'category'/'intervention' spelling across ",
+         "rows sharing a key: ",
+         paste(unique(intervention_params$intervention_key[
+           duplicated(intervention_params$intervention_key)]), collapse = ", "))
+  }
   
   return(intervention_params)
 }
@@ -214,9 +255,108 @@ CD4_AHD_TARGETING_YIELD <- hiv_params$prop_cd4_ahd
 
 
 # ============================================================================
+# DERIVED PrEP EFFICACY
+# ----------------------------------------------------------------------------
+# Overall efficacy = eff_adherent x person_years_of_protection_per_initiate,
+# where person-years is measured over the 12 months FOLLOWING initiation.
+#
+# COVERAGE CONVENTION: PrEP inputs are counts of people INITIATING PrEP in the
+# year (a flow), NOT people currently on PrEP (a stock). A stock figure is
+# already persistence-weighted; multiplying it by person_years again would
+# understate protection by ~1/person_years (~5x at py = 0.20). See unit_label
+# on the eight PrEP entries below, and check that baseline_testing.csv's
+# prep_oral / prep_lenacapavir columns are initiations.
+#
+#   Oral : person_years entered directly (person_years_on_prep).
+#            eff_adherent 0.74 x py 0.20 = 0.148  (FSW / AGYW / General)
+#            eff_adherent 0.74 x py 0.35 = 0.259  (MSM)
+#
+#   LEN  : person_years derived from the injection schedule --
+#            py = shot_coverage_years x (1 + second_shot_return_rate)
+#            eff_adherent 1.00 x 0.5 x (1 + 0.50) = 0.75
+#          Shot 1 covers all initiates for shot_coverage_years; shot 2 covers
+#          the returning fraction for a further shot_coverage_years. Only two
+#          shots fit a 12-month window, so py is capped at 1 by construction
+#          when return_rate = 1.
+#
+# ESTIMAND WARNING: eff_adherent must be efficacy CONDITIONAL ON BEING ON DRUG.
+# If a headline ITT/effectiveness figure is used instead, trial adherence is
+# already baked into it and multiplying by person_years double-discounts.
+# See the tool_tip_source cells for what each value actually is.
+#
+# ANNUAL-ATTRIBUTION ASSUMPTION: all protection generated by an initiate is
+# credited to the initiation year, so a December initiate's protection lands
+# mostly in the wrong year. In a steady state with roughly constant annual
+# initiations, spill-out is offset by spill-in from the prior year.
+# ============================================================================
+derive_prep_efficacy <- function(eff_adherent = NULL,
+                                 person_years = NULL,
+                                 return_rate  = NULL,
+                                 shot_years   = NULL,
+                                 fallback     = NULL,
+                                 key          = "<unknown>") {
+  eff_adherent <- eff_adherent %||% NA_real_
+  person_years <- person_years %||% NA_real_
+  return_rate  <- return_rate  %||% NA_real_
+  shot_years   <- shot_years   %||% 0.5
+  fallback     <- fallback     %||% NA_real_
+  
+  # LEN route takes precedence when both routes' inputs are present.
+  py <- if (!is.na(return_rate)) {
+    shot_years * (1 + return_rate)
+  } else if (!is.na(person_years)) {
+    person_years
+  } else {
+    NA_real_
+  }
+  
+  if (is.na(eff_adherent) || is.na(py)) {
+    if (is.na(fallback)) {
+      stop(sprintf(
+        "derive_prep_efficacy(): '%s' has neither derivation inputs nor an efficacy fallback. Add eff_adherent + (person_years_on_prep OR second_shot_return_rate) rows to the intervention_params sheet.",
+        key))
+    }
+    warning(sprintf(
+      "derive_prep_efficacy(): '%s' missing derivation inputs; falling back to the flat efficacy row (%.4f). Check for a mistyped parameter_type.",
+      key, fallback))
+    return(fallback)
+  }
+  
+  if (eff_adherent < 0 || eff_adherent > 1) {
+    stop(sprintf("derive_prep_efficacy(): '%s' eff_adherent = %s, outside [0,1].",
+                 key, format(eff_adherent)))
+  }
+  if (py < 0 || py > 1) {
+    stop(sprintf("derive_prep_efficacy(): '%s' person-years = %s, outside [0,1]. Person-years is a FRACTION of a year (0.20), not months (2.4).",
+                 key, format(py)))
+  }
+  
+  eff_adherent * py
+}
+
+# ============================================================================
 # BUILD INTERVENTION GROUPS
 # ============================================================================
 build_intervention_groups <- function(intervention_params){
+  
+  # Pulls the sub-assumption row-set for one PrEP key and derives efficacy.
+  # NO FALLBACK: efficacy is derived or the file refuses to load. The flat
+  # `efficacy` row and the blended prep_oral/prep_lenacapavir row are no longer
+  # consulted, and the old hardcoded 0.99/1.00 defaults are long gone. A
+  # mistyped parameter_type must be a startup failure, not a silent near-perfect
+  # PrEP efficacy.
+  prep_eff <- function(key) {
+    row <- subset(intervention_params, intervention_key == key)
+    derive_prep_efficacy(
+      eff_adherent = row$eff_adherent,
+      person_years = row$person_years_on_prep,
+      return_rate  = row$second_shot_return_rate,
+      shot_years   = row$shot_coverage_years,
+      fallback     = NA_real_,   # explicit: no fallback path
+      key          = key
+    )
+  }
+  
   intervention_groups <- list(
     prevention = list(
       name = "Prevention",
@@ -229,18 +369,19 @@ build_intervention_groups <- function(intervention_params){
         # strata_val$n_fsw/n_msm/n_agyw (computed earlier in
         # calculate_scenario_outcomes), not looked up via populations[[ ]].
         #
-        # EFFICACY NOT YET SOURCED PER GROUP: falls back to the pre-existing
-        # blended prep_oral/prep_lenacapavir efficacy for all three groups
-        # until real trial-specific values are entered as their own
-        # intervention_key rows in the Excel sheet. Candidate sources: iPrEx,
-        # Partners PrEP, FEM-PrEP/VOICE (oral); PURPOSE 1 (AGYW) and PURPOSE 2
-        # (MSM/transgender individuals) primary publications (lenacapavir).
+        # EFFICACY IS DERIVED, not read flat. Each key's efficacy comes from
+        # prep_eff() -> derive_prep_efficacy(): eff_adherent x person-years of
+        # protection per initiate (oral), or eff_adherent x shot schedule x
+        # second-shot return (LEN). See the derive_prep_efficacy() header for
+        # the estimand warning and the annual-attribution assumption, and the
+        # sheet's tool_tip_source cells for what each value actually is.
+        # Sources to check against: iPrEx, Partners PrEP, FEM-PrEP/VOICE
+        # (oral); PURPOSE 1 / PURPOSE 2 (lenacapavir).
         prep_oral_fsw = list(
           name = "Oral PrEP (FSW)",
           type = "absolute",
-          unit_label = "people initiated and currently using",
-          efficacy = subset(intervention_params, intervention_key == "prep_oral_fsw")$efficacy %||%
-            (subset(intervention_params, intervention_key == "prep_oral")$efficacy %||% 0.99),
+          unit_label = "people initiating PrEP this year",
+          efficacy = prep_eff("prep_oral_fsw"),
           eligible_pop = "n_fsw",
           unit_cost = subset(intervention_params, intervention_key == "prep_oral_fsw")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
@@ -249,9 +390,8 @@ build_intervention_groups <- function(intervention_params){
         prep_oral_msm = list(
           name = "Oral PrEP (MSM)",
           type = "absolute",
-          unit_label = "people initiated and currently using",
-          efficacy = subset(intervention_params, intervention_key == "prep_oral_msm")$efficacy %||%
-            (subset(intervention_params, intervention_key == "prep_oral")$efficacy %||% 0.99),
+          unit_label = "people initiating PrEP this year",
+          efficacy = prep_eff("prep_oral_msm"),
           eligible_pop = "n_msm",
           unit_cost = subset(intervention_params, intervention_key == "prep_oral_msm")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
@@ -260,9 +400,8 @@ build_intervention_groups <- function(intervention_params){
         prep_oral_agyw = list(
           name = "Oral PrEP (AGYW)",
           type = "absolute",
-          unit_label = "people initiated and currently using",
-          efficacy = subset(intervention_params, intervention_key == "prep_oral_agyw")$efficacy %||%
-            (subset(intervention_params, intervention_key == "prep_oral")$efficacy %||% 0.99),
+          unit_label = "people initiating PrEP this year",
+          efficacy = prep_eff("prep_oral_agyw"),
           eligible_pop = "n_agyw",
           unit_cost = subset(intervention_params, intervention_key == "prep_oral_agyw")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
@@ -279,9 +418,8 @@ build_intervention_groups <- function(intervention_params){
         prep_oral_general = list(
           name = "Oral PrEP (General)",
           type = "absolute",
-          unit_label = "people initiated and currently using",
-          efficacy = subset(intervention_params, intervention_key == "prep_oral_general")$efficacy %||%
-            (subset(intervention_params, intervention_key == "prep_oral")$efficacy %||% 0.99),
+          unit_label = "people initiating PrEP this year",
+          efficacy = prep_eff("prep_oral_general"),
           eligible_pop = "n_general_all",
           unit_cost = subset(intervention_params, intervention_key == "prep_oral_general")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
@@ -290,9 +428,8 @@ build_intervention_groups <- function(intervention_params){
         prep_lenacapavir_fsw = list(
           name = "Lenacapavir (FSW)",
           type = "absolute",
-          unit_label = "people initiated and currently using",
-          efficacy = subset(intervention_params, intervention_key == "prep_lenacapavir_fsw")$efficacy %||%
-            (subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy %||% 1.00),
+          unit_label = "people initiating PrEP this year",
+          efficacy = prep_eff("prep_lenacapavir_fsw"),
           eligible_pop = "n_fsw",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_fsw")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
@@ -301,9 +438,8 @@ build_intervention_groups <- function(intervention_params){
         prep_lenacapavir_msm = list(
           name = "Lenacapavir (MSM)",
           type = "absolute",
-          unit_label = "people initiated and currently using",
-          efficacy = subset(intervention_params, intervention_key == "prep_lenacapavir_msm")$efficacy %||%
-            (subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy %||% 1.00),
+          unit_label = "people initiating PrEP this year",
+          efficacy = prep_eff("prep_lenacapavir_msm"),
           eligible_pop = "n_msm",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_msm")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
@@ -312,9 +448,8 @@ build_intervention_groups <- function(intervention_params){
         prep_lenacapavir_agyw = list(
           name = "Lenacapavir (AGYW)",
           type = "absolute",
-          unit_label = "people initiated and currently using",
-          efficacy = subset(intervention_params, intervention_key == "prep_lenacapavir_agyw")$efficacy %||%
-            (subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy %||% 1.00),
+          unit_label = "people initiating PrEP this year",
+          efficacy = prep_eff("prep_lenacapavir_agyw"),
           eligible_pop = "n_agyw",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_agyw")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
@@ -323,9 +458,8 @@ build_intervention_groups <- function(intervention_params){
         prep_lenacapavir_general = list(
           name = "Lenacapavir (General)",
           type = "absolute",
-          unit_label = "people initiated and currently using",
-          efficacy = subset(intervention_params, intervention_key == "prep_lenacapavir_general")$efficacy %||%
-            (subset(intervention_params, intervention_key == "prep_lenacapavir")$efficacy %||% 1.00),
+          unit_label = "people initiating PrEP this year",
+          efficacy = prep_eff("prep_lenacapavir_general"),
           eligible_pop = "n_general_all",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_general")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
