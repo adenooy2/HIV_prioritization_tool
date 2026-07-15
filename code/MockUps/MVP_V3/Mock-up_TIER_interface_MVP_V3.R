@@ -718,6 +718,22 @@ server <- function(input, output, session) {
     )
   }
   
+  # Shared builder for the PrEP cap warnings so the oral and lenacapavir
+  # messages stay symmetric and both state the REAL binding constraint: it is
+  # the COMBINED oral + lenacapavir total that is capped at the population, not
+  # the edited field on its own. Quoting the population without the other
+  # product's value (the old oral message) makes the cap look like an
+  # arithmetic error, since cap = population - other_product.
+  prep_cap_message <- function(scenario_prefix, field_label, capped_to,
+                               other_label, other_val, limit_label, limit_val) {
+    paste0(scenario_prefix, ": ", field_label, " capped at ",
+           format(round(capped_to), big.mark = ","),
+           " — oral + lenacapavir combined can't exceed ", limit_label,
+           " (", format(round(limit_val), big.mark = ","), "). ",
+           other_label, " is currently ",
+           format(round(other_val), big.mark = ","), ".")
+  }
+  
   # Registers the oral/lenacapavir cross-validation pair for one scenario +
   # group (FSW/MSM/AGYW), replacing the old single adult_pop cap that used
   # to cross-validate baseline_prep_oral against baseline_prep_lenacapavir
@@ -737,10 +753,11 @@ server <- function(input, output, session) {
             max_oral <- max(0, n_group - lena_val)
             updateNumericInput(session, oral_id, value = round(max_oral), max = round(n_group))
             showNotification(
-              paste0(scenario_prefix, ": Oral PrEP (", group_label, ") capped at ",
-                     format(round(max_oral), big.mark = ","),
-                     " (approx. ", group_label, " population: ", format(round(n_group), big.mark = ","), ")"),
-              type = "warning", duration = 4)
+              prep_cap_message(scenario_prefix,
+                               paste0("Oral PrEP (", group_label, ")"), max_oral,
+                               "Lenacapavir", lena_val,
+                               paste0("the estimated ", group_label, " population"), n_group),
+              type = "warning", duration = 6)
           }
         }
       })
@@ -756,9 +773,11 @@ server <- function(input, output, session) {
             max_lena <- max(0, n_group - oral_val)
             updateNumericInput(session, lena_id, value = round(max_lena), max = round(n_group))
             showNotification(
-              paste0(scenario_prefix, ": Lenacapavir (", group_label, ") capped at ",
-                     format(round(max_lena), big.mark = ",")),
-              type = "warning", duration = 4)
+              prep_cap_message(scenario_prefix,
+                               paste0("Lenacapavir (", group_label, ")"), max_lena,
+                               "Oral PrEP", oral_val,
+                               paste0("the estimated ", group_label, " population"), n_group),
+              type = "warning", duration = 6)
           }
         }
       })
@@ -787,10 +806,10 @@ server <- function(input, output, session) {
           new_o <- max(0, t_max - l)
           updateNumericInput(session, oral_id, value = round(new_o), max = round(t_max))
           showNotification(
-            paste0(scenario_prefix, ": Total oral PrEP capped at ",
-                   format(round(new_o), big.mark = ","),
-                   " — the combined total can't exceed the HIV-negative population across all PrEP groups."),
-            type = "warning", duration = 4)
+            prep_cap_message(scenario_prefix, "Total oral PrEP", new_o,
+                             "Total lenacapavir", l,
+                             "the estimated HIV-negative population across all PrEP groups", t_max),
+            type = "warning", duration = 6)
         }
       })
     }) %>% bindEvent(input[[oral_id]])
@@ -803,9 +822,10 @@ server <- function(input, output, session) {
           new_l <- max(0, t_max - o)
           updateNumericInput(session, lena_id, value = round(new_l), max = round(t_max))
           showNotification(
-            paste0(scenario_prefix, ": Total lenacapavir capped at ",
-                   format(round(new_l), big.mark = ",")),
-            type = "warning", duration = 4)
+            prep_cap_message(scenario_prefix, "Total lenacapavir", new_l,
+                             "Total oral PrEP", o,
+                             "the estimated HIV-negative population across all PrEP groups", t_max),
+            type = "warning", duration = 6)
         }
       })
     }) %>% bindEvent(input[[lena_id]])
@@ -880,7 +900,7 @@ server <- function(input, output, session) {
       cost_overrides_test = preset$context$cost_overrides_test,  # named list of country-specific test unit cost overrides; absent/NULL means use global defaults
       cost_overrides_prep = preset$context$cost_overrides_prep,  # named list of country-specific PrEP unit cost overrides (8 keys); absent/NULL -> global defaults
       bf_duration_months = preset$context$bf_duration_months  # country-specific BF duration (months); NULL falls back to hiv_params in logic
-      ))
+    ))
   }, ignoreInit = FALSE)
   
   # Reactive context
