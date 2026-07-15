@@ -368,6 +368,16 @@ ui <- page_sidebar(
     ),
     
     nav_panel(
+      "Parameters",
+      h4("Effectiveness and unit cost assumptions"),
+      p(strong("Note:"), " Values below are the defaults used in the results — from the ",
+        "parameter sheet, or from country data where available. You can override them ",
+        "for this session. Edits ", strong("reset when you change country"),
+        ", because unit costs are country-specific."),
+      uiOutput("param_tab_ui")
+    ),
+    
+    nav_panel(
       "Results Comparison",
       div(
         style = "display: flex; justify-content: flex-end; margin-bottom: 8px;",
@@ -812,6 +822,473 @@ server <- function(input, output, session) {
   # under aggressive testing scenarios.
   country_calibration <- reactiveVal(NULL)
   
+  # ==========================================================================
+  # PARAMETER TAB — session-scoped overrides
+  # --------------------------------------------------------------------------
+  # Scoped to the session, never global: two people using the tool at once must
+  # not see each other's numbers. Cleared on country switch (input$region)
+  # because PrEP/ART unit costs are country-specific and carrying an edit across
+  # countries would silently price one country at another's numbers.
+  #
+  # STORAGE is per-key, matching the sheet:
+  #   $eff[[intervention_key]][[parameter_type]] -> numeric
+  #   $cost[[intervention_key]]                  -> numeric (8 PrEP unit costs)
+  #   $art_cost                                  -> numeric or NULL
+  #
+  # The UI is deliberately NARROWER than the storage: one shared efficacy input
+  # per product fans out to that product's four group keys. So the sheet keeps
+  # its per-key shape (and derive_prep_efficacy(), test_14 and the logic file
+  # are untouched by this tab), while the user sees the structure they actually
+  # reason in.
+  #
+  # UNITS: durations are entered in MONTHS and converted to person-years at the
+  # UI boundary (/12). The sheet stays in person-years -- entering months into
+  # the sheet is exactly what derive_prep_efficacy()'s py > 1 guard exists to
+  # reject. Conversion lives in one place: mo_to_years() / years_to_mo() below.
+  # ==========================================================================
+  param_overrides <- reactiveValues(eff = list(), cost = list(), art_cost = NULL)
+  
+  ORAL_KEYS <- c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general")
+  LEN_KEYS  <- c("prep_lenacapavir_fsw", "prep_lenacapavir_msm",
+                 "prep_lenacapavir_agyw", "prep_lenacapavir_general")
+  PREP_KEYS <- c(ORAL_KEYS, LEN_KEYS)
+  
+  # Duration is capped at 12 months. The model runs a single year, so protection
+  # generated per initiation cannot exceed one person-year; 12 months is the
+  # same ceiling derive_prep_efficacy() enforces as py <= 1, expressed in the
+  # unit the user is typing in.
+  MAX_DURATION_MONTHS <- 12
+  mo_to_years <- function(m) m / 12
+  years_to_mo <- function(y) {
+    if (length(y) == 1 && !is.na(y)) unname(round(y * 12, 2)) else NA_real_
+  }
+  
+  prep_group_label <- function(key) {
+    if (grepl("_fsw$", key))     "FSW"
+    else if (grepl("_msm$", key))  "MSM"
+    else if (grepl("_agyw$", key)) "AGYW"
+    else                           "General population"
+  }
+  
+  sheet_val <- function(key, pt, ip = intervention_params) {
+    v <- subset(ip, intervention_key == key)[[pt]]
+    if (length(v) == 1) unname(as.numeric(v)) else NA_real_
+  }
+  sheet_src <- function(key, pt, ip = intervention_params) {
+    v <- subset(ip, intervention_key == key)[[paste0("src_", pt)]]
+    if (length(v) == 1 && !is.na(v) && nzchar(v)) v else NA_character_
+  }
+  
+  # A value the UI presents as SHARED across a product's four group keys, read
+  # back from four independent sheet rows. If those rows disagree, one input
+  # cannot represent them -- so surface it rather than silently overwrite three
+  # of the four on the first edit.
+  shared_default <- function(keys, pt) {
+    # USE.NAMES = FALSE is load-bearing: vapply over a CHARACTER vector returns a
+    # NAMED result by default, and a named numeric survives into
+    # updateNumericInput(), which serialises it to JSON as an object
+    # ({"prep_oral_fsw": 0.74}) rather than a scalar -- the client then renders
+    # the box empty. numericInput() hides this at first render because it runs
+    # the value through as.character(), which drops names. unname() below is the
+    # belt to this braces.
+    vals <- vapply(keys, sheet_val, numeric(1), pt = pt, USE.NAMES = FALSE)
+    present <- vals[!is.na(vals)]
+    u <- unique(round(present, 10))
+    list(value    = if (length(present) >= 1) unname(present[1]) else NA_real_,
+         conflict = length(u) > 1,
+         detail   = paste(sprintf("%s: %s",
+                                  vapply(keys, prep_group_label, character(1), USE.NAMES = FALSE),
+                                  ifelse(is.na(vals), "missing", format(vals))),
+                          collapse = "; "))
+  }
+  
+  n_overrides <- reactive({
+    length(unlist(param_overrides$eff)) + length(param_overrides$cost) +
+      as.integer(!is.null(param_overrides$art_cost))
+  })
+  
+  # Clear on country switch. priority = 100 so this runs BEFORE the preset
+  # observer rebuilds country_calibration(); otherwise context() would rebuild
+  # once with the new country's CSV costs and the old country's edits on top.
+  observeEvent(input$region, {
+    had <- isolate(n_overrides()) > 0
+    param_overrides$eff      <- list()
+    param_overrides$cost     <- list()
+    param_overrides$art_cost <- NULL
+    if (had) {
+      showNotification(
+        "Parameter edits were reset to the new country's defaults.",
+        type = "warning", duration = 6)
+    }
+  }, ignoreInit = TRUE, priority = 100)
+  
+  effective_intervention_params <- reactive({
+    ip <- intervention_params
+    for (k in names(param_overrides$eff)) {
+      for (pt in names(param_overrides$eff[[k]])) {
+        ip[[pt]][ip$intervention_key == k] <- param_overrides$eff[[k]][[pt]]
+      }
+    }
+    ip
+  })
+  
+  # build_intervention_groups() re-runs derive_prep_efficacy() on the edited
+  # values. This is the point of the design: the derived figure on the card and
+  # the figure the model uses come from the same call, so they cannot drift.
+  effective_intervention_groups <- reactive({
+    build_intervention_groups(effective_intervention_params())
+  })
+  
+  # Write one value to one (key, parameter_type). Dropping the override when the
+  # value returns to the sheet default keeps the report's "changed parameters"
+  # table honest -- otherwise it would list a change that isn't one.
+  set_eff_override <- function(key, pt, v) {
+    e <- param_overrides$eff
+    sheet <- sheet_val(key, pt)
+    if (length(sheet) == 1 && !is.na(sheet) && isTRUE(all.equal(v, sheet))) {
+      if (!is.null(e[[key]])) {
+        e[[key]][[pt]] <- NULL
+        if (length(e[[key]]) == 0) e[[key]] <- NULL
+      }
+    } else {
+      if (is.null(e[[key]])) e[[key]] <- list()
+      e[[key]][[pt]] <- v
+    }
+    param_overrides$eff <- e
+  }
+  
+  prep_cost_default <- function(key, cc) {
+    csv_val <- if (!is.null(cc)) cc$cost_overrides_prep[[key]] else NULL
+    if (!is.null(csv_val) && !is.na(csv_val)) {
+      return(list(value = csv_val, source = "country data (basic_hiv_data.csv)"))
+    }
+    list(value = intervention_groups$prevention$interventions[[key]]$unit_cost,
+         source = "global default (intervention_params)")
+  }
+  
+  art_cost_default <- function(cc) {
+    v <- if (!is.null(cc)) cc$art_cost_standard else NULL
+    if (!is.null(v) && !is.na(v)) {
+      list(value = v, source = "country data (basic_hiv_data.csv)")
+    } else {
+      list(value = ART_COST_STANDARD, source = "global default (intervention_params)")
+    }
+  }
+  
+  fmt_money <- function(x) {
+    if (length(x) == 1 && !is.na(x)) format(round(x, 2), nsmall = 2) else "not set"
+  }
+  src_note <- function(x) {
+    div(style = "font-size: 11px; color: #6b7280; margin-top: -6px;",
+        if (length(x) == 1 && !is.na(x)) x else "No source recorded")
+  }
+  conflict_note <- function(d) {
+    if (!isTRUE(d$conflict)) return(NULL)
+    div(style = "font-size: 11px; color: #b45309;",
+        strong("Values differ by group in the parameter sheet "),
+        sprintf("(%s). ", d$detail),
+        "Editing this box applies one value to all four groups.")
+  }
+  
+  # ---- Parameter tab: card rendering ---------------------------------------
+  # Depends on input$region ONLY. Depending on the edits would recreate the
+  # numericInputs on every keystroke and throw the cursor out of the box; the
+  # re-render on country switch is what restores the fields to defaults.
+  output$param_tab_ui <- renderUI({
+    input$region
+    cc <- isolate(country_calibration())
+    
+    oral_eff_d <- shared_default(ORAL_KEYS, "eff_adherent")
+    len_eff_d  <- shared_default(LEN_KEYS,  "eff_adherent")
+    len_dur_d  <- shared_default(LEN_KEYS,  "shot_coverage_years")
+    
+    cost_rows <- lapply(PREP_KEYS, function(key) {
+      d <- prep_cost_default(key, cc)
+      div(
+        numericInput(paste0("cost_", key),
+                     intervention_groups$prevention$interventions[[key]]$name %||% key,
+                     value = d$value, min = 0, step = 1, width = "100%"),
+        uiOutput(paste0("chkcost_", key)),
+        div(style = "font-size: 11px; color: #6b7280; margin-top: -6px;",
+            sprintf("Default: %s — %s", fmt_money(d$value), d$source))
+      )
+    })
+    art_d <- art_cost_default(cc)
+    
+    div(
+      style = "height: 80vh; overflow-y: auto; padding-right: 15px;",
+      h5("Effectiveness"),
+      p(style = "color:#6b7280; font-size:12px;",
+        "PrEP efficacy is not entered directly — it is derived from the assumptions ",
+        "below using the same function the model itself calls, so the two cannot ",
+        "disagree. Durations are entered in months."),
+      
+      # ---------------- Oral PrEP ----------------
+      card(
+        fill = FALSE,
+        card_header("Oral PrEP"),
+        card_body(
+          fillable = FALSE,
+          numericInput("param_oral_eff",
+                       "Efficacy when adherent (0-1)",
+                       value = oral_eff_d$value, min = 0, max = 1, step = 0.01,
+                       width = "320px"),
+          uiOutput("chk_param_oral_eff"),
+          src_note(sheet_src(ORAL_KEYS[1], "eff_adherent")),
+          conflict_note(oral_eff_d),
+          div(style = "font-size:12px; color:#374151; margin-top:12px; font-weight:600;",
+              "Average duration on PrEP, by group"),
+          div(style = "font-size:11px; color:#6b7280; margin-bottom:6px;",
+              "Months of protection generated per person initiating, within 12 months of initiation."),
+          do.call(layout_columns, c(list(col_widths = rep(6, length(ORAL_KEYS))), lapply(ORAL_KEYS, function(key) {
+            div(
+              numericInput(paste0("param_dur_", key), prep_group_label(key),
+                           value = years_to_mo(sheet_val(key, "person_years_on_prep")),
+                           min = 0, max = MAX_DURATION_MONTHS, step = 0.1, width = "100%"),
+              uiOutput(paste0("chk_param_dur_", key)),
+              src_note(sheet_src(key, "person_years_on_prep")),
+              uiOutput(paste0("derived_", key))
+            )
+          })))
+        )
+      ),
+      
+      # ---------------- Lenacapavir ----------------
+      card(
+        fill = FALSE,
+        card_header("Lenacapavir"),
+        card_body(
+          fillable = FALSE,
+          numericInput("param_len_eff",
+                       "Efficacy when adherent (0-1)",
+                       value = len_eff_d$value, min = 0, max = 1, step = 0.01,
+                       width = "320px"),
+          uiOutput("chk_param_len_eff"),
+          src_note(sheet_src(LEN_KEYS[1], "eff_adherent")),
+          conflict_note(len_eff_d),
+          
+          numericInput("param_len_dur",
+                       "Duration of protection per injection (months)",
+                       value = years_to_mo(len_dur_d$value),
+                       min = 0, max = MAX_DURATION_MONTHS, step = 0.5, width = "320px"),
+          uiOutput("chk_param_len_dur"),
+          src_note(sheet_src(LEN_KEYS[1], "shot_coverage_years")),
+          conflict_note(len_dur_d),
+          
+          div(style = "font-size:12px; color:#374151; margin-top:12px; font-weight:600;",
+              "Probability of returning for a second injection, by group"),
+          do.call(layout_columns, c(list(col_widths = rep(6, length(LEN_KEYS))), lapply(LEN_KEYS, function(key) {
+            div(
+              numericInput(paste0("param_ret_", key), prep_group_label(key),
+                           value = sheet_val(key, "second_shot_return_rate"),
+                           min = 0, max = 1, step = 0.05, width = "100%"),
+              uiOutput(paste0("chk_param_ret_", key)),
+              src_note(sheet_src(key, "second_shot_return_rate")),
+              uiOutput(paste0("derived_", key))
+            )
+          })))
+        )
+      ),
+      
+      # ---------------- Unit costs ----------------
+      h5(style = "margin-top:18px;", "Unit costs"),
+      card(
+        fill = FALSE,
+        card_header("PrEP unit costs (USD per person initiating)"),
+        card_body(fillable = FALSE, do.call(layout_columns, c(list(col_widths = rep(6, length(cost_rows))), cost_rows)))
+      ),
+      card(
+        fill = FALSE,
+        card_header("ART unit cost"),
+        card_body(
+          fillable = FALSE,
+          numericInput("cost_art_standard", "Standard ART cost (USD per person-year)",
+                       value = art_d$value, min = 0, step = 1, width = "320px"),
+          uiOutput("chkcost_art"),
+          div(style = "font-size: 11px; color: #6b7280; margin-top: -6px;",
+              sprintf("Default: %s — %s", fmt_money(art_d$value), art_d$source)),
+          div(style = "font-size: 11px; color: #b45309; margin-top: 6px;",
+              strong("Note: "),
+              "DSD and multi-month dispensing costs are fractional multipliers of ",
+              "this value, so changing it also changes those. That is intended.")
+        )
+      ),
+      
+      # ---------------- Single reset ----------------
+      div(style = "margin-top:18px;",
+          actionButton("reset_all_params", "Reset all values to defaults",
+                       class = "btn-outline-secondary"),
+          uiOutput("param_reset_status"))
+    )
+  })
+  
+  # ---- Parameter tab: validation + ingestion -------------------------------
+  # Validation strategy: an out-of-range entry is NOT written to
+  # param_overrides. The model stays on the previous value and the need()
+  # message says so, rather than the value reaching derive_prep_efficacy() and
+  # taking the session down with a red stop().
+  chk_range <- function(v, lo, hi, unit = "") {
+    validate(
+      need(!is.null(v) && !is.na(v),
+           "Enter a number — the default is still being used."),
+      need(v >= lo && v <= hi,
+           sprintf("Must be between %g and %g%s. Not applied — the default is still being used.",
+                   lo, hi, unit))
+    )
+    NULL
+  }
+  ok_range <- function(v, lo, hi) !(is.null(v) || is.na(v) || v < lo || v > hi)
+  
+  output$chk_param_oral_eff <- renderUI({ chk_range(input$param_oral_eff, 0, 1) })
+  output$chk_param_len_eff  <- renderUI({ chk_range(input$param_len_eff,  0, 1) })
+  output$chk_param_len_dur  <- renderUI({
+    chk_range(input$param_len_dur, 0, MAX_DURATION_MONTHS, " months")
+  })
+  
+  # Shared efficacy inputs fan out to their product's four group keys.
+  observeEvent(input$param_oral_eff, {
+    v <- input$param_oral_eff
+    if (!ok_range(v, 0, 1)) return()
+    for (key in ORAL_KEYS) set_eff_override(key, "eff_adherent", v)
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$param_len_eff, {
+    v <- input$param_len_eff
+    if (!ok_range(v, 0, 1)) return()
+    for (key in LEN_KEYS) set_eff_override(key, "eff_adherent", v)
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$param_len_dur, {
+    v <- input$param_len_dur
+    if (!ok_range(v, 0, MAX_DURATION_MONTHS)) return()
+    for (key in LEN_KEYS) set_eff_override(key, "shot_coverage_years", mo_to_years(v))
+  }, ignoreInit = TRUE)
+  
+  # Per-group inputs + per-group derived readouts. local() so each closure
+  # captures THIS key, not the loop's last value.
+  for (.key in PREP_KEYS) {
+    local({
+      key   <- .key
+      is_len <- key %in% LEN_KEYS
+      
+      if (is_len) {
+        output[[paste0("chk_param_ret_", key)]] <- renderUI({
+          chk_range(input[[paste0("param_ret_", key)]], 0, 1)
+        })
+        observeEvent(input[[paste0("param_ret_", key)]], {
+          v <- input[[paste0("param_ret_", key)]]
+          if (!ok_range(v, 0, 1)) return()
+          set_eff_override(key, "second_shot_return_rate", v)
+        }, ignoreInit = TRUE)
+      } else {
+        output[[paste0("chk_param_dur_", key)]] <- renderUI({
+          chk_range(input[[paste0("param_dur_", key)]], 0, MAX_DURATION_MONTHS, " months")
+        })
+        observeEvent(input[[paste0("param_dur_", key)]], {
+          v <- input[[paste0("param_dur_", key)]]
+          if (!ok_range(v, 0, MAX_DURATION_MONTHS)) return()
+          set_eff_override(key, "person_years_on_prep", mo_to_years(v))
+        }, ignoreInit = TRUE)
+      }
+      
+      output[[paste0("derived_", key)]] <- renderUI({
+        row <- subset(effective_intervention_params(), intervention_key == key)
+        val <- tryCatch(
+          derive_prep_efficacy(
+            eff_adherent = row$eff_adherent,
+            person_years = row$person_years_on_prep,
+            return_rate  = row$second_shot_return_rate,
+            shot_years   = row$shot_coverage_years,
+            fallback     = NA_real_, key = key),
+          error = function(e) NA_real_)
+        validate(need(length(val) == 1 && !is.na(val),
+                      "Derived efficacy unavailable — check the assumptions above."))
+        div(style = "font-size:12px; margin-top:-4px;",
+            strong(sprintf("Derived efficacy: %.3f", val)))
+      })
+      
+      output[[paste0("chkcost_", key)]] <- renderUI({
+        v <- input[[paste0("cost_", key)]]
+        validate(
+          need(!is.null(v) && !is.na(v),
+               "Enter a number — the default is still being used."),
+          need(v >= 0, "A unit cost cannot be negative. Not applied.")
+        )
+        NULL
+      })
+      observeEvent(input[[paste0("cost_", key)]], {
+        v <- input[[paste0("cost_", key)]]
+        if (is.null(v) || is.na(v) || v < 0) return()
+        d   <- prep_cost_default(key, country_calibration())
+        cst <- param_overrides$cost
+        if (length(d$value) == 1 && !is.na(d$value) && isTRUE(all.equal(v, d$value))) {
+          cst[[key]] <- NULL
+        } else {
+          cst[[key]] <- v
+        }
+        param_overrides$cost <- cst
+      }, ignoreInit = TRUE)
+    })
+  }
+  
+  output$chkcost_art <- renderUI({
+    v <- input$cost_art_standard
+    validate(
+      need(!is.null(v) && !is.na(v),
+           "Enter a number — the default is still being used."),
+      need(v >= 0, "A unit cost cannot be negative. Not applied.")
+    )
+    NULL
+  })
+  observeEvent(input$cost_art_standard, {
+    v <- input$cost_art_standard
+    if (is.null(v) || is.na(v) || v < 0) return()
+    d <- art_cost_default(country_calibration())
+    param_overrides$art_cost <-
+      if (length(d$value) == 1 && !is.na(d$value) && isTRUE(all.equal(v, d$value))) NULL else v
+  }, ignoreInit = TRUE)
+  
+  # ---- Single reset --------------------------------------------------------
+  observeEvent(input$reset_all_params, {
+    n <- isolate(n_overrides())
+    param_overrides$eff      <- list()
+    param_overrides$cost     <- list()
+    param_overrides$art_cost <- NULL
+    
+    cc <- country_calibration()
+    updateNumericInput(session, "param_oral_eff",
+                       value = shared_default(ORAL_KEYS, "eff_adherent")$value)
+    updateNumericInput(session, "param_len_eff",
+                       value = shared_default(LEN_KEYS, "eff_adherent")$value)
+    updateNumericInput(session, "param_len_dur",
+                       value = years_to_mo(shared_default(LEN_KEYS, "shot_coverage_years")$value))
+    for (key in ORAL_KEYS) {
+      updateNumericInput(session, paste0("param_dur_", key),
+                         value = years_to_mo(sheet_val(key, "person_years_on_prep")))
+    }
+    for (key in LEN_KEYS) {
+      updateNumericInput(session, paste0("param_ret_", key),
+                         value = sheet_val(key, "second_shot_return_rate"))
+    }
+    for (key in PREP_KEYS) {
+      updateNumericInput(session, paste0("cost_", key),
+                         value = prep_cost_default(key, cc)$value)
+    }
+    updateNumericInput(session, "cost_art_standard", value = art_cost_default(cc)$value)
+    
+    showNotification(
+      if (n > 0) "All parameters reset to defaults." else "Already at defaults.",
+      type = "message", duration = 4)
+  })
+  
+  output$param_reset_status <- renderUI({
+    n <- n_overrides()
+    div(style = "font-size:12px; color:#6b7280; margin-top:6px;",
+        if (n == 0) "No parameters have been changed from their defaults."
+        else sprintf("%d parameter value%s changed from default%s.",
+                     n, if (n == 1) "" else "s", if (n == 1) "" else "s"))
+  })
+  
   # Load regional preset when selected
   observeEvent(input$region, {
     preset <- regional_presets[[input$region]]
@@ -912,7 +1389,8 @@ server <- function(input, output, session) {
       # Country-specific ART unit cost. NULL when no preset selected (e.g.
       # Custom Country) -- the logic file's `%||% ART_COST_STANDARD` fallback
       # then uses the global Excel/intervention_params value.
-      art_cost_standard = if (!is.null(cc)) cc$art_cost_standard else NULL,
+      art_cost_standard = param_overrides$art_cost %||%
+        (if (!is.null(cc)) cc$art_cost_standard else NULL),
       # Country-specific test unit cost overrides (named list, keyed by
       # intervention_key). NULL when no preset selected; in that case the
       # logic file's `context$cost_overrides_test[[int_key]] %||% intervention$unit_cost`
@@ -922,11 +1400,27 @@ server <- function(input, output, session) {
       # NULL when no preset selected; logic file's
       # `context$cost_overrides_prep[[int_key]] %||% intervention$unit_cost`
       # then falls back to the global value.
-      cost_overrides_prep = if (!is.null(cc)) cc$cost_overrides_prep else NULL,
+      # Parameter tab: user cost edits layer ON TOP of the country CSV, not
+      # inside intervention_groups. The cost loop reads
+      # `cost_overrides_prep[[k]] %||% intervention$unit_cost`, so a value
+      # injected into unit_cost would be shadowed by the CSV and do nothing --
+      # the box would move and the result wouldn't.
+      cost_overrides_prep = modifyList(
+        (if (!is.null(cc)) cc$cost_overrides_prep else NULL) %||% list(),
+        param_overrides$cost
+      ),
       # Country-specific breastfeeding duration in months. NULL when no preset
       # selected or when the CSV column is missing/blank -- logic file's
       # `%||% hiv_params$bf_duration_months %||% 18` chain handles the fallback.
-      bf_duration_months = if (!is.null(cc)) cc$bf_duration_months else NULL
+      bf_duration_months = if (!is.null(cc)) cc$bf_duration_months else NULL,
+      # Parameter tab: session efficacy overrides reach the model here.
+      # calculate_scenario_outcomes() reads
+      # `context$intervention_groups %||% intervention_groups`, so NULL is safe
+      # and the tests (which never set this) keep using the global.
+      # NOTE: not yet a COMPLETE override -- define_strata_params() still reads
+      # the global directly for vmmc_risk_reduction. Fine at current scope
+      # (PrEP only); must be closed before VMMC efficacy is ever exposed.
+      intervention_groups = effective_intervention_groups()
     )
   })
   

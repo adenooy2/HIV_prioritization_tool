@@ -334,6 +334,31 @@ derive_prep_efficacy <- function(eff_adherent = NULL,
   eff_adherent * py
 }
 
+# ----------------------------------------------------------------------------
+# require_efficacy(): single validator for every PrEP efficacy read.
+#
+# derive_prep_efficacy() hard-errors at load, so by the time an efficacy reaches
+# FOI it should always be a single non-NA number in [0,1]. A NULL or NA here
+# therefore means the KEY is wrong (spelling drift, dropped sheet row, a caller
+# that didn't supply it) -- which is exactly the case `%||%` could not
+# distinguish from a legitimate default. This file's `%||%` (line ~28) catches
+# NULL, length-0 AND length-1 NA, so the old `%||% 0.99` / `%||% 1.00` fallbacks
+# swallowed every one of those into near-perfect PrEP, silently. This turns them
+# into a stop() instead.
+# ----------------------------------------------------------------------------
+require_efficacy <- function(value, key, where) {
+  if (is.null(value) || !is.numeric(value) || length(value) != 1L || is.na(value)) {
+    stop(sprintf(
+      "%s: efficacy for '%s' is missing or not a single non-NA number. Check intervention_params for a mis-keyed or dropped row.",
+      where, key))
+  }
+  if (value < 0 || value > 1) {
+    stop(sprintf("%s: efficacy for '%s' = %s, outside [0,1].",
+                 where, key, format(value)))
+  }
+  value
+}
+
 # ============================================================================
 # BUILD INTERVENTION GROUPS
 # ============================================================================
@@ -1753,26 +1778,26 @@ compute_prevention_adjustments <- function(scenario_interventions, strata, popul
   cov_gmc_oral   <- cov(go$gmc, strata$n_general_male_circ)
   cov_gmc_len    <- cov(gl$gmc, strata$n_general_male_circ)
   
-  eff_gen_oral <- scenario_interventions$eff_prep_oral_general %||%
-    (scenario_interventions$eff_prep_oral %||% 0.99)
-  eff_gen_len  <- scenario_interventions$eff_prep_len_general %||%
-    (scenario_interventions$eff_prep_len %||% 1.00)
+  # Per-group, per-product PrEP efficacy. Derived upstream by
+  # derive_prep_efficacy() from the intervention_params sub-assumption rows and
+  # passed in by calculate_scenario_outcomes(). No fallback by design -- see
+  # require_efficacy(). The old blended eff_prep_oral / eff_prep_len keys are
+  # gone: nothing has produced them since the eight-way disaggregation, so the
+  # chain that read them was dead code whose only live effect was to mask a
+  # mis-keyed row as ~1.0 efficacy.
+  req_eff <- function(nm) {
+    require_efficacy(scenario_interventions[[nm]], nm,
+                     "compute_prevention_adjustments()")
+  }
   
-  # Per-group, per-product efficacy. TEMPORARY: falls back to the old blended
-  # prep_oral/prep_lenacapavir efficacy for all three groups until real
-  # trial-specific values are sourced and entered in the Excel
-  # intervention_params sheet (prep_oral_fsw/msm/agyw, prep_lenacapavir_fsw/
-  # msm/agyw rows). Candidate sources to check before finalising: iPrEx,
-  # Partners PrEP, FEM-PrEP/VOICE (oral); PURPOSE 1 (AGYW) and PURPOSE 2
-  # (MSM/transgender individuals) primary publications (lenacapavir). Do NOT
-  # treat the numbers below as sourced -- they are the pre-existing blended
-  # defaults, reused only so behaviour doesn't silently change to zero.
-  eff_fsw_oral  <- scenario_interventions$eff_prep_oral_fsw  %||% (scenario_interventions$eff_prep_oral %||% 0.99)
-  eff_fsw_len   <- scenario_interventions$eff_prep_len_fsw   %||% (scenario_interventions$eff_prep_len  %||% 1.00)
-  eff_msm_oral  <- scenario_interventions$eff_prep_oral_msm  %||% (scenario_interventions$eff_prep_oral %||% 0.99)
-  eff_msm_len   <- scenario_interventions$eff_prep_len_msm   %||% (scenario_interventions$eff_prep_len  %||% 1.00)
-  eff_agyw_oral <- scenario_interventions$eff_prep_oral_agyw %||% (scenario_interventions$eff_prep_oral %||% 0.99)
-  eff_agyw_len  <- scenario_interventions$eff_prep_len_agyw  %||% (scenario_interventions$eff_prep_len  %||% 1.00)
+  eff_gen_oral  <- req_eff("eff_prep_oral_general")
+  eff_gen_len   <- req_eff("eff_prep_len_general")
+  eff_fsw_oral  <- req_eff("eff_prep_oral_fsw")
+  eff_fsw_len   <- req_eff("eff_prep_len_fsw")
+  eff_msm_oral  <- req_eff("eff_prep_oral_msm")
+  eff_msm_len   <- req_eff("eff_prep_len_msm")
+  eff_agyw_oral <- req_eff("eff_prep_oral_agyw")
+  eff_agyw_len  <- req_eff("eff_prep_len_agyw")
   
   # ---- FSW: PrEP (oral + LEN) + condoms ----
   # Oral and lenacapavir are mutually exclusive regimens (a person is on one
@@ -2188,12 +2213,28 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   # Flatten intervention structure
   all_interventions <- list()
   int_to_cat        <- list()                       # key -> group/category
-  for (group_name in names(intervention_groups)) {
-    group <- intervention_groups[[group_name]]
+  # Session-scoped intervention_groups override (Shiny parameter tab). NULL in
+  # tests and in any caller that doesn't set it, so the global is used and
+  # with_intervention_groups() keeps working unchanged.
+  # NOTE: this is NOT a complete override -- define_strata_params() still reads
+  # the global directly for vmmc_risk_reduction. Adequate while only PrEP
+  # efficacy is user-editable; must be closed before VMMC is exposed, or the
+  # FOI weights and the cost/impact path will disagree.
+  ig_src <- context$intervention_groups %||% intervention_groups
+  for (group_name in names(ig_src)) {
+    group <- ig_src[[group_name]]
     for (int_name in names(group$interventions)) {
       all_interventions[[int_name]] <- group$interventions[[int_name]]
       int_to_cat[[int_name]]        <- group_name    # NEW
     }
+  }
+  
+  # Thin accessor over require_efficacy() for intervention_groups reads. Used by
+  # both foi_interventions and baseline_foi below so the scenario path and the
+  # calibration path cannot disagree about an efficacy.
+  req_ig_eff <- function(key) {
+    require_efficacy(all_interventions[[key]]$efficacy, key,
+                     "calculate_scenario_outcomes()")
   }
   
   # ── VOLUME DILUTION: order-independent two-pass approach ─────────────────
@@ -3141,14 +3182,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   foi_interventions <- c(
     interventions,
     list(
-      eff_prep_oral_fsw  = all_interventions$prep_oral_fsw$efficacy         %||% 0.99,
-      eff_prep_oral_msm  = all_interventions$prep_oral_msm$efficacy         %||% 0.99,
-      eff_prep_oral_agyw = all_interventions$prep_oral_agyw$efficacy        %||% 0.99,
-      eff_prep_len_fsw   = all_interventions$prep_lenacapavir_fsw$efficacy  %||% 1.00,
-      eff_prep_len_msm   = all_interventions$prep_lenacapavir_msm$efficacy  %||% 1.00,
-      eff_prep_len_agyw  = all_interventions$prep_lenacapavir_agyw$efficacy %||% 1.00,
-      eff_prep_oral_general = all_interventions$prep_oral_general$efficacy        %||% 0.99,
-      eff_prep_len_general  = all_interventions$prep_lenacapavir_general$efficacy %||% 1.00,
+      eff_prep_oral_fsw     = req_ig_eff("prep_oral_fsw"),
+      eff_prep_oral_msm     = req_ig_eff("prep_oral_msm"),
+      eff_prep_oral_agyw    = req_ig_eff("prep_oral_agyw"),
+      eff_prep_oral_general = req_ig_eff("prep_oral_general"),
+      eff_prep_len_fsw      = req_ig_eff("prep_lenacapavir_fsw"),
+      eff_prep_len_msm      = req_ig_eff("prep_lenacapavir_msm"),
+      eff_prep_len_agyw     = req_ig_eff("prep_lenacapavir_agyw"),
+      eff_prep_len_general  = req_ig_eff("prep_lenacapavir_general"),
       prep_general_prop_female = hiv_params$default_prep_general_prop_female %||% 0.506,
       eff_condom    = all_interventions$condoms$efficacy          %||% 0.80,
       acts_per_year_high     = ACTS_PER_YEAR_HIGH,    
@@ -3169,14 +3210,14 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   baseline_foi <- if (!is.null(baseline_interventions)) {
     c(baseline_interventions,
       list(
-        eff_prep_oral_fsw    = all_interventions$prep_oral_fsw$efficacy         %||% 0.99,
-        eff_prep_oral_msm    = all_interventions$prep_oral_msm$efficacy         %||% 0.99,
-        eff_prep_oral_agyw   = all_interventions$prep_oral_agyw$efficacy        %||% 0.99,
-        eff_prep_len_fsw     = all_interventions$prep_lenacapavir_fsw$efficacy  %||% 1.00,
-        eff_prep_len_msm     = all_interventions$prep_lenacapavir_msm$efficacy  %||% 1.00,
-        eff_prep_len_agyw    = all_interventions$prep_lenacapavir_agyw$efficacy %||% 1.00,
-        eff_prep_oral_general = all_interventions$prep_oral_general$efficacy        %||% 0.99,
-        eff_prep_len_general  = all_interventions$prep_lenacapavir_general$efficacy %||% 1.00,
+        eff_prep_oral_fsw     = req_ig_eff("prep_oral_fsw"),
+        eff_prep_oral_msm     = req_ig_eff("prep_oral_msm"),
+        eff_prep_oral_agyw    = req_ig_eff("prep_oral_agyw"),
+        eff_prep_oral_general = req_ig_eff("prep_oral_general"),
+        eff_prep_len_fsw      = req_ig_eff("prep_lenacapavir_fsw"),
+        eff_prep_len_msm      = req_ig_eff("prep_lenacapavir_msm"),
+        eff_prep_len_agyw     = req_ig_eff("prep_lenacapavir_agyw"),
+        eff_prep_len_general  = req_ig_eff("prep_lenacapavir_general"),
         prep_general_prop_female = hiv_params$default_prep_general_prop_female %||% 0.506,
         eff_condom           = all_interventions$condoms$efficacy          %||% 0.80,
         acts_per_year_high   = ACTS_PER_YEAR_HIGH,

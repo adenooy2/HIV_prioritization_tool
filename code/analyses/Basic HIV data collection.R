@@ -216,6 +216,9 @@ bf_data=bf_data %>% select(country, bf_duration_months)
 basic_data=left_join(basic_data,bf_data)
 ######country specific costs
 costs=read_excel(paste(data_dir,"country_costs.xlsx",sep=""))
+# Modifies the dataframe in place
+costs[, -1] <- round(costs[, -1], 2)
+
 
 basic_data=left_join(basic_data,costs)
 #####
