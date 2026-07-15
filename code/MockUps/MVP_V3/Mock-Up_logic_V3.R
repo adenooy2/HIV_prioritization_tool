@@ -1356,6 +1356,14 @@ calibrate_beta <- function(context, populations, strata, strata_params,
 # condoms are not being targeted in this pass, so "high" (FSW+MSM combined)
 # vs "general" (AGYW + general female/male) acts-based allocation continues
 # exactly as before, just recomposed from the new sub-strata.
+#
+# PrEP PRODUCT INTERACTION (2026-07): oral PrEP and lenacapavir are mutually
+# exclusive regimens -- a person is on one, the other, or neither. Their
+# protection within a group is therefore ADDITIVE over disjoint sub-groups
+# (1 - (cov_oral*eff_oral + cov_len*eff_len)), NOT multiplicative. The
+# combined coverage cap (cov_oral + cov_len <= 1) is enforced in the UI; the
+# clip() here is the logic-side safety net for non-UI callers. Condoms remain
+# multiplicative on top, since a person can use condoms AND be on PrEP.
 compute_prevention_adjustments <- function(scenario_interventions, strata, populations, strata_params) {
   clip <- function(x) max(0, min(1, x))
   
@@ -1450,37 +1458,36 @@ compute_prevention_adjustments <- function(scenario_interventions, strata, popul
   eff_agyw_len  <- scenario_interventions$eff_prep_len_agyw  %||% (scenario_interventions$eff_prep_len  %||% 1.00)
   
   # ---- FSW: PrEP (oral + LEN) + condoms ----
-  residual_fsw   <- (1 - cov_fsw_oral * eff_fsw_oral) *
-    (1 - cov_fsw_len  * eff_fsw_len)  *
-    (1 - condom_cov_high * eff_condom)
+  # Oral and lenacapavir are mutually exclusive regimens (a person is on one
+  # or the other), so their protection is ADDITIVE over disjoint sub-groups,
+  # not multiplicative. clip() bounds the combined PrEP effect at 1 as a
+  # safety net (UI already enforces cov_oral + cov_len <= 1). Condoms apply to
+  # the same people on top, so they stay multiplicative.
+  prep_prot_fsw  <- clip(cov_fsw_oral * eff_fsw_oral + cov_fsw_len * eff_fsw_len)
+  residual_fsw   <- (1 - prep_prot_fsw) * (1 - condom_cov_high * eff_condom)
   protection_fsw <- 1 - residual_fsw
   
-  # ---- MSM: PrEP (oral + LEN) + condoms ----
-  residual_msm   <- (1 - cov_msm_oral * eff_msm_oral) *
-    (1 - cov_msm_len  * eff_msm_len)  *
-    (1 - condom_cov_high * eff_condom)
+  # ---- MSM: PrEP (oral + LEN) + condoms ----  (additive PrEP; see FSW note)
+  prep_prot_msm  <- clip(cov_msm_oral * eff_msm_oral + cov_msm_len * eff_msm_len)
+  residual_msm   <- (1 - prep_prot_msm) * (1 - condom_cov_high * eff_condom)
   protection_msm <- 1 - residual_msm
   
-  # ---- AGYW: PrEP (oral + LEN) + condoms ----
-  residual_agyw   <- (1 - cov_agyw_oral * eff_agyw_oral) *
-    (1 - cov_agyw_len  * eff_agyw_len)  *
-    (1 - condom_cov_gen * eff_condom)
+  # ---- AGYW: PrEP (oral + LEN) + condoms ----  (additive PrEP; see FSW note)
+  prep_prot_agyw  <- clip(cov_agyw_oral * eff_agyw_oral + cov_agyw_len * eff_agyw_len)
+  residual_agyw   <- (1 - prep_prot_agyw) * (1 - condom_cov_gen * eff_condom)
   protection_agyw <- 1 - residual_agyw
   
   # ---- General female (excl. AGYW), general male (uncirc/circ): condoms + general PrEP ----
-  # General PrEP (oral + LEN) now stacks multiplicatively with condoms in each
-  # general stratum, using the split coverages computed above. Strata with no
-  # general PrEP allocated (coverage 0) reduce to condoms-only, matching the
-  # previous behaviour exactly.
-  protection_gen_female    <- 1 - (1 - cov_genf_oral * eff_gen_oral) *
-    (1 - cov_genf_len * eff_gen_len) *
-    (1 - condom_cov_gen * eff_condom)
-  protection_gen_male_unc  <- 1 - (1 - cov_gmu_oral * eff_gen_oral) *
-    (1 - cov_gmu_len * eff_gen_len) *
-    (1 - condom_cov_gen * eff_condom)
-  protection_gen_male_circ <- 1 - (1 - cov_gmc_oral * eff_gen_oral) *
-    (1 - cov_gmc_len * eff_gen_len) *
-    (1 - condom_cov_gen * eff_condom)
+  # General PrEP (oral + LEN) is ADDITIVE within each stratum (mutually
+  # exclusive regimens; see FSW note), then stacks multiplicatively with
+  # condoms. Strata with no general PrEP allocated (coverage 0) reduce to
+  # condoms-only, matching the previous behaviour exactly.
+  prep_prot_genf <- clip(cov_genf_oral * eff_gen_oral + cov_genf_len * eff_gen_len)
+  prep_prot_gmu  <- clip(cov_gmu_oral  * eff_gen_oral + cov_gmu_len  * eff_gen_len)
+  prep_prot_gmc  <- clip(cov_gmc_oral  * eff_gen_oral + cov_gmc_len  * eff_gen_len)
+  protection_gen_female    <- 1 - (1 - prep_prot_genf) * (1 - condom_cov_gen * eff_condom)
+  protection_gen_male_unc  <- 1 - (1 - prep_prot_gmu)  * (1 - condom_cov_gen * eff_condom)
+  protection_gen_male_circ <- 1 - (1 - prep_prot_gmc)  * (1 - condom_cov_gen * eff_condom)
   
   # ---- VMMC: converts uncirc men → circ pool (not a coverage multiplier) ----
   newly_circumcised  <- min(scenario_interventions$vmmc %||% 0, strata$n_general_male_uncirc)

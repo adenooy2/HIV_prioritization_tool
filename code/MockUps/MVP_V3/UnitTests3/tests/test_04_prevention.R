@@ -4,7 +4,7 @@
 # Tests for the prevention cost loop and prevention-stratum interactions that
 # weren't fully covered in test_02_strata_foi.R:
 #
-#   - PrEP + condom stacking in the high-risk stratum (multiplicative residual)
+#   - - PrEP + condom stacking in the high-risk stratum (PrEP products additive over disjoint regimens; condoms multiplicative on top)
 #   - VMMC + condom interaction: men shifted to circ pool retain condom coverage
 #     (line 1062-1066 fix to a previous bug)
 #   - Prevention cost loop (lines 2227-2249):
@@ -65,18 +65,22 @@ base_ctx <- function() {
 }
 
 # ---------------------------------------------------------------------------
-# 4.3 PrEP + condom stacking in high-risk (multiplicative, k-fold allocation)
+#4.3 PrEP + condom stacking in high-risk (additive PrEP, direct targeting)
 # ---------------------------------------------------------------------------
-# ---- 4.3: NEW ----
-# WHAT: protection_fsw = 1 - (1-cov_oral*eff)*(1-cov_len*eff_len)*(1-condom_cov_high*eff_condom).
-#       No more k-fold allocation -- cov_oral = prep_oral_fsw / n_fsw directly.
+# WHAT: protection_fsw = 1 - (1 - prep_prot_fsw) * (1 - condom_cov_high*eff_condom),
+#       where prep_prot_fsw = clip(cov_oral*eff_oral + cov_len*eff_len).
+#       Oral and lenacapavir are mutually exclusive regimens, so PrEP protection
+#       is ADDITIVE across them; condoms apply to the same people and so stay
+#       multiplicative. No k-fold allocation -- cov_oral = prep_oral_fsw / n_fsw
+#       directly. This test sets lenacapavir = 0, so it pins the condom
+#       interaction only; the additive PrEP term is pinned by test 2.5c.
 # HOW:  n_fsw = 484,500 * 0.025 = 12,112.5 (SAFR=0.85, prev_setup()).
 #       prep_oral_fsw = 1,211.25 (10% of n_fsw) -> cov_oral = 0.10.
-#       cov_oral * eff_prep_oral = 0.10 * 0.99 = 0.099.
+#       prep_prot_fsw = clip(0.10 * 0.99 + 0 * eff_len) = 0.099.
 #       Condoms: unchanged from the old derivation (n_fsw+n_msm = 24,225,
 #       same combined "high" pool as before) -> condom_cov_high = 0.20.
-#         residual_fsw = (1-0.099) * (1-0) * (1-0.20*0.80)
-#                      = 0.901 * 1 * 0.84 = 0.75684
+#         residual_fsw = (1-0.099) * (1-0.20*0.80)
+#                      = 0.901 * 0.84 = 0.75684
 #         protection_fsw = 1 - 0.75684 = 0.24316
 test_that("PrEP + condom stack multiplicatively per group (direct targeting)", {
   s   <- prev_setup()

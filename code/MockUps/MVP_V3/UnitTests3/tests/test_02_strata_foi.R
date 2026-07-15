@@ -7,7 +7,8 @@
 #   - partition_into_strata()      : split sexually_active_negative into 4 strata
 #   - calibrate_beta()             : back-calculate β so model reproduces
 #                                    observed new_infections_per_year
-#   - compute_prevention_adjustments() : multiplicative protection by stratum
+#   - compute_prevention_adjustments() : protection by stratum (PrEP products
+#                                    additive/disjoint; condoms multiplicative)
 #   - estimate_new_infections_foi(): end-to-end FOI calculation
 #
 # The MOST IMPORTANT test in this file is the baseline roundtrip:
@@ -182,6 +183,36 @@ test_that("compute_prevention_adjustments targets FSW/MSM/AGYW independently (di
   expect_close(adj$protection_agyw,       0.04, tolerance = 1e-6)
   expect_close(adj$protection_gen_female, 0,    tolerance = 1e-9)
   expect_close(adj$vmmc_coverage_frac,    0)
+})
+
+# ---- 2.5c: NEW — oral + lenacapavir are ADDITIVE within a group ----
+# WHAT: A group split across BOTH PrEP products protects additively (disjoint
+#       regimens), not multiplicatively. This is the case no other test
+#       exercises — all others set exactly one product per group.
+# WHY:  Oral and lenacapavir are mutually exclusive (a person is on one or the
+#       other), so coverages sum and protection adds. A multiplicative form
+#       understates protection by the cross term.
+# HOW:  Fixture n_fsw = 8,550 (prop_agyw = 0.20 context, as in 2.5).
+#       prep_oral_fsw        = 855   -> cov_fsw_oral = 855 /8550 = 0.10
+#       prep_lenacapavir_fsw = 1,710 -> cov_fsw_len  = 1710/8550 = 0.20
+#       cov_oral + cov_len = 0.30 (<= 1, within cap).
+#       eff_prep_oral_fsw = 0.3, eff_prep_len_fsw = 0.50 (fixture).
+#       protection_fsw = clip(0.10*0.3 + 0.20*0.50) = 0.03 + 0.10 = 0.13
+#       (Old multiplicative form gave 1-(1-0.03)(1-0.10) = 0.127; additive is
+#        higher by the 0.003 cross term.) No condoms -> PrEP-only.
+test_that("oral + lenacapavir protect additively within a group (disjoint regimens)", {
+  with_hiv_params(list(sexually_active_frac = SAFR))
+  ctx     <- make_fixture_context(prop_agyw = 0.20)
+  pops    <- calculate_populations(ctx)
+  sp      <- define_strata_params(ctx)
+  strata  <- partition_into_strata(pops, sp)
+  
+  interv  <- make_fixture_interventions(
+    prep_oral_fsw = 855, prep_lenacapavir_fsw = 1710
+  )
+  adj <- compute_prevention_adjustments(interv, strata, pops, sp)
+  
+  expect_close(adj$protection_fsw, 0.13, tolerance = 1e-6)
 })
 
 # ---------------------------------------------------------------------------
