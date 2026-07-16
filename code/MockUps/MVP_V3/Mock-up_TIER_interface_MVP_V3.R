@@ -364,6 +364,12 @@ ui <- page_sidebar(
       "Scenarios",
       h4("Adjust intervention coverage for two scenarios"),
       p(strong("Note:"), " Scale up (increase) or scale down (decrease) interventions. Clear labels show whether inputs are absolute numbers (people) or percentages (%)."),
+      div(
+        style = "display: flex; justify-content: flex-end; margin-bottom: 8px;",
+        actionButton("reset_scenarios", "Reset both scenarios to baseline",
+                     class = "btn-outline-secondary btn-sm",
+                     icon = icon("rotate-left"))
+      ),
       uiOutput("scenario_ui")
     ),
     
@@ -2556,7 +2562,48 @@ server <- function(input, output, session) {
       }
     }
   }, ignoreInit = TRUE)
-  
+  # ---- Reset scenarios to baseline ----------------------------------------
+  # Clears the touched flags and pushes the current baseline into every scenario
+  # field. Uses scen_push() rather than re-rendering scenario_ui, so there's no
+  # DOM rebuild and no focus loss. scen_push() records each write, so the echoes
+  # coming back are not read as user edits.
+  observeEvent(input$reset_scenarios, {
+    baseline <- baseline_input_values()
+    if (length(baseline) == 0) return()
+    
+    n <- length(ls(scen_touched, all.names = TRUE))
+    rm(list = ls(scen_touched, all.names = TRUE), envir = scen_touched)
+    rm(list = ls(scen_seed,    all.names = TRUE), envir = scen_seed)
+    
+    for (group_key in names(intervention_groups)) {
+      group <- intervention_groups[[group_key]]
+      for (int_key in names(group$interventions)) {
+        v <- unname(baseline[[int_key]])
+        if (is.null(v) || is.na(v)) next
+        scen_push(paste0("scenario1_", int_key), v)
+        scen_push(paste0("scenario2_", int_key), v)
+      }
+    }
+    
+    # Total-mode PrEP boxes are separate inputs, not intervention keys. Summed
+    # exactly the way scenario_ui derives its "Baseline:" label, so the box and
+    # the label always agree. In "By group" mode these inputs don't exist and
+    # the update messages are harmlessly dropped.
+    oral <- (baseline[["prep_oral_fsw"]]  %||% 0) + (baseline[["prep_oral_msm"]]  %||% 0) +
+      (baseline[["prep_oral_agyw"]] %||% 0) + (baseline[["prep_oral_general"]] %||% 0)
+    lena <- (baseline[["prep_lenacapavir_fsw"]]  %||% 0) + (baseline[["prep_lenacapavir_msm"]]  %||% 0) +
+      (baseline[["prep_lenacapavir_agyw"]] %||% 0) + (baseline[["prep_lenacapavir_general"]] %||% 0)
+    scen_push("scenario1_prep_total_oral", oral)
+    scen_push("scenario2_prep_total_oral", oral)
+    scen_push("scenario1_prep_total_lena", lena)
+    scen_push("scenario2_prep_total_lena", lena)
+    
+    showNotification(
+      if (n > 0) paste0("Both scenarios reset to baseline (", n, " edited field",
+                        if (n == 1) "" else "s", " cleared).")
+      else "Both scenarios reset to baseline.",
+      type = "message", duration = 4)
+  }, ignoreInit = TRUE)
   scenario1_values <- reactive({
     preset <- baseline_values()
     scenario <- list()
