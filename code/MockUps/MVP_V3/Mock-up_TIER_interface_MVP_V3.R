@@ -931,6 +931,7 @@ server <- function(input, output, session) {
   #   $eff[[intervention_key]][[parameter_type]] -> numeric
   #   $cost[[intervention_key]]                  -> numeric (8 PrEP unit costs)
   #   $art_cost                                  -> numeric or NULL
+  #   $dsd_abs[[intervention_key]]               -> numeric (signed USD/person-year)
   #
   # The UI is deliberately NARROWER than the storage: one shared efficacy input
   # per product fans out to that product's four group keys. So the sheet keeps
@@ -944,6 +945,14 @@ server <- function(input, output, session) {
   # reject. Conversion lives in one place: mo_to_years() / years_to_mo() below.
   # ==========================================================================
   param_overrides <- reactiveValues(eff = list(), cost = list(), art_cost = NULL)
+  
+  # ART cost adjustments. unit_cost for these five keys is a FRACTION of
+  # art_cost_standard (negative = saving), not USD -- see Mock-Up_logic_V3.R
+  # ~2584 (DSD bundle, dsd_cost_adjustment) and ~2481 (clinical_visit_12month,
+  # clinical_visit_cost_adjustment). Two accumulators, one convention.
+  # The Parameters tab takes USD and converts at the reactive boundary.
+  DSD_COST_KEYS <- c("mmd_3month", "mmd_6month", "mmd_12month",
+                     "community_pickup", "clinical_visit_12month")
   
   ORAL_KEYS <- c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general")
   LEN_KEYS  <- c("prep_lenacapavir_fsw", "prep_lenacapavir_msm",
@@ -999,9 +1008,25 @@ server <- function(input, output, session) {
                           collapse = "; "))
   }
   
+  # DSD entries count as a change only when the DERIVED fraction differs from the
+  # sheet. Typing the default back in leaves the stored absolute in place -- so
+  # the box stays authoritative and the result stays order-independent -- but it
+  # must not show up in the report as a change that isn't one.
+  n_dsd_changed <- reactive({
+    ac <- effective_art_cost()
+    if (!ac_ok(ac)) return(0L)
+    ks <- names(param_overrides$dsd_abs)
+    if (length(ks) == 0) return(0L)
+    sum(vapply(ks, function(k) {
+      f <- sheet_val(k, "unit_cost")
+      !(length(f) == 1 && !is.na(f) &&
+          isTRUE(all.equal(param_overrides$dsd_abs[[k]] / ac, f)))
+    }, logical(1)))
+  })
+  
   n_overrides <- reactive({
     length(unlist(param_overrides$eff)) + length(param_overrides$cost) +
-      as.integer(!is.null(param_overrides$art_cost))
+      as.integer(!is.null(param_overrides$art_cost)) + n_dsd_changed()
   })
   
   # Clear on country switch. priority = 100 so this runs BEFORE the preset
@@ -1011,6 +1036,7 @@ server <- function(input, output, session) {
     had <- isolate(n_overrides()) > 0
     param_overrides$eff      <- list()
     param_overrides$cost     <- list()
+    param_overrides$dsd_abs  <- list()
     param_overrides$art_cost <- NULL
     if (had) {
       showNotification(
@@ -1024,6 +1050,19 @@ server <- function(input, output, session) {
     for (k in names(param_overrides$eff)) {
       for (pt in names(param_overrides$eff[[k]])) {
         ip[[pt]][ip$intervention_key == k] <- param_overrides$eff[[k]][[pt]]
+      }
+    }
+    # DSD absolutes -> fractions at the ART cost in force RIGHT NOW. Deriving here
+    # rather than at entry is the whole design: the divisor here and the
+    # multiplier in the logic are guaranteed to be the same number, so the typed
+    # USD is what gets charged regardless of what else the user edits afterwards.
+    # ac <= 0 makes the fraction undefined AND makes the logic's
+    # stable_n * ac * frac zero anyway -- leave the sheet fraction; the caption
+    # says the entry isn't being applied.
+    ac <- effective_art_cost()
+    if (ac_ok(ac)) {
+      for (k in names(param_overrides$dsd_abs)) {
+        ip$unit_cost[ip$intervention_key == k] <- param_overrides$dsd_abs[[k]] / ac
       }
     }
     ip
@@ -1071,6 +1110,34 @@ server <- function(input, output, session) {
       list(value = ART_COST_STANDARD, source = "global default (intervention_params)")
     }
   }
+  
+  # The ART unit cost the logic will actually use, resolved through the existing
+  # art_cost_default() chain rather than a second copy of it. context() builds
+  # `art_cost_standard` the same way at line ~1485 and the logic closes it with
+  # `%||% ART_COST_STANDARD`. If this ever diverges from context(), the USD the
+  # user types and the USD the model charges diverge silently.
+  effective_art_cost <- reactive({
+    param_overrides$art_cost %||% art_cost_default(country_calibration())$value
+  })
+  
+  # Sheet fraction for a DSD key + the USD/person-year it currently equals.
+  dsd_cost_default <- function(key, ac) {
+    f <- sheet_val(key, "unit_cost")
+    list(frac = f,
+         abs  = if (length(f) == 1 && !is.na(f)) unname(f * ac) else NA_real_)
+  }
+  
+  dsd_label <- function(key) switch(key,
+                                    mmd_3month             = "MMD: 3-month dispensing",
+                                    mmd_6month             = "MMD: 6-month dispensing",
+                                    mmd_12month            = "MMD: 12-month dispensing",
+                                    community_pickup       = "Community ART pick-up",
+                                    clinical_visit_12month = "Annual clinical visit (stable clients)",
+                                    key)
+  
+  ac_ok  <- function(ac) length(ac) == 1 && !is.na(ac) && ac > 0
+  usd_fmt <- function(x) scales::dollar(x, accuracy = 0.01)
+  pct_fmt <- function(f) sprintf("%+.1f%%", f * 100)
   
   # Info bubble, same construction as make_intervention_tip() on the Scenarios
   # tab. Returns NULL when there's no text, so the icon is skipped rather than
@@ -1150,6 +1217,32 @@ server <- function(input, output, session) {
     }
     art_d <- art_cost_default(cc)
     
+    # Render-time ART cost. isolate() is load-bearing: param_tab_ui depends on
+    # input$region ONLY (see the comment above this renderUI) -- a live
+    # dependency here rebuilds every numericInput on each ART keystroke and
+    # throws the cursor out of the box.
+    # In practice param_overrides$art_cost is always NULL here (cleared on
+    # country switch, which is the only thing that re-renders this tab), so this
+    # equals art_d$value -- but don't rely on that invariant holding.
+    ac_render <- isolate(effective_art_cost())
+    
+    # No min = 0, unlike every other cost box on this tab: these are signed.
+    # The lower bound (-art_cost) is enforced in chkdsd_ / the observer.
+    dsd_cost_input <- function(key) {
+      tagList(
+        layout_columns(
+          col_widths = c(3, 9),
+          numericInput(paste0("dsdcost_", key),
+                       lbl_tip(dsd_label(key), sheet_src(key, "unit_cost")),
+                       value = dsd_cost_default(key, ac_render)$abs,
+                       step = 1, width = "100%"),
+          NULL
+        ),
+        uiOutput(paste0("chkdsd_", key)),
+        uiOutput(paste0("capdsd_", key))
+      )
+    }
+    
     div(
       style = "max-height: 78vh; overflow-y: auto; padding-right: 15px;",
       
@@ -1215,6 +1308,14 @@ server <- function(input, output, session) {
         NULL
       ),
       uiOutput("chkcost_art"),
+      
+      # ---------------- ART cost adjustments ----------------
+      sec_hdr("ART cost adjustments (signed USD per person-year)"),
+      div(style = "font-size:11px; color:#6b7280; margin:-4px 0 10px;",
+          "Negative = saving against standard facility-based care; positive = premium. ",
+          "Charged per person-year enrolled, on stable clients only. ",
+          "Entered in dollars and applied as a share of the ART unit cost above."),
+      do.call(tagList, unname(lapply(DSD_COST_KEYS, dsd_cost_input))),
       
       # ---------------- Reset ----------------
       div(style = "margin-top:10px;",
@@ -1318,6 +1419,87 @@ server <- function(input, output, session) {
     })
   }
   
+  # ---- ART cost adjustments (DSD + annual clinical visit) -------------------
+  # The CAPTION, not the box, is the authority on what the model charges: it
+  # resolves the fraction exactly as effective_intervention_params() does, so
+  # the two cannot disagree.
+  # Nothing here writes to an input. That is deliberate -- auto-updating these
+  # boxes on an ART cost change would reintroduce the late-echo-read-as-user-
+  # edit failure (scen_seed / scen_touched, Edits 8-15 of the reactive session).
+  # local() so each closure captures THIS key, not the loop's last value.
+  for (.key in DSD_COST_KEYS) {
+    local({
+      key   <- .key
+      amber <- "font-size:11px; color:#b45309; margin-top:-6px;"
+      grey  <- "font-size:11px; color:#6b7280; margin-top:-6px;"
+      
+      output[[paste0("capdsd_", key)]] <- renderUI({
+        ac <- effective_art_cost()
+        if (!ac_ok(ac)) {
+          return(div(style = amber,
+                     "ART unit cost is zero or unset — no ART cost adjustment can be applied."))
+        }
+        # NOT a direct param_overrides$dsd_abs lookup by key: dsd_abs is
+        # list() until the first entry, and a double-bracket character lookup
+        # on a list with no matching name throws "subscript out of bounds"
+        # rather than returning NULL. This renderUI fires the moment the tab is
+        # first shown, with dsd_abs still empty, so the unguarded form errors
+        # on every caption.
+        dsd <- param_overrides$dsd_abs
+        ovr <- if (key %in% names(dsd)) dsd[[key]] else NULL
+        if (!is.null(ovr)) {
+          if (ovr < -ac) {
+            div(style = amber, sprintf(
+              "Saving exceeds the ART unit cost (%s/PY). art_provision_cost will be floored at 0.",
+              usd_fmt(ac)))
+          } else {
+            div(style = grey, sprintf(
+              "Applied: %s per person-year = %s of the ART unit cost (%s/PY).",
+              usd_fmt(ovr), pct_fmt(ovr / ac), usd_fmt(ac)))
+          }
+        } else {
+          d <- dsd_cost_default(key, ac)
+          if (is.na(d$frac)) {
+            div(style = amber,
+                "No sheet value — the model charges no ART cost adjustment for this intervention.")
+          } else {
+            div(style = grey, sprintf(
+              paste("Sheet default: %s of the ART unit cost (%s/PY) = %s per person-year.",
+                    "Type a value to fix it in dollars."),
+              pct_fmt(d$frac), usd_fmt(ac), usd_fmt(d$abs)))
+          }
+        }
+      })
+      
+      output[[paste0("chkdsd_", key)]] <- renderUI({
+        v  <- input[[paste0("dsdcost_", key)]]
+        ac <- effective_art_cost()
+        validate(
+          need(!is.null(v) && !is.na(v),
+               "Enter a number — the sheet default is still being used."),
+          need(!ac_ok(ac) || v >= -ac,
+               sprintf("A saving cannot exceed the ART unit cost (%s/PY). Not applied.",
+                       usd_fmt(if (ac_ok(ac)) ac else 0)))
+        )
+        NULL
+      })
+      
+      observeEvent(input[[paste0("dsdcost_", key)]], {
+        v  <- input[[paste0("dsdcost_", key)]]
+        # observeEvent's handler is isolated: reading effective_art_cost() here
+        # creates no dependency, so a later ART edit does NOT re-fire this and
+        # overwrite the stored absolute. That is the point -- the absolute is
+        # what the user typed, and only the user retypes it.
+        ac <- effective_art_cost()
+        if (is.null(v) || is.na(v))  return()
+        if (!ac_ok(ac) || v < -ac)   return()
+        d <- param_overrides$dsd_abs
+        d[[key]] <- unname(as.numeric(v))
+        param_overrides$dsd_abs <- d
+      }, ignoreInit = TRUE)
+    })
+  }
+  
   output$chkcost_art <- renderUI({
     v <- input$cost_art_standard
     validate(
@@ -1340,6 +1522,7 @@ server <- function(input, output, session) {
     n <- isolate(n_overrides())
     param_overrides$eff      <- list()
     param_overrides$cost     <- list()
+    param_overrides$dsd_abs  <- list()
     param_overrides$art_cost <- NULL
     
     cc <- country_calibration()
@@ -1362,6 +1545,14 @@ server <- function(input, output, session) {
                          value = prep_cost_default(key, cc)$value)
     }
     updateNumericInput(session, "cost_art_standard", value = art_cost_default(cc)$value)
+    # art_cost_default(cc) IS effective_art_cost() at this point -- the override
+    # was set to NULL a few lines up. Reusing it avoids a second copy of the
+    # resolution chain.
+    ac_reset <- art_cost_default(cc)$value
+    for (key in DSD_COST_KEYS) {
+      updateNumericInput(session, paste0("dsdcost_", key),
+                         value = dsd_cost_default(key, ac_reset)$abs)
+    }
     
     showNotification(
       if (n > 0) "All parameters reset to defaults." else "Already at defaults.",
