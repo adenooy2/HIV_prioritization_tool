@@ -676,6 +676,87 @@ server <- function(input, output, session) {
   coalesce_num <- function(x, fallback) {
     if (is.null(x) || length(x) != 1 || is.na(x)) fallback else x
   }
+  
+  # ---- Scenario "touched" tracking -----------------------------------------
+  # Scenario boxes follow baseline until the user types in them, then stay put.
+  # PLAIN ENVIRONMENTS, not reactiveValues: if scenario_ui took a dependency on
+  # these it would re-render the moment a field was first touched -- while the
+  # user is still typing in it.
+  scen_seed    <- new.env(parent = emptyenv())  # id -> vector of values WE recently wrote
+  scen_touched <- new.env(parent = emptyenv())  # TRUE once a real edit is seen
+  
+  scen_get   <- function(e, id) if (exists(id, envir = e, inherits = FALSE)) get(id, envir = e) else NULL
+  scen_mark  <- function(e, id, v) assign(id, v, envir = e)
+  is_touched <- function(id) isTRUE(scen_get(scen_touched, id))
+  
+  # The browser echoes our writes back asynchronously. If we write seed A and
+  # then seed B before A's echo lands, the echo of A arrives and is compared
+  # against B -- they differ, so the field is wrongly marked touched and freezes
+  # forever. (This happens on every startup: input$total_pop hasn't echoed back
+  # yet, so baseline_values() renders once at the wrong scale, then re-renders.)
+  # Keep the last few seeds and treat a match against ANY of them as our echo.
+  SCEN_SEED_HISTORY <- 5L
+  scen_record_seed <- function(id, v) {
+    prev <- scen_get(scen_seed, id)
+    assign(id, utils::tail(unique(c(prev, v)), SCEN_SEED_HISTORY), envir = scen_seed)
+  }
+  scen_is_echo <- function(id, v) {
+    s <- scen_get(scen_seed, id)
+    !is.null(s) && any(vapply(s, function(x) isTRUE(all.equal(v, x)), logical(1)))
+  }
+  
+  # Seed value for a scenario field: its own current value if touched, else the
+  # baseline value. Records whichever it used.
+  scen_seed_value <- function(id, base_value) {
+    v <- if (is_touched(id)) {
+      cur <- suppressWarnings(as.numeric(isolate(input[[id]])))
+      if (length(cur) == 1 && !is.na(cur)) cur else base_value
+    } else base_value
+    scen_record_seed(id, v) 
+    v
+  }
+  
+  # Write a value into a scenario field WITHOUT marking it touched.
+  # unname(): updateNumericInput() serialises a named numeric as a JSON object
+  # and blanks the box (the reset bug from the earlier session).
+  scen_push <- function(id, value) {
+    value <- unname(value)
+    if (is.null(value) || length(value) != 1 || is.na(value)) return(invisible(NULL))
+    scen_record_seed(id, value) 
+    if (grepl("clinical_visit_12month$", id)) {
+      shinyWidgets::updateRadioGroupButtons(session, id, selected = if (value >= 50) 100 else 0)
+    } else {
+      updateNumericInput(session, id, value = value)
+    }
+    invisible(NULL)
+  }
+  
+  # One observer per scenario field. Marks touched only when the reported value
+  # differs from the last value we wrote.
+  local({
+    int_keys <- unlist(lapply(intervention_groups, function(g) names(g$interventions)),
+                       use.names = FALSE)
+    scen_ids <- c(paste0("scenario1_", int_keys), paste0("scenario2_", int_keys),
+                  "scenario1_prep_total_oral", "scenario1_prep_total_lena",
+                  "scenario2_prep_total_oral", "scenario2_prep_total_lena")
+    lapply(scen_ids, function(id) {
+      observeEvent(input[[id]], {
+        v <- suppressWarnings(as.numeric(input[[id]]))   # radioGroupButtons returns character
+        if (length(v) != 1 || is.na(v)) return()
+        s <- scen_get(scen_seed, id)
+        if (scen_is_echo(id, v)) return()   # our own write, echoed back (possibly late)
+        scen_mark(scen_touched, id, TRUE)
+      }, ignoreInit = TRUE)
+    })
+  })
+  
+  # Country switch resets scenarios -- forget which fields were touched.
+  # priority = 100 so this runs before the preset observer repopulates them.
+  observeEvent(input$region, {
+    rm(list = ls(scen_touched, all.names = TRUE), envir = scen_touched)
+    rm(list = ls(scen_seed,    all.names = TRUE), envir = scen_seed)
+  }, ignoreInit = TRUE, priority = 100)
+  
   # Thin wrapper over the logic file's allocate_prep_totals(). Supplies the caps
   # from group_pop(), which reads the same partition_into_strata() output the
   # cost loop and compute_prevention_adjustments() use as denominator.
@@ -1292,6 +1373,12 @@ server <- function(input, output, session) {
   # Load regional preset when selected
   observeEvent(input$region, {
     preset <- regional_presets[[input$region]]
+    # freeze: original_population() is set below immediately, but input$total_pop
+    # only echoes back from the client a flush later. Without this, everything
+    # downstream renders once with scale_factor = old_total_pop / new_country_pop
+    # (5,000,000 / 2,562,122 = 1.95 on a fresh session) and then corrects. That
+    # transient double-render is what was spuriously "touching" scenario fields.
+    freezeReactiveValue(input, "total_pop")
     updateNumericInput(session, "total_pop", value = preset$context$total_population)
     updateNumericInput(session, "prevalence", value = preset$context$hiv_prevalence * 100)
     updateNumericInput(session, "new_infections", value = preset$context$new_infections_per_year)
@@ -2100,6 +2187,8 @@ server <- function(input, output, session) {
         intervention <- group$interventions[[int_key]]
         if (identical(prep_mode, "total") && int_key %in% prep_group_keys) return(NULL)
         base_value <- ifelse(is.null(baseline[[int_key]]), 0, baseline[[int_key]])
+        s1_value <- scen_seed_value(paste0("scenario1_", int_key), base_value)
+        s2_value <- scen_seed_value(paste0("scenario2_", int_key), base_value)
         
         # Set min and max based on type
         min_val <- 0
@@ -2123,7 +2212,7 @@ server <- function(input, output, session) {
                 label        = "Scenario 1",
                 choiceNames  = c("6 months", "12 months"),
                 choiceValues = c(0, 100),
-                selected     = if (base_value >= 50) 100 else 0,
+                selected     = if (s1_value >= 50) 100 else 0,
                 justified    = TRUE,
                 size         = "sm",
                 checkIcon    = list(yes = icon("check"))
@@ -2132,7 +2221,7 @@ server <- function(input, output, session) {
               numeric_widget(
                 paste0("scenario1_", int_key),
                 label = "Scenario 1",
-                value = base_value,
+                value = s1_value,
                 min = min_val,
                 max = max_val,
                 step = if(intervention$type == "coverage") 0.1 else 1
@@ -2146,7 +2235,7 @@ server <- function(input, output, session) {
                 label        = "Scenario 2",
                 choiceNames  = c("6 months", "12 months"),
                 choiceValues = c(0, 100),
-                selected     = if (base_value >= 50) 100 else 0,
+                selected     = if (s2_value >= 50) 100 else 0,
                 justified    = TRUE,
                 size         = "sm",
                 checkIcon    = list(yes = icon("check"))
@@ -2155,7 +2244,7 @@ server <- function(input, output, session) {
               numeric_widget(
                 paste0("scenario2_", int_key),
                 label = "Scenario 2",
-                value = base_value,
+                value = s2_value,
                 min = min_val,
                 max = max_val,
                 step = if(intervention$type == "coverage") 0.1 else 1
@@ -2178,8 +2267,10 @@ server <- function(input, output, session) {
                   strong("Total oral PrEP"), br(),
                   span(style = "color: #666;", "Baseline: ", format(round(base_oral_total), big.mark = ",")), br(),
                   span(style = "color: #999; font-size: 0.85em;", "people (all groups)")),
-              div(commaNumericInput("scenario1_prep_total_oral", label = "Scenario 1", value = base_oral_total, min = 0)),
-              div(commaNumericInput("scenario2_prep_total_oral", label = "Scenario 2", value = base_oral_total, min = 0))
+              div(commaNumericInput("scenario1_prep_total_oral", label = "Scenario 1",
+                                    value = scen_seed_value("scenario1_prep_total_oral", base_oral_total), min = 0)),
+              div(commaNumericInput("scenario2_prep_total_oral", label = "Scenario 2",
+                                    value = scen_seed_value("scenario2_prep_total_oral", base_oral_total), min = 0))
             ),
             layout_columns(
               col_widths = c(4, 4, 4),
@@ -2187,8 +2278,10 @@ server <- function(input, output, session) {
                   strong("Total lenacapavir"), br(),
                   span(style = "color: #666;", "Baseline: ", format(round(base_lena_total), big.mark = ",")), br(),
                   span(style = "color: #999; font-size: 0.85em;", "people (all groups)")),
-              div(commaNumericInput("scenario1_prep_total_lena", label = "Scenario 1", value = base_lena_total, min = 0)),
-              div(commaNumericInput("scenario2_prep_total_lena", label = "Scenario 2", value = base_lena_total, min = 0))
+              div(commaNumericInput("scenario1_prep_total_lena", label = "Scenario 1",
+                                    value = scen_seed_value("scenario1_prep_total_lena", base_lena_total), min = 0)),
+              div(commaNumericInput("scenario2_prep_total_lena", label = "Scenario 2",
+                                    value = scen_seed_value("scenario2_prep_total_lena", base_lena_total), min = 0))
             )
           )
           interventions_ui <- c(total_rows, interventions_ui)
@@ -2444,21 +2537,21 @@ server <- function(input, output, session) {
     for (group_key in names(intervention_groups)) {
       group <- intervention_groups[[group_key]]
       for (int_key in names(group$interventions)) {
-        baseline_value <- baseline[[int_key]]
-        if (!is.null(baseline_value) && !is.na(baseline_value)) {
-          updateNumericInput(session, paste0("baseline_", int_key), value = baseline_value)
-          updateNumericInput(session, paste0("scenario1_", int_key), value = baseline_value)
-          updateNumericInput(session, paste0("scenario2_", int_key), value = baseline_value)
-          # clinical_visit_12month is a radioGroupButtons, not a numericInput —
-          # updateNumericInput won't drive it, so sync it explicitly. Without
-          # this, switching country presets would leave the visit-frequency
-          # boxes on their previous selection.
-          if (int_key == "clinical_visit_12month") {
-            snap <- if (baseline_value >= 50) 100 else 0
-            shinyWidgets::updateRadioGroupButtons(session, paste0("baseline_", int_key),  selected = snap)
-            shinyWidgets::updateRadioGroupButtons(session, paste0("scenario1_", int_key), selected = snap)
-            shinyWidgets::updateRadioGroupButtons(session, paste0("scenario2_", int_key), selected = snap)
-          }
+        baseline_value <- unname(baseline[[int_key]])
+        if (is.null(baseline_value) || is.na(baseline_value)) next
+        
+        updateNumericInput(session, paste0("baseline_", int_key), value = baseline_value)
+        # clinical_visit_12month is a radioGroupButtons -- updateNumericInput
+        # won't drive it, so sync it explicitly.
+        if (int_key == "clinical_visit_12month") {
+          shinyWidgets::updateRadioGroupButtons(session, paste0("baseline_", int_key),
+                                                selected = if (baseline_value >= 50) 100 else 0)
+        }
+        # Scenario fields follow baseline only while untouched. scen_push()
+        # records the write so the echo isn't read as a user edit.
+        for (pfx in c("scenario1_", "scenario2_")) {
+          id <- paste0(pfx, int_key)
+          if (!is_touched(id)) scen_push(id, baseline_value)
         }
       }
     }
