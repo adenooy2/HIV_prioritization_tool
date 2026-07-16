@@ -103,6 +103,89 @@ commaNumericInput <- function(inputId, label, value, min = NA, max = NA,
   )
 }
 
+# Money fields. Same autoNumeric machinery as commaNumericInput() -- comma for
+# thousands, period for the decimal -- but 2 decimal places, because unit costs
+# are per-person figures where the cents are real and user-entered.
+#
+# Deliberately NOT used for aggregate program costs: the logic round()s those
+# (Mock-Up_logic_V3.R ~3793), so a trailing .00 would assert precision the model
+# has already thrown away.
+#
+# minimumValue defaults to NULL, not 0, because the ART cost adjustment fields
+# are signed (negative = saving). Callers needing a floor pass min explicitly.
+currencyNumericInput <- function(inputId, label, value, min = NA, max = NA,
+                                 width = NULL) {
+  shinyWidgets::autonumericInput(
+    inputId             = inputId,
+    label               = label,
+    # Same scientific-notation guard as commaNumericInput(). The extra NA check
+    # is needed here and not there: a DSD key with no sheet unit_cost yields
+    # NA_real_, and format(NA) would render the literal string "NA" in the box.
+    value               = if (length(value) == 1 && !is.na(value)) {
+      format(value, scientific = FALSE, trim = TRUE)
+    } else NULL,
+    width               = width,
+    align               = "left",
+    decimalPlaces       = 2,
+    digitGroupSeparator = ",",
+    decimalCharacter    = ".",
+    minimumValue        = if (!is.na(min)) min else NULL,
+    maximumValue        = if (!is.na(max)) max else NULL,
+    emptyInputBehavior  = "null"
+  )
+}
+
+# Small bounded fields that carry real decimals -- efficacy percentages (0-100)
+# and durations in months (0-12). Same autoNumeric machinery as the two above,
+# and THAT IS THE POINT: numericInput() emits <input type="number">, whose
+# decimal separator follows the CLIENT's locale -- a comma on an en-ZA machine,
+# against the period the cost boxes are pinned to. decimalCharacter = "." here
+# makes the whole Parameters tab agree regardless of who opens it.
+#
+# digitGroupSeparator is carried over from the two helpers above for
+# consistency only; a 0-100 field cannot reach four digits, so it never renders.
+#
+# decimalPlaces is the resolution the box can EXPRESS, and it bounds a round
+# trip that decides correctness, not just looks: sheet -> box -> echo ->
+# override. A sheet value carrying more precision than the box is rounded at
+# first render, echoes back rounded, and is then recorded as a "changed"
+# parameter on a tab nobody touched -- the failure the DSD absolutes hit. The
+# tightest consumer sets the floor: second_shot_return_rate is a raw 0-1
+# probability, so 2 dp would leave it just two significant figures. 4 dp gives
+# every field on the tab at least four significant figures (efficacy: 74.1234%
+# -> a 6 dp fraction; duration: years_to_mo() already rounds to 2 dp, so the
+# box is exactly lossless). Widen HERE, not at a call site.
+#
+# allowDecimalPadding = FALSE is what makes 4 dp free rather than ugly:
+# autoNumeric pads to decimalPlaces by default, so 0.5 would render "0.5000",
+# 74 as "74.0000" and 6 months as "6.0000". Padding is right for money -- the
+# cents in currencyNumericInput() are real -- and wrong for everything here.
+#
+# min/max are handed to autoNumeric, which CLAMPS rather than warns, so an
+# out-of-range value cannot be typed. The chk_range() outputs are kept anyway:
+# they still catch an emptied box (emptyInputBehavior = "null" -> NA).
+decimalNumericInput <- function(inputId, label, value, min = NA, max = NA,
+                                decimalPlaces = 4, width = NULL) {
+  shinyWidgets::autonumericInput(
+    inputId             = inputId,
+    label               = label,
+    # NA guard as per currencyNumericInput(): a missing sheet row yields
+    # NA_real_, and format(NA) would render the literal string "NA" in the box.
+    value               = if (length(value) == 1 && !is.na(value)) {
+      format(value, scientific = FALSE, trim = TRUE)
+    } else NULL,
+    width               = width,
+    align               = "left",
+    decimalPlaces       = decimalPlaces,
+    allowDecimalPadding = FALSE,
+    digitGroupSeparator = ",",
+    decimalCharacter    = ".",
+    minimumValue        = if (!is.na(min)) min else NULL,
+    maximumValue        = if (!is.na(max)) max else NULL,
+    emptyInputBehavior  = "null"
+  )
+}
+
 # ============================================================================
 # USER INTERFACE
 # ============================================================================
@@ -112,6 +195,10 @@ ui <- page_sidebar(
     hr { margin-top: 0.75rem; margin-bottom: 0.5rem; }
     .disabled-input { margin: 0; }
     .disabled-input .form-group { margin-bottom: 0; }
+    /* ART cost adjustment cells: box and its caption read as one unit, so drop
+       the Bootstrap form-group gap between them. */
+    .dsd-cell .form-group { margin-bottom: 0; }
+    .dsd-cell .shiny-input-container { margin-bottom: 0; }
     .disabled-input input {
       pointer-events: none;
       background-color: #e9ecef;
@@ -939,10 +1026,13 @@ server <- function(input, output, session) {
   # are untouched by this tab), while the user sees the structure they actually
   # reason in.
   #
-  # UNITS: durations are entered in MONTHS and converted to person-years at the
-  # UI boundary (/12). The sheet stays in person-years -- entering months into
-  # the sheet is exactly what derive_prep_efficacy()'s py > 1 guard exists to
-  # reject. Conversion lives in one place: mo_to_years() / years_to_mo() below.
+  # UNITS: durations are entered in MONTHS and efficacies in PERCENT; both are
+  # converted at the UI boundary (/12, /100). The sheet stays in person-years
+  # and fractions -- entering months into the sheet is exactly what
+  # derive_prep_efficacy()'s py > 1 guard exists to reject, and a percent would
+  # trip its eff_adherent [0,1] stop() at Mock-Up_logic_V3.R ~325. Conversion
+  # lives in one place: mo_to_years() / years_to_mo() / pct_to_frac() /
+  # frac_to_pct() below.
   # ==========================================================================
   param_overrides <- reactiveValues(eff = list(), cost = list(), art_cost = NULL)
   
@@ -951,8 +1041,12 @@ server <- function(input, output, session) {
   # ~2584 (DSD bundle, dsd_cost_adjustment) and ~2481 (clinical_visit_12month,
   # clinical_visit_cost_adjustment). Two accumulators, one convention.
   # The Parameters tab takes USD and converts at the reactive boundary.
-  DSD_COST_KEYS <- c("mmd_3month", "mmd_6month", "mmd_12month",
-                     "community_pickup", "clinical_visit_12month")
+  # Split only for LAYOUT (one row each). DSD_COST_KEYS stays the single source
+  # of truth for the conversion, the observers and the reset -- never iterate
+  # the two halves separately outside the UI.
+  MMD_KEYS       <- c("mmd_3month", "mmd_6month", "mmd_12month")
+  DSD_OTHER_KEYS <- c("community_pickup", "clinical_visit_12month")
+  DSD_COST_KEYS  <- c(MMD_KEYS, DSD_OTHER_KEYS)
   
   ORAL_KEYS <- c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general")
   LEN_KEYS  <- c("prep_lenacapavir_fsw", "prep_lenacapavir_msm",
@@ -968,6 +1062,28 @@ server <- function(input, output, session) {
   years_to_mo <- function(y) {
     if (length(y) == 1 && !is.na(y)) unname(round(y * 12, 2)) else NA_real_
   }
+  
+  # Efficacy is ENTERED as a percentage (74) and STORED as a fraction (0.74).
+  # Same boundary discipline as mo_to_years(): fractions are what the sheet,
+  # derive_prep_efficacy(), test_14 and the logic file speak, and none of them
+  # change. round() at 8 dp, not 2: this round trip (sheet -> frac_to_pct ->
+  # box -> echo -> pct_to_frac) must land inside all.equal()'s 1.5e-8 relative
+  # tolerance in set_eff_override(), or an untouched box reports itself as a
+  # change -- 0.74 * 100 is not exactly 74 in binary floating point. 8 dp leaves
+  # ~5e-11 absolute error and does not alter the display of any 2 dp sheet
+  # value (0.74 -> "74").
+  pct_to_frac <- function(p) p / 100
+  frac_to_pct <- function(f) {
+    if (length(f) == 1 && !is.na(f)) unname(round(f * 100, 8)) else NA_real_
+  }
+  
+  # Vectorised display formatters for shared_default()'s conflict detail, which
+  # must read in the SAME unit as the box above it. Not the inverse of the
+  # converters above -- these take the sheet value and format it for display,
+  # NA-safe because ifelse() in shared_default() substitutes "missing" after the
+  # fact (sprintf(NA) would otherwise print "NA%").
+  pct_detail_fmt <- function(x) sprintf("%g%%", x * 100)
+  mo_detail_fmt  <- function(x) sprintf("%g mo", x * 12)
   
   prep_group_label <- function(key) {
     if (grepl("_fsw$", key))     "FSW"
@@ -989,7 +1105,7 @@ server <- function(input, output, session) {
   # back from four independent sheet rows. If those rows disagree, one input
   # cannot represent them -- so surface it rather than silently overwrite three
   # of the four on the first edit.
-  shared_default <- function(keys, pt) {
+  shared_default <- function(keys, pt, fmt = format) {
     # USE.NAMES = FALSE is load-bearing: vapply over a CHARACTER vector returns a
     # NAMED result by default, and a named numeric survives into
     # updateNumericInput(), which serialises it to JSON as an object
@@ -1004,7 +1120,7 @@ server <- function(input, output, session) {
          conflict = length(u) > 1,
          detail   = paste(sprintf("%s: %s",
                                   vapply(keys, prep_group_label, character(1), USE.NAMES = FALSE),
-                                  ifelse(is.na(vals), "missing", format(vals))),
+                                  ifelse(is.na(vals), "missing", fmt(vals))),
                           collapse = "; "))
   }
   
@@ -1012,15 +1128,28 @@ server <- function(input, output, session) {
   # sheet. Typing the default back in leaves the stored absolute in place -- so
   # the box stays authoritative and the result stays order-independent -- but it
   # must not show up in the report as a change that isn't one.
+  # Compare against the default AT THE PRECISION THE BOX CAN EXPRESS -- not by
+  # round-tripping back to a fraction. The field is 2dp, so a sheet fraction of
+  # -0.05 against Botswana's art_cost_standard of 221.82 renders -11.09, not
+  # -11.091; -11.09/221.82 is -0.049995, which fails all.equal against -0.05
+  # (diff 4.5e-6 vs default tolerance 1.5e-8). Every country's art_cost_standard
+  # carries 2 decimals, so frac * ac almost never lands on a clean 2dp value.
+  # Comparing fractions therefore reported all five keys as changed on a
+  # completely untouched tab: the value the box echoes back on first render is
+  # by definition the rounded one.
+  #
+  # Consequence worth knowing: at "default" the model applies round(f*ac, 2)/ac
+  # rather than f exactly -- a relative error of ~1e-5 on the DSD adjustment.
+  # That is the price of a 2dp box and is far below any parameter uncertainty.
   n_dsd_changed <- reactive({
     ac <- effective_art_cost()
     if (!ac_ok(ac)) return(0L)
     ks <- names(param_overrides$dsd_abs)
     if (length(ks) == 0) return(0L)
     sum(vapply(ks, function(k) {
-      f <- sheet_val(k, "unit_cost")
-      !(length(f) == 1 && !is.na(f) &&
-          isTRUE(all.equal(param_overrides$dsd_abs[[k]] / ac, f)))
+      d <- dsd_cost_default(k, ac)$abs
+      !(length(d) == 1 && !is.na(d) &&
+          isTRUE(all.equal(round(param_overrides$dsd_abs[[k]], 2), round(d, 2))))
     }, logical(1)))
   })
   
@@ -1127,12 +1256,14 @@ server <- function(input, output, session) {
          abs  = if (length(f) == 1 && !is.na(f)) unname(f * ac) else NA_real_)
   }
   
+  # Short: these sit in 4/12-width columns under a param_hdr(), so the long
+  # form ("MMD: 3-month dispensing") wrapped to three lines.
   dsd_label <- function(key) switch(key,
-                                    mmd_3month             = "MMD: 3-month dispensing",
-                                    mmd_6month             = "MMD: 6-month dispensing",
-                                    mmd_12month            = "MMD: 12-month dispensing",
-                                    community_pickup       = "Community ART pick-up",
-                                    clinical_visit_12month = "Annual clinical visit (stable clients)",
+                                    mmd_3month             = "MMD: 3-month",
+                                    mmd_6month             = "MMD: 6-month",
+                                    mmd_12month            = "MMD: 12-month",
+                                    community_pickup       = "Community pick-up",
+                                    clinical_visit_12month = "Annual clinical visit",
                                     key)
   
   ac_ok  <- function(ac) length(ac) == 1 && !is.na(ac) && ac > 0
@@ -1167,6 +1298,12 @@ server <- function(input, output, session) {
                       prep_group_label(key)),
             param_tip(txt))
   }
+  # Same idea for the DSD boxes, which sit under their own param_hdr().
+  dsd_lbl <- function(key, txt) {
+    tagList(tags$span(style = "font-size:11px; color:#6b7280; font-weight:400;",
+                      dsd_label(key)),
+            param_tip(txt))
+  }
   
   # Amber inline warning, shown only when a product's four sheet rows disagree
   # and one shared input therefore cannot represent them.
@@ -1185,35 +1322,39 @@ server <- function(input, output, session) {
     input$region
     cc <- isolate(country_calibration())
     
-    oral_eff_d <- shared_default(ORAL_KEYS, "eff_adherent")
-    len_eff_d  <- shared_default(LEN_KEYS,  "eff_adherent")
-    len_dur_d  <- shared_default(LEN_KEYS,  "shot_coverage_years")
+    oral_eff_d <- shared_default(ORAL_KEYS, "eff_adherent", fmt = pct_detail_fmt)
+    len_eff_d  <- shared_default(LEN_KEYS,  "eff_adherent", fmt = pct_detail_fmt)
+    len_dur_d  <- shared_default(LEN_KEYS,  "shot_coverage_years", fmt = mo_detail_fmt)
     
     sec_hdr <- function(txt) {
       tagList(div(style = "font-weight:600; font-size:13px; margin:14px 0 2px;", txt),
               hr(style = "margin:2px 0 8px;"))
     }
     
+    # step is gone with the swap to decimalNumericInput(): autoNumeric has no
+    # spinners, so step had nothing to drive. min/max now CLAMP rather than warn.
     dur_input <- function(key) {
-      numericInput(paste0("param_dur_", key),
-                   grp_lbl(key, sheet_src(key, "person_years_on_prep")),
-                   value = years_to_mo(sheet_val(key, "person_years_on_prep")),
-                   min = 0, max = MAX_DURATION_MONTHS, step = 0.1, width = "100%")
+      decimalNumericInput(paste0("param_dur_", key),
+                          grp_lbl(key, sheet_src(key, "person_years_on_prep")),
+                          value = years_to_mo(sheet_val(key, "person_years_on_prep")),
+                          min = 0, max = MAX_DURATION_MONTHS, width = "100%")
     }
+    # Stays on the raw 0-1 scale -- only the decimal separator changes. step is
+    # gone with the swap, as with dur_input(): autoNumeric has no spinners.
     ret_input <- function(key) {
-      numericInput(paste0("param_ret_", key),
-                   grp_lbl(key, sheet_src(key, "second_shot_return_rate")),
-                   value = sheet_val(key, "second_shot_return_rate"),
-                   min = 0, max = 1, step = 0.05, width = "100%")
+      decimalNumericInput(paste0("param_ret_", key),
+                          grp_lbl(key, sheet_src(key, "second_shot_return_rate")),
+                          value = sheet_val(key, "second_shot_return_rate"),
+                          min = 0, max = 1, width = "100%")
     }
     # Tooltip text comes from the sheet's src_unit_cost column -- no default
     # value baked in here. Until that column is populated for a key, the key
     # simply has no info bubble.
     cost_input <- function(key) {
-      numericInput(paste0("cost_", key),
-                   grp_lbl(key, sheet_src(key, "unit_cost")),
-                   value = prep_cost_default(key, cc)$value,
-                   min = 0, step = 1, width = "100%")
+      currencyNumericInput(paste0("cost_", key),
+                           grp_lbl(key, sheet_src(key, "unit_cost")),
+                           value = prep_cost_default(key, cc)$value,
+                           min = 0, width = "100%")
     }
     art_d <- art_cost_default(cc)
     
@@ -1229,18 +1370,31 @@ server <- function(input, output, session) {
     # No min = 0, unlike every other cost box on this tab: these are signed.
     # The lower bound (-art_cost) is enforced in chkdsd_ / the observer.
     dsd_cost_input <- function(key) {
-      tagList(
-        layout_columns(
-          col_widths = c(3, 9),
-          numericInput(paste0("dsdcost_", key),
-                       lbl_tip(dsd_label(key), sheet_src(key, "unit_cost")),
-                       value = dsd_cost_default(key, ac_render)$abs,
-                       step = 1, width = "100%"),
-          NULL
-        ),
-        uiOutput(paste0("chkdsd_", key)),
-        uiOutput(paste0("capdsd_", key))
-      )
+      currencyNumericInput(paste0("dsdcost_", key),
+                           dsd_lbl(key, sheet_src(key, "unit_cost")),
+                           value = dsd_cost_default(key, ac_render)$abs,
+                           width = "100%")
+    }
+    # One row of DSD boxes with matching check and caption rows beneath -- the
+    # same shape as the PrEP cost rows above. Each box previously took a
+    # col_widths = c(3, 9) row of its own and wasted three quarters of it.
+    # col_widths is padded to 12 with a NULL child so a 2-box row keeps the
+    # same box width as a 3-box row.
+    # One CELL per key -- box, check and caption in the same column -- rather
+    # than three parallel layout_columns rows. Two fewer row gaps, and the
+    # caption sits against its own box instead of against the tallest one.
+    dsd_cell <- function(key) {
+      div(class = "dsd-cell",
+          dsd_cost_input(key),
+          uiOutput(paste0("chkdsd_", key)),
+          uiOutput(paste0("capdsd_", key)))
+    }
+    dsd_row <- function(keys) {
+      n   <- length(keys)
+      w   <- c(rep(4, n), if (n < 3) 12 - 4 * n)
+      pad <- if (n < 3) list(NULL)
+      do.call(layout_columns,
+              c(list(col_widths = w), unname(c(lapply(keys, dsd_cell), pad))))
     }
     
     div(
@@ -1250,11 +1404,11 @@ server <- function(input, output, session) {
       sec_hdr("Oral PrEP"),
       layout_columns(
         col_widths = c(3, 9),
-        numericInput("param_oral_eff",
-                     lbl_tip("Efficacy when adherent (0-1)",
-                             sheet_src(ORAL_KEYS[1], "eff_adherent")),
-                     value = oral_eff_d$value, min = 0, max = 1, step = 0.01,
-                     width = "100%"),
+        decimalNumericInput("param_oral_eff",
+                            lbl_tip("Efficacy when adherent (%)",
+                                    sheet_src(ORAL_KEYS[1], "eff_adherent")),
+                            value = frac_to_pct(oral_eff_d$value),
+                            min = 0, max = 100, width = "100%"),
         NULL
       ),
       uiOutput("chk_param_oral_eff"),
@@ -1268,16 +1422,16 @@ server <- function(input, output, session) {
       sec_hdr("Lenacapavir"),
       layout_columns(
         col_widths = c(3, 3, 6),
-        numericInput("param_len_eff",
-                     lbl_tip("Efficacy when adherent (0-1)",
-                             sheet_src(LEN_KEYS[1], "eff_adherent")),
-                     value = len_eff_d$value, min = 0, max = 1, step = 0.01,
-                     width = "100%"),
-        numericInput("param_len_dur",
-                     lbl_tip("Protection per shot (months)",
-                             sheet_src(LEN_KEYS[1], "shot_coverage_years")),
-                     value = years_to_mo(len_dur_d$value),
-                     min = 0, max = MAX_DURATION_MONTHS, step = 0.5, width = "100%"),
+        decimalNumericInput("param_len_eff",
+                            lbl_tip("Efficacy when adherent (%)",
+                                    sheet_src(LEN_KEYS[1], "eff_adherent")),
+                            value = frac_to_pct(len_eff_d$value),
+                            min = 0, max = 100, width = "100%"),
+        decimalNumericInput("param_len_dur",
+                            lbl_tip("Protection per shot (months)",
+                                    sheet_src(LEN_KEYS[1], "shot_coverage_years")),
+                            value = years_to_mo(len_dur_d$value),
+                            min = 0, max = MAX_DURATION_MONTHS, width = "100%"),
         NULL
       ),
       uiOutput("chk_param_len_eff"),
@@ -1301,21 +1455,24 @@ server <- function(input, output, session) {
                                 unname(lapply(LEN_KEYS, function(k) uiOutput(paste0("chkcost_", k)))))),
       layout_columns(
         col_widths = c(3, 9),
-        numericInput("cost_art_standard",
-                     lbl_tip("ART, per person-year",
-                             paste("Standard of care cost for providing one year of treatment, excluding viral load testing.")),
-                     value = art_d$value, min = 0, step = 1, width = "100%"),
+        currencyNumericInput("cost_art_standard",
+                             lbl_tip("ART, per person-year",
+                                     paste("Standard of care cost for providing one year of treatment, excluding viral load testing.")),
+                             value = art_d$value, min = 0, width = "100%"),
         NULL
       ),
       uiOutput("chkcost_art"),
       
       # ---------------- ART cost adjustments ----------------
-      sec_hdr("ART cost adjustments (signed USD per person-year)"),
+      sec_hdr("ART cost adjustments"),
       div(style = "font-size:11px; color:#6b7280; margin:-4px 0 10px;",
+          "Signed USD per person-year enrolled, charged on stable clients. ",
           "Negative = saving against standard facility-based care; positive = premium. ",
-          "Charged per person-year enrolled, on stable clients only. ",
-          "Entered in dollars and applied as a share of the ART unit cost above."),
-      do.call(tagList, unname(lapply(DSD_COST_KEYS, dsd_cost_input))),
+          "Applied as a share of the ART unit cost above."),
+      param_hdr("Multi-month dispensing"),
+      dsd_row(MMD_KEYS),
+      param_hdr("Other differentiated service delivery"),
+      dsd_row(DSD_OTHER_KEYS),
       
       # ---------------- Reset ----------------
       div(style = "margin-top:10px;",
@@ -1342,8 +1499,8 @@ server <- function(input, output, session) {
   }
   ok_range <- function(v, lo, hi) !(is.null(v) || is.na(v) || v < lo || v > hi)
   
-  output$chk_param_oral_eff <- renderUI({ chk_range(input$param_oral_eff, 0, 1) })
-  output$chk_param_len_eff  <- renderUI({ chk_range(input$param_len_eff,  0, 1) })
+  output$chk_param_oral_eff <- renderUI({ chk_range(input$param_oral_eff, 0, 100, "%") })
+  output$chk_param_len_eff  <- renderUI({ chk_range(input$param_len_eff,  0, 100, "%") })
   output$chk_param_len_dur  <- renderUI({
     chk_range(input$param_len_dur, 0, MAX_DURATION_MONTHS, " months")
   })
@@ -1351,14 +1508,14 @@ server <- function(input, output, session) {
   # Shared efficacy inputs fan out to their product's four group keys.
   observeEvent(input$param_oral_eff, {
     v <- input$param_oral_eff
-    if (!ok_range(v, 0, 1)) return()
-    for (key in ORAL_KEYS) set_eff_override(key, "eff_adherent", v)
+    if (!ok_range(v, 0, 100)) return()
+    for (key in ORAL_KEYS) set_eff_override(key, "eff_adherent", pct_to_frac(v))
   }, ignoreInit = TRUE)
   
   observeEvent(input$param_len_eff, {
     v <- input$param_len_eff
-    if (!ok_range(v, 0, 1)) return()
-    for (key in LEN_KEYS) set_eff_override(key, "eff_adherent", v)
+    if (!ok_range(v, 0, 100)) return()
+    for (key in LEN_KEYS) set_eff_override(key, "eff_adherent", pct_to_frac(v))
   }, ignoreInit = TRUE)
   
   observeEvent(input$param_len_dur, {
@@ -1430,14 +1587,17 @@ server <- function(input, output, session) {
   for (.key in DSD_COST_KEYS) {
     local({
       key   <- .key
-      amber <- "font-size:11px; color:#b45309; margin-top:-6px;"
-      grey  <- "font-size:11px; color:#6b7280; margin-top:-6px;"
+      # margin-top was -6px when the caption lived in its own layout_columns row
+      # and had to claw back that row's gap. Inside .dsd-cell it sits directly
+      # under the box, so a negative margin would ride up over the input.
+      amber <- "font-size:11px; color:#b45309; margin-top:2px;"
+      grey  <- "font-size:11px; color:#6b7280; margin-top:2px;"
       
       output[[paste0("capdsd_", key)]] <- renderUI({
         ac <- effective_art_cost()
         if (!ac_ok(ac)) {
           return(div(style = amber,
-                     "ART unit cost is zero or unset — no ART cost adjustment can be applied."))
+                     "ART unit cost is zero or unset — no adjustment can be applied."))
         }
         # NOT a direct param_overrides$dsd_abs lookup by key: dsd_abs is
         # list() until the first entry, and a double-bracket character lookup
@@ -1450,22 +1610,19 @@ server <- function(input, output, session) {
         if (!is.null(ovr)) {
           if (ovr < -ac) {
             div(style = amber, sprintf(
-              "Saving exceeds the ART unit cost (%s/PY). art_provision_cost will be floored at 0.",
+              "Saving exceeds ART unit cost (%s/PY) — ART cost will be floored at 0.",
               usd_fmt(ac)))
           } else {
-            div(style = grey, sprintf(
-              "Applied: %s per person-year = %s of the ART unit cost (%s/PY).",
-              usd_fmt(ovr), pct_fmt(ovr / ac), usd_fmt(ac)))
+            div(style = grey, sprintf("Applied %s/PY = %s of ART (%s/PY).",
+                                      usd_fmt(ovr), pct_fmt(ovr / ac), usd_fmt(ac)))
           }
         } else {
           d <- dsd_cost_default(key, ac)
           if (is.na(d$frac)) {
-            div(style = amber,
-                "No sheet value — the model charges no ART cost adjustment for this intervention.")
+            div(style = amber, "No sheet value — no adjustment applied.")
           } else {
             div(style = grey, sprintf(
-              paste("Sheet default: %s of the ART unit cost (%s/PY) = %s per person-year.",
-                    "Type a value to fix it in dollars."),
+              "Sheet default %s of ART (%s/PY) = %s/PY. Type a value to fix it in dollars.",
               pct_fmt(d$frac), usd_fmt(ac), usd_fmt(d$abs)))
           }
         }
@@ -1526,10 +1683,15 @@ server <- function(input, output, session) {
     param_overrides$art_cost <- NULL
     
     cc <- country_calibration()
+    # param_oral_eff / param_len_eff / param_len_dur / param_dur_* / param_ret_*
+    # are autonumericInput now (decimalNumericInput), but updateNumericInput() still
+    # drives them -- see the note above commaNumericInput(). frac_to_pct() /
+    # years_to_mo() here because the box is in percent / months and the sheet is
+    # in fractions / person-years.
     updateNumericInput(session, "param_oral_eff",
-                       value = shared_default(ORAL_KEYS, "eff_adherent")$value)
+                       value = frac_to_pct(shared_default(ORAL_KEYS, "eff_adherent")$value))
     updateNumericInput(session, "param_len_eff",
-                       value = shared_default(LEN_KEYS, "eff_adherent")$value)
+                       value = frac_to_pct(shared_default(LEN_KEYS, "eff_adherent")$value))
     updateNumericInput(session, "param_len_dur",
                        value = years_to_mo(shared_default(LEN_KEYS, "shot_coverage_years")$value))
     for (key in ORAL_KEYS) {
@@ -1540,6 +1702,12 @@ server <- function(input, output, session) {
       updateNumericInput(session, paste0("param_ret_", key),
                          value = sheet_val(key, "second_shot_return_rate"))
     }
+    # These three are autonumericInput now (currencyNumericInput), but
+    # updateNumericInput() still drives them -- see the note above
+    # commaNumericInput(): Shiny routes update messages by DOM id, and
+    # autonumericInputBinding.receiveMessage() honours {value: ...} whichever
+    # binding sent it. Staying on updateNumericInput keeps this consistent with
+    # the ~30 other call sites that already update commaNumericInput fields.
     for (key in PREP_KEYS) {
       updateNumericInput(session, paste0("cost_", key),
                          value = prep_cost_default(key, cc)$value)
@@ -1550,8 +1718,12 @@ server <- function(input, output, session) {
     # resolution chain.
     ac_reset <- art_cost_default(cc)$value
     for (key in DSD_COST_KEYS) {
-      updateNumericInput(session, paste0("dsdcost_", key),
-                         value = dsd_cost_default(key, ac_reset)$abs)
+      # NA guard: a DSD key with no sheet unit_cost yields NA_real_, and pushing
+      # NA into the field would blank it rather than restore a default.
+      v <- dsd_cost_default(key, ac_reset)$abs
+      if (length(v) == 1 && !is.na(v)) {
+        updateNumericInput(session, paste0("dsdcost_", key), value = v)
+      }
     }
     
     showNotification(
