@@ -743,7 +743,12 @@ build_intervention_groups <- function(intervention_params){
           unit_label = "% of postpartum women on ART",
           efficacy  = {v <- subset(intervention_params, intervention_key == "pnc_vl_testing")$efficacy;  if (length(v) > 0) v else 0.40},
           eligible_pop = "pregnant_on_art",
-          unit_cost = {v <- subset(intervention_params, intervention_key == "pnc_vl_testing")$unit_cost; if (length(v) > 0) v else 10},
+          # `%||% 0`, not a bare subset(): an absent sheet row yields numeric(0),
+          # and charge_cost()'s `total + numeric(0)` is numeric(0) -- one missing
+          # row would silently zero the whole cost total. Was `if (length(v) > 0)
+          # v else 10`; the 10 was an unsourced literal and is now the sheet's
+          # job. NOTE the efficacy line above still carries its `else 0.40` twin.
+          unit_cost = subset(intervention_params, intervention_key == "pnc_vl_testing")$unit_cost %||% 0,
           outcomes = c("viral_suppression", "pmtct")
         )
       )

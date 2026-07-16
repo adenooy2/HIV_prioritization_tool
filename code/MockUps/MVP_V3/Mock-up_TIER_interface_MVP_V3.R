@@ -1034,7 +1034,12 @@ server <- function(input, output, session) {
   # lives in one place: mo_to_years() / years_to_mo() / pct_to_frac() /
   # frac_to_pct() below.
   # ==========================================================================
-  param_overrides <- reactiveValues(eff = list(), cost = list(), art_cost = NULL)
+  # dsd_abs was missing from this init: param_overrides$dsd_abs was NULL until the
+  # first country switch, which is what the capdsd_ guard further down is working
+  # around. Initialised here for symmetry with the reset; the guard stays.
+  param_overrides <- reactiveValues(eff = list(), cost = list(), cost_test = list(),
+                                    cost_flat = list(), dsd_abs = list(),
+                                    art_cost = NULL)
   
   # ART cost adjustments. unit_cost for these five keys is a FRACTION of
   # art_cost_standard (negative = saving), not USD -- see Mock-Up_logic_V3.R
@@ -1052,6 +1057,67 @@ server <- function(input, output, session) {
   LEN_KEYS  <- c("prep_lenacapavir_fsw", "prep_lenacapavir_msm",
                  "prep_lenacapavir_agyw", "prep_lenacapavir_general")
   PREP_KEYS <- c(ORAL_KEYS, LEN_KEYS)
+  
+  # ==========================================================================
+  # COST KEY SETS -- three channels, not one
+  # --------------------------------------------------------------------------
+  # A unit cost reaches the model by exactly one of three routes, and picking the
+  # wrong one gives a box that moves while the number doesn't:
+  #
+  #   COST_PREV_KEYS  -> context$cost_overrides_prep  (Mock-Up_logic_V3.R ~3339)
+  #   COST_TEST_KEYS  -> context$cost_overrides_test  (~2389 / ~2395)
+  #   COST_FLAT_KEYS  -> effective_intervention_params()$unit_cost -> ig_src (~2223)
+  #
+  # The first two are read as `overrides[[int_key]] %||% intervention$unit_cost`.
+  # `%||%` only falls through on NULL, so for any key the COUNTRY CSV populates,
+  # injecting into unit_cost is SHADOWED and does nothing -- the failure already
+  # documented on the cost_overrides_prep line in context() below.
+  # basic_hiv_data.csv populates all nine COST_TEST_KEYS for every country, so
+  # those MUST take route 2.
+  #
+  # vmmc/condoms have no CSV column and would work on route 3 today, but they are
+  # charged in the prevention loop whose lookup is generic over int_key -- so
+  # route 1 is future-proof against someone adding a `cost_vmmc` column and
+  # silently re-creating the shadow. infant_prophylaxis is NOT in that loop
+  # (~2431), so it cannot use route 1.
+  #
+  # eid is deliberately absent from COST_TEST_KEYS: the logic's test_cost_keys
+  # list (~1205) excludes EID/VL/CD4, and eid's cost is charged post-loop off
+  # all_interventions$eid$unit_cost (~3507). Route 3.
+  # ==========================================================================
+  COST_PREV_KEYS <- c(PREP_KEYS, "vmmc", "condoms")
+  COST_TEST_KEYS <- c("test_facility_general", "test_network", "test_index",
+                      "test_community", "test_kpsti",
+                      "hivst_facility", "hivst_community",
+                      "anc_hiv_testing", "pnc_hiv_testing")
+  COST_FLAT_KEYS <- c("infant_prophylaxis", "eid", "vl_monitoring_routine",
+                      "adherence_counseling", "tracking_tracing",
+                      "anc_vl_testing", "pnc_vl_testing",
+                      "cd4_testing", "ahd_package")
+  ALL_COST_KEYS  <- c(COST_PREV_KEYS, COST_TEST_KEYS, COST_FLAT_KEYS)
+  
+  # key -> group name, built the same way the logic flattens ig_src (~2223), so a
+  # key added to intervention_groups is found here without a second list to
+  # maintain. Built off the GLOBAL intervention_groups: this resolves DEFAULTS,
+  # and a default must not move when the user edits.
+  INT_GROUP_OF <- local({
+    m <- list()
+    for (g in names(intervention_groups))
+      for (k in names(intervention_groups[[g]]$interventions)) m[[k]] <- g
+    m
+  })
+  
+  # The unit cost the logic will actually charge for `key` at defaults --
+  # resolved off the BUILT intervention_groups, not sheet_val(). This matters:
+  # several definitions close over a fallback (pnc_vl_testing's `%||% 0`, the PrEP
+  # per-group -> blended chain), and a raw sheet read would show a blank box next
+  # to a model charging the fallback. NA when the value is absent or numeric(0);
+  # currencyNumericInput() renders that as an empty box.
+  built_unit_cost <- function(key) {
+    g <- INT_GROUP_OF[[key]]
+    v <- if (!is.null(g)) intervention_groups[[g]]$interventions[[key]]$unit_cost else NULL
+    if (length(v) == 1 && !is.na(v)) unname(as.numeric(v)) else NA_real_
+  }
   
   # Duration is capped at 12 months. The model runs a single year, so protection
   # generated per initiation cannot exceed one person-year; 12 months is the
@@ -1153,8 +1219,14 @@ server <- function(input, output, session) {
     }, logical(1)))
   })
   
+  # The three cost lists are length()-counted rather than compared: the observers
+  # DROP an entry the moment its value returns to the default, the same contract
+  # set_eff_override() keeps. n_dsd_changed() has to compare because the DSD boxes
+  # store a derived absolute, not a raw override.
   n_overrides <- reactive({
-    length(unlist(param_overrides$eff)) + length(param_overrides$cost) +
+    length(unlist(param_overrides$eff)) +
+      length(param_overrides$cost) + length(param_overrides$cost_test) +
+      length(param_overrides$cost_flat) +
       as.integer(!is.null(param_overrides$art_cost)) + n_dsd_changed()
   })
   
@@ -1163,10 +1235,16 @@ server <- function(input, output, session) {
   # once with the new country's CSV costs and the old country's edits on top.
   observeEvent(input$region, {
     had <- isolate(n_overrides()) > 0
-    param_overrides$eff      <- list()
-    param_overrides$cost     <- list()
-    param_overrides$dsd_abs  <- list()
-    param_overrides$art_cost <- NULL
+    param_overrides$eff       <- list()
+    param_overrides$cost      <- list()
+    # Clearing cost_test on country switch is not optional: the nine test costs
+    # are country-specific in basic_hiv_data.csv, so an edit carried across
+    # countries would price one country at another's numbers -- the reason this
+    # observer exists.
+    param_overrides$cost_test <- list()
+    param_overrides$cost_flat <- list()
+    param_overrides$dsd_abs   <- list()
+    param_overrides$art_cost  <- NULL
     if (had) {
       showNotification(
         "Parameter edits were reset to the new country's defaults.",
@@ -1180,6 +1258,13 @@ server <- function(input, output, session) {
       for (pt in names(param_overrides$eff[[k]])) {
         ip[[pt]][ip$intervention_key == k] <- param_overrides$eff[[k]][[pt]]
       }
+    }
+    # Flat unit costs (COST_FLAT_KEYS only). Safe HERE and nowhere else: none of
+    # these keys appears in cost_overrides_prep/_test, so nothing shadows the
+    # injection. Doing the same for a COST_TEST_KEY would move the box and not the
+    # model. Disjoint from the DSD keys written below.
+    for (k in names(param_overrides$cost_flat)) {
+      ip$unit_cost[ip$intervention_key == k] <- param_overrides$cost_flat[[k]]
     }
     # DSD absolutes -> fractions at the ART cost in force RIGHT NOW. Deriving here
     # rather than at entry is the whole design: the divisor here and the
@@ -1222,13 +1307,50 @@ server <- function(input, output, session) {
     param_overrides$eff <- e
   }
   
-  prep_cost_default <- function(key, cc) {
+  # Renamed from prep_cost_default(): the prevention cost loop's override lookup
+  # is generic over int_key, so vmmc and condoms resolve through exactly the same
+  # chain as the eight PrEP keys. The fallback now goes through built_unit_cost()
+  # rather than reading $unit_cost directly -- vmmc/condoms have no `%||%` chain in
+  # their definitions, so a missing sheet row gave numeric(0) here.
+  prevention_cost_default <- function(key, cc) {
     csv_val <- if (!is.null(cc)) cc$cost_overrides_prep[[key]] else NULL
     if (!is.null(csv_val) && !is.na(csv_val)) {
       return(list(value = csv_val, source = "country data (basic_hiv_data.csv)"))
     }
-    list(value = intervention_groups$prevention$interventions[[key]]$unit_cost,
-         source = "global default (intervention_params)")
+    list(value = built_unit_cost(key), source = "global default (intervention_params)")
+  }
+  
+  # Same shape, other channel. All nine keys are populated by basic_hiv_data.csv
+  # for every country in the file, so in practice this always returns the country
+  # branch -- the global branch is the Custom Country / missing-column path.
+  test_cost_default <- function(key, cc) {
+    csv_val <- if (!is.null(cc)) cc$cost_overrides_test[[key]] else NULL
+    if (!is.null(csv_val) && !is.na(csv_val)) {
+      return(list(value = csv_val, source = "country data (basic_hiv_data.csv)"))
+    }
+    list(value = built_unit_cost(key), source = "global default (intervention_params)")
+  }
+  
+  # No country channel exists for these keys BY DESIGN: the logic's test_cost_keys
+  # list (~1205) excludes EID/VL/CD4. $source is therefore always global, for every
+  # country -- which is exactly why the captions below spell the source out rather
+  # than leaving the user to assume the tab is uniformly country-specific.
+  flat_cost_default <- function(key) {
+    list(value = built_unit_cost(key), source = "global default (intervention_params)")
+  }
+  
+  # WHICH reactiveValues list a key's override lives in, and WHICH default it is
+  # measured against. One place each, so the input observers, the captions, the
+  # reset and n_overrides() cannot disagree about where a key went.
+  cost_store_of <- function(key) {
+    if (key %in% COST_TEST_KEYS) "cost_test"
+    else if (key %in% COST_FLAT_KEYS) "cost_flat"
+    else "cost"
+  }
+  cost_default_of <- function(key, cc) {
+    if (key %in% COST_TEST_KEYS) test_cost_default(key, cc)
+    else if (key %in% COST_FLAT_KEYS) flat_cost_default(key)
+    else prevention_cost_default(key, cc)
   }
   
   art_cost_default <- function(cc) {
@@ -1255,6 +1377,35 @@ server <- function(input, output, session) {
     list(frac = f,
          abs  = if (length(f) == 1 && !is.na(f)) unname(f * ac) else NA_real_)
   }
+  
+  # Short display names for the cost boxes. NOT all_interventions[[key]]$name:
+  # those are the long Scenarios-tab labels ("Testing: facility-based (general)")
+  # and wrap to three lines in a 3/12 column. The UNIT lives in the param_hdr()
+  # above each row rather than being repeated twenty times -- except condoms,
+  # whose unit (per condom, not per person) differs from everything around it and
+  # whose units_costed is the raw uncapped entry (Mock-Up_logic_V3.R ~3316).
+  cost_label <- function(key) switch(key,
+                                     vmmc                  = "VMMC",
+                                     condoms               = "Condoms (per condom)",
+                                     infant_prophylaxis    = "Infant prophylaxis",
+                                     test_facility_general = "Facility (general)",
+                                     test_network          = "Network",
+                                     test_index            = "Index",
+                                     test_community        = "Community",
+                                     test_kpsti            = "KP / STI services",
+                                     hivst_facility        = "Self-test: facility",
+                                     hivst_community       = "Self-test: community",
+                                     anc_hiv_testing       = "ANC HIV testing",
+                                     pnc_hiv_testing       = "PNC HIV testing",
+                                     eid                   = "Early infant diagnosis",
+                                     vl_monitoring_routine = "Routine viral load",
+                                     adherence_counseling  = "Enhanced adherence counselling",
+                                     tracking_tracing      = "Tracking & tracing",
+                                     anc_vl_testing        = "ANC viral load",
+                                     pnc_vl_testing        = "PNC viral load",
+                                     cd4_testing           = "CD4 testing",
+                                     ahd_package           = "AHD package",
+                                     key)
   
   # Short: these sit in 4/12-width columns under a param_hdr(), so the long
   # form ("MMD: 3-month dispensing") wrapped to three lines.
@@ -1304,6 +1455,32 @@ server <- function(input, output, session) {
                       dsd_label(key)),
             param_tip(txt))
   }
+  # And for the unit-cost boxes. Separate from grp_lbl() because these keys are
+  # distinct interventions, not four groups of one product.
+  cost_lbl <- function(key, txt) {
+    tagList(tags$span(style = "font-size:11px; color:#6b7280; font-weight:400;",
+                      cost_label(key)),
+            param_tip(txt))
+  }
+  
+  # A cost box whose default could not be resolved at all. This is a WARNING, not
+  # a caption: it fires only when there is no value to show, and stays silent
+  # otherwise -- the source-of-default captions that used to live here were
+  # removed as noise (they rendered under all 29 boxes).
+  #
+  # It is worth keeping because a key with no unit_cost row reaches the logic as
+  # numeric(0), and charge_cost()'s `total + numeric(0)` is numeric(0) -- one
+  # missing row can zero a whole cost category. It deliberately does NOT claim the
+  # model charges nothing; it says the sheet is incomplete, which is the part that
+  # is actually known.
+  #
+  # $source is once again computed and never rendered by the default helpers
+  # above. Left in place: it is the natural hook if the source ever needs showing.
+  missing_default_note <- function(d) {
+    if (length(d$value) == 1 && !is.na(d$value)) return(NULL)
+    div(style = "font-size:11px; color:#b45309; margin-top:2px;",
+        "No default — intervention_params has no unit cost for this key.")
+  }
   
   # Amber inline warning, shown only when a product's four sheet rows disagree
   # and one shared input therefore cannot represent them.
@@ -1350,11 +1527,39 @@ server <- function(input, output, session) {
     # Tooltip text comes from the sheet's src_unit_cost column -- no default
     # value baked in here. Until that column is populated for a key, the key
     # simply has no info bubble.
-    cost_input <- function(key) {
+    # lblf is the only thing that varies: PrEP boxes carry the FSW/MSM/AGYW/
+    # General sub-label, every other cost box is a distinct intervention and
+    # carries its own short name. The default resolves through cost_default_of(),
+    # so the box shows whichever of the three channels will actually be read.
+    cost_input <- function(key, lblf = cost_lbl) {
       currencyNumericInput(paste0("cost_", key),
-                           grp_lbl(key, sheet_src(key, "unit_cost")),
-                           value = prep_cost_default(key, cc)$value,
+                           lblf(key, sheet_src(key, "unit_cost")),
+                           value = cost_default_of(key, cc)$value,
                            min = 0, width = "100%")
+    }
+    # One CELL per key -- box, check and source caption in the same column.
+    # .dsd-cell is reused deliberately: box-above-message in one column is the
+    # same shape as the ART-adjustment cells, and the class only drops the
+    # Bootstrap form-group gap.
+    cost_cell <- function(key, lblf) {
+      div(class = "dsd-cell",
+          cost_input(key, lblf),
+          uiOutput(paste0("chkcost_", key)),
+          uiOutput(paste0("capcost_", key)))
+    }
+    # col_widths padded to 12 with a NULL child so a 2-box row keeps the same box
+    # width as a 4-box row -- same trick as dsd_row() below.
+    cost_row_one <- function(keys, lblf) {
+      n   <- length(keys)
+      pad <- if (n < 4) list(NULL)
+      do.call(layout_columns,
+              c(list(col_widths = c(rep(3, n), if (n < 4) 12 - 3 * n)),
+                unname(c(lapply(keys, cost_cell, lblf = lblf), pad))))
+    }
+    cost_rows <- function(keys, lblf = cost_lbl) {
+      do.call(tagList,
+              unname(lapply(split(keys, ceiling(seq_along(keys) / 4)),
+                            cost_row_one, lblf = lblf)))
     }
     art_d <- art_cost_default(cc)
     
@@ -1444,15 +1649,30 @@ server <- function(input, output, session) {
                                 unname(lapply(LEN_KEYS, function(k) uiOutput(paste0("chk_param_ret_", k)))))),
       
       # ---------------- Unit costs ----------------
-      sec_hdr("Unit costs (USD)"),
+      # Sectioned by the five cost categories the model reports (cost_by_cat in
+      # the logic; prevention_cost / testing_cost / ... in the return), so a user
+      # who sees testing dominate the stacked breakdown finds a section with the
+      # same name here. The section a key sits in is its intervention_groups
+      # group -- NOT its override channel, which is invisible to the user by
+      # design and is the tab's business, not theirs.
+      sec_hdr("Unit costs: prevention (USD)"),
       param_hdr("Oral PrEP, per person initiating"),
-      do.call(layout_columns, c(list(col_widths = rep(3, 4)), unname(lapply(ORAL_KEYS, cost_input)))),
-      do.call(layout_columns, c(list(col_widths = rep(3, 4)),
-                                unname(lapply(ORAL_KEYS, function(k) uiOutput(paste0("chkcost_", k)))))),
+      cost_rows(ORAL_KEYS, lblf = grp_lbl),
       param_hdr("Lenacapavir, per person initiating"),
-      do.call(layout_columns, c(list(col_widths = rep(3, 4)), unname(lapply(LEN_KEYS, cost_input)))),
-      do.call(layout_columns, c(list(col_widths = rep(3, 4)),
-                                unname(lapply(LEN_KEYS, function(k) uiOutput(paste0("chkcost_", k)))))),
+      cost_rows(LEN_KEYS, lblf = grp_lbl),
+      param_hdr("Other prevention, per unit delivered"),
+      cost_rows(c("vmmc", "condoms", "infant_prophylaxis")),
+      
+      sec_hdr("Unit costs: testing & diagnosis (USD)"),
+      param_hdr("HIV testing services, per test performed"),
+      cost_rows(c("test_facility_general", "test_network", "test_index",
+                  "test_community", "test_kpsti")),
+      param_hdr("HIV self-testing, per kit distributed"),
+      cost_rows(c("hivst_facility", "hivst_community")),
+      param_hdr("Antenatal, postnatal and infant, per person tested"),
+      cost_rows(c("anc_hiv_testing", "pnc_hiv_testing", "eid")),
+      
+      sec_hdr("Unit costs: treatment monitoring & quality (USD)"),
       layout_columns(
         col_widths = c(3, 9),
         currencyNumericInput("cost_art_standard",
@@ -1462,6 +1682,17 @@ server <- function(input, output, session) {
         NULL
       ),
       uiOutput("chkcost_art"),
+      param_hdr("Viral load monitoring, per test performed"),
+      cost_rows("vl_monitoring_routine"),
+      
+      sec_hdr("Unit costs: retention & adherence support (USD)"),
+      param_hdr("Per person reached"),
+      cost_rows(c("adherence_counseling", "tracking_tracing",
+                  "anc_vl_testing", "pnc_vl_testing")),
+      
+      sec_hdr("Unit costs: advanced HIV disease (USD)"),
+      param_hdr("Per person reached"),
+      cost_rows(c("cd4_testing", "ahd_package")),
       
       # ---------------- ART cost adjustments ----------------
       sec_hdr("ART cost adjustments"),
@@ -1550,7 +1781,21 @@ server <- function(input, output, session) {
           set_eff_override(key, "person_years_on_prep", mo_to_years(v))
         }, ignoreInit = TRUE)
       }
-      
+    })
+  }
+  
+  # ---- Unit costs: one loop, every cost key --------------------------------
+  # Replaces the per-key cost block that used to live inside the PREP_KEYS loop
+  # above. Same contract as before, now for all 28 cost boxes: an entry is
+  # DROPPED when the value returns to its default, so n_overrides() -- and the
+  # report's changed-parameter count -- never claims a change on an untouched box.
+  # cost_store_of() / cost_default_of() do the routing; nothing in this loop knows
+  # or cares which of the three channels a key uses.
+  # local() so each closure captures THIS key, not the loop's last value.
+  for (.key in ALL_COST_KEYS) {
+    local({
+      key   <- .key
+      store <- cost_store_of(key)
       
       output[[paste0("chkcost_", key)]] <- renderUI({
         v <- input[[paste0("cost_", key)]]
@@ -1561,17 +1806,27 @@ server <- function(input, output, session) {
         )
         NULL
       })
+      
+      # Depends on country_calibration() only, not on param_overrides: whether a
+      # key HAS a default is a property of the sheet and the CSV, not of what the
+      # user typed. Renders nothing in the normal case.
+      output[[paste0("capcost_", key)]] <- renderUI({
+        missing_default_note(cost_default_of(key, country_calibration()))
+      })
+      
       observeEvent(input[[paste0("cost_", key)]], {
         v <- input[[paste0("cost_", key)]]
         if (is.null(v) || is.na(v) || v < 0) return()
-        d   <- prep_cost_default(key, country_calibration())
-        cst <- param_overrides$cost
+        d   <- cost_default_of(key, country_calibration())
+        cst <- param_overrides[[store]]
+        # NA default (no sheet row, no CSV column) -> nothing to compare against,
+        # so every entry counts as a change. Correct: the box was blank.
         if (length(d$value) == 1 && !is.na(d$value) && isTRUE(all.equal(v, d$value))) {
           cst[[key]] <- NULL
         } else {
           cst[[key]] <- v
         }
-        param_overrides$cost <- cst
+        param_overrides[[store]] <- cst
       }, ignoreInit = TRUE)
     })
   }
@@ -1677,10 +1932,12 @@ server <- function(input, output, session) {
   # ---- Single reset --------------------------------------------------------
   observeEvent(input$reset_all_params, {
     n <- isolate(n_overrides())
-    param_overrides$eff      <- list()
-    param_overrides$cost     <- list()
-    param_overrides$dsd_abs  <- list()
-    param_overrides$art_cost <- NULL
+    param_overrides$eff       <- list()
+    param_overrides$cost      <- list()
+    param_overrides$cost_test <- list()
+    param_overrides$cost_flat <- list()
+    param_overrides$dsd_abs   <- list()
+    param_overrides$art_cost  <- NULL
     
     cc <- country_calibration()
     # param_oral_eff / param_len_eff / param_len_dur / param_dur_* / param_ret_*
@@ -1708,9 +1965,15 @@ server <- function(input, output, session) {
     # autonumericInputBinding.receiveMessage() honours {value: ...} whichever
     # binding sent it. Staying on updateNumericInput keeps this consistent with
     # the ~30 other call sites that already update commaNumericInput fields.
-    for (key in PREP_KEYS) {
-      updateNumericInput(session, paste0("cost_", key),
-                         value = prep_cost_default(key, cc)$value)
+    # ALL_COST_KEYS, not PREP_KEYS. NA guard as per the DSD loop below: a key
+    # with no sheet row and no CSV column resolves to NA, and pushing NA into the
+    # field would blank it rather than restore a default -- and the field was
+    # already blank, so there is nothing to restore.
+    for (key in ALL_COST_KEYS) {
+      v <- cost_default_of(key, cc)$value
+      if (length(v) == 1 && !is.na(v)) {
+        updateNumericInput(session, paste0("cost_", key), value = v)
+      }
     }
     updateNumericInput(session, "cost_art_standard", value = art_cost_default(cc)$value)
     # art_cost_default(cc) IS effective_art_cost() at this point -- the override
@@ -1851,7 +2114,15 @@ server <- function(input, output, session) {
       # intervention_key). NULL when no preset selected; in that case the
       # logic file's `context$cost_overrides_test[[int_key]] %||% intervention$unit_cost`
       # lookup safely returns NULL and falls back to the global value.
-      cost_overrides_test = if (!is.null(cc)) cc$cost_overrides_test else NULL,
+      # Parameter tab: user test-cost edits layer ON TOP of the country CSV,
+      # exactly as cost_overrides_prep does below and for exactly the same reason.
+      # The logic reads `cost_overrides_test[[int_key]] %||% intervention$unit_cost`
+      # (~2389 / ~2395), so a value injected into unit_cost would be shadowed by
+      # the CSV -- the box would move and the result wouldn't.
+      cost_overrides_test = modifyList(
+        (if (!is.null(cc)) cc$cost_overrides_test else NULL) %||% list(),
+        param_overrides$cost_test
+      ),
       # Country-specific PrEP unit cost overrides (named list, 8 PrEP keys).
       # NULL when no preset selected; logic file's
       # `context$cost_overrides_prep[[int_key]] %||% intervention$unit_cost`
