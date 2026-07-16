@@ -368,16 +368,6 @@ ui <- page_sidebar(
     ),
     
     nav_panel(
-      "Parameters",
-      h4("Effectiveness and unit cost assumptions"),
-      p(strong("Note:"), " Values below are the defaults used in the results — from the ",
-        "parameter sheet, or from country data where available. You can override them ",
-        "for this session. Edits ", strong("reset when you change country"),
-        ", because unit costs are country-specific."),
-      uiOutput("param_tab_ui")
-    ),
-    
-    nav_panel(
       "Results Comparison",
       div(
         style = "display: flex; justify-content: flex-end; margin-bottom: 8px;",
@@ -504,6 +494,14 @@ ui <- page_sidebar(
         
         div(style = "height: 50px;")
       )
+    ),
+    nav_panel(
+      "Parameters",
+      h4("Effectiveness and unit cost assumptions"),
+      p(strong("Note:"), " Values below represent those used as the defaults for the modelling results, informed by literature or country data where available.",
+        "If these differ from your expectations, you can override them for this country session. Selecting a different country will reset these values to the defaults.",
+        "This can also be done using the reset button at the bottom of the tab."),
+      uiOutput("param_tab_ui")
     )
   ),
   tags$footer(
@@ -672,17 +670,29 @@ server <- function(input, output, session) {
     sum(caps, na.rm = TRUE)
   }
   
+  # `%||%` in the interface file does not catch NA. Total-mode PrEP fields can
+  # arrive as NULL (widget not rendered -- the tab is a suspended renderUI) or
+  # NA (user cleared the box). Both mean "not entered": fall through.
+  coalesce_num <- function(x, fallback) {
+    if (is.null(x) || length(x) != 1 || is.na(x)) fallback else x
+  }
   # Thin wrapper over the logic file's allocate_prep_totals(). Supplies the caps
   # from group_pop(), which reads the same partition_into_strata() output the
   # cost loop and compute_prevention_adjustments() use as denominator.
   split_prep_total <- function(total_oral, total_lena) {
-    allocate_prep_totals(
-      total_oral, total_lena,
-      caps = list(fsw     = group_pop("fsw"),
-                  msm     = group_pop("msm"),
-                  agyw    = group_pop("agyw"),
-                  general = group_pop("general"))
-    )
+    # isolate(): the caps come from strata_sizes() -> define_strata_params(context()),
+    # so without this, baseline_input_values() takes a dependency on the WHOLE of
+    # context() -- and any Parameters-tab edit re-renders scenario_ui and wipes the
+    # user's scenario entries. define_strata_params() reads only prop_fsw/rr_fsw/
+    # prop_msm/rr_msm/prop_agyw/rr_agyw/prop_pop_male/circ_prevalence, none of which
+    # param_overrides can change, so isolating loses no real reactivity here.
+    # The caps DO change on a country or total_pop switch -- both of those also
+    # change baseline_values(), which re-invalidates this path and re-reads them.
+    caps <- isolate(list(fsw     = group_pop("fsw"),
+                         msm     = group_pop("msm"),
+                         agyw    = group_pop("agyw"),
+                         general = group_pop("general")))
+    allocate_prep_totals(total_oral, total_lena, caps = caps)
   }
   
   # Shared builder for the PrEP cap warnings so the oral and lenacapavir
@@ -975,19 +985,42 @@ server <- function(input, output, session) {
     }
   }
   
-  fmt_money <- function(x) {
-    if (length(x) == 1 && !is.na(x)) format(round(x, 2), nsmall = 2) else "not set"
+  # Info bubble, same construction as make_intervention_tip() on the Scenarios
+  # tab. Returns NULL when there's no text, so the icon is skipped rather than
+  # appearing with an empty bubble.
+  param_tip <- function(txt) {
+    if (!(length(txt) == 1 && !is.na(txt) && nzchar(txt))) return(NULL)
+    tooltip(
+      bsicons::bs_icon("info-circle", class = "text-primary",
+                       style = "cursor: help; font-size: 0.9em; margin-left: 4px;"),
+      txt, placement = "right"
+    )
   }
-  src_note <- function(x) {
-    div(style = "font-size: 11px; color: #6b7280; margin-top: -6px;",
-        if (length(x) == 1 && !is.na(x)) x else "No source recorded")
+  lbl_tip <- function(text, txt) tagList(text, param_tip(txt))
+  
+  # A parameter description that heads a row of per-group inputs. Styled as a
+  # real control-label so it sits at the SAME level as the shared inputs'
+  # labels ("Efficacy when adherent") -- the two are the same kind of thing.
+  # The group names below it are then sub-labels, not peers.
+  param_hdr <- function(text, txt = NA_character_) {
+    tags$label(class = "control-label",
+               style = "display:block; margin:12px 0 2px;",
+               text, param_tip(txt))
   }
+  # Group name under a param_hdr: deliberately lighter than the header above it.
+  grp_lbl <- function(key, txt) {
+    tagList(tags$span(style = "font-size:11px; color:#6b7280; font-weight:400;",
+                      prep_group_label(key)),
+            param_tip(txt))
+  }
+  
+  # Amber inline warning, shown only when a product's four sheet rows disagree
+  # and one shared input therefore cannot represent them.
   conflict_note <- function(d) {
     if (!isTRUE(d$conflict)) return(NULL)
-    div(style = "font-size: 11px; color: #b45309;",
-        strong("Values differ by group in the parameter sheet "),
-        sprintf("(%s). ", d$detail),
-        "Editing this box applies one value to all four groups.")
+    div(style = "font-size: 11px; color: #b45309; margin-top: -8px;",
+        sprintf("Sheet values differ by group (%s). Editing applies one value to all four.",
+                d$detail))
   }
   
   # ---- Parameter tab: card rendering ---------------------------------------
@@ -1002,122 +1035,104 @@ server <- function(input, output, session) {
     len_eff_d  <- shared_default(LEN_KEYS,  "eff_adherent")
     len_dur_d  <- shared_default(LEN_KEYS,  "shot_coverage_years")
     
-    cost_rows <- lapply(PREP_KEYS, function(key) {
-      d <- prep_cost_default(key, cc)
-      div(
-        numericInput(paste0("cost_", key),
-                     intervention_groups$prevention$interventions[[key]]$name %||% key,
-                     value = d$value, min = 0, step = 1, width = "100%"),
-        uiOutput(paste0("chkcost_", key)),
-        div(style = "font-size: 11px; color: #6b7280; margin-top: -6px;",
-            sprintf("Default: %s — %s", fmt_money(d$value), d$source))
-      )
-    })
+    sec_hdr <- function(txt) {
+      tagList(div(style = "font-weight:600; font-size:13px; margin:14px 0 2px;", txt),
+              hr(style = "margin:2px 0 8px;"))
+    }
+    
+    dur_input <- function(key) {
+      numericInput(paste0("param_dur_", key),
+                   grp_lbl(key, sheet_src(key, "person_years_on_prep")),
+                   value = years_to_mo(sheet_val(key, "person_years_on_prep")),
+                   min = 0, max = MAX_DURATION_MONTHS, step = 0.1, width = "100%")
+    }
+    ret_input <- function(key) {
+      numericInput(paste0("param_ret_", key),
+                   grp_lbl(key, sheet_src(key, "second_shot_return_rate")),
+                   value = sheet_val(key, "second_shot_return_rate"),
+                   min = 0, max = 1, step = 0.05, width = "100%")
+    }
+    # Tooltip text comes from the sheet's src_unit_cost column -- no default
+    # value baked in here. Until that column is populated for a key, the key
+    # simply has no info bubble.
+    cost_input <- function(key) {
+      numericInput(paste0("cost_", key),
+                   grp_lbl(key, sheet_src(key, "unit_cost")),
+                   value = prep_cost_default(key, cc)$value,
+                   min = 0, step = 1, width = "100%")
+    }
     art_d <- art_cost_default(cc)
     
     div(
-      style = "height: 80vh; overflow-y: auto; padding-right: 15px;",
-      h5("Effectiveness"),
-      p(style = "color:#6b7280; font-size:12px;",
-        "PrEP efficacy is not entered directly — it is derived from the assumptions ",
-        "below using the same function the model itself calls, so the two cannot ",
-        "disagree. Durations are entered in months."),
+      style = "max-height: 78vh; overflow-y: auto; padding-right: 15px;",
       
       # ---------------- Oral PrEP ----------------
-      card(
-        fill = FALSE,
-        card_header("Oral PrEP"),
-        card_body(
-          fillable = FALSE,
-          numericInput("param_oral_eff",
-                       "Efficacy when adherent (0-1)",
-                       value = oral_eff_d$value, min = 0, max = 1, step = 0.01,
-                       width = "320px"),
-          uiOutput("chk_param_oral_eff"),
-          src_note(sheet_src(ORAL_KEYS[1], "eff_adherent")),
-          conflict_note(oral_eff_d),
-          div(style = "font-size:12px; color:#374151; margin-top:12px; font-weight:600;",
-              "Average duration on PrEP, by group"),
-          div(style = "font-size:11px; color:#6b7280; margin-bottom:6px;",
-              "Months of protection generated per person initiating, within 12 months of initiation."),
-          do.call(layout_columns, c(list(col_widths = rep(6, length(ORAL_KEYS))), lapply(ORAL_KEYS, function(key) {
-            div(
-              numericInput(paste0("param_dur_", key), prep_group_label(key),
-                           value = years_to_mo(sheet_val(key, "person_years_on_prep")),
-                           min = 0, max = MAX_DURATION_MONTHS, step = 0.1, width = "100%"),
-              uiOutput(paste0("chk_param_dur_", key)),
-              src_note(sheet_src(key, "person_years_on_prep")),
-              uiOutput(paste0("derived_", key))
-            )
-          })))
-        )
+      sec_hdr("Oral PrEP"),
+      layout_columns(
+        col_widths = c(3, 9),
+        numericInput("param_oral_eff",
+                     lbl_tip("Efficacy when adherent (0-1)",
+                             sheet_src(ORAL_KEYS[1], "eff_adherent")),
+                     value = oral_eff_d$value, min = 0, max = 1, step = 0.01,
+                     width = "100%"),
+        NULL
       ),
+      uiOutput("chk_param_oral_eff"),
+      conflict_note(oral_eff_d),
+      param_hdr("Average duration on PrEP, by group (months)"),
+      do.call(layout_columns, c(list(col_widths = rep(3, 4)), unname(lapply(ORAL_KEYS, dur_input)))),
+      do.call(layout_columns, c(list(col_widths = rep(3, 4)),
+                                unname(lapply(ORAL_KEYS, function(k) uiOutput(paste0("chk_param_dur_", k)))))),
       
       # ---------------- Lenacapavir ----------------
-      card(
-        fill = FALSE,
-        card_header("Lenacapavir"),
-        card_body(
-          fillable = FALSE,
-          numericInput("param_len_eff",
-                       "Efficacy when adherent (0-1)",
-                       value = len_eff_d$value, min = 0, max = 1, step = 0.01,
-                       width = "320px"),
-          uiOutput("chk_param_len_eff"),
-          src_note(sheet_src(LEN_KEYS[1], "eff_adherent")),
-          conflict_note(len_eff_d),
-          
-          numericInput("param_len_dur",
-                       "Duration of protection per injection (months)",
-                       value = years_to_mo(len_dur_d$value),
-                       min = 0, max = MAX_DURATION_MONTHS, step = 0.5, width = "320px"),
-          uiOutput("chk_param_len_dur"),
-          src_note(sheet_src(LEN_KEYS[1], "shot_coverage_years")),
-          conflict_note(len_dur_d),
-          
-          div(style = "font-size:12px; color:#374151; margin-top:12px; font-weight:600;",
-              "Probability of returning for a second injection, by group"),
-          do.call(layout_columns, c(list(col_widths = rep(6, length(LEN_KEYS))), lapply(LEN_KEYS, function(key) {
-            div(
-              numericInput(paste0("param_ret_", key), prep_group_label(key),
-                           value = sheet_val(key, "second_shot_return_rate"),
-                           min = 0, max = 1, step = 0.05, width = "100%"),
-              uiOutput(paste0("chk_param_ret_", key)),
-              src_note(sheet_src(key, "second_shot_return_rate")),
-              uiOutput(paste0("derived_", key))
-            )
-          })))
-        )
+      sec_hdr("Lenacapavir"),
+      layout_columns(
+        col_widths = c(3, 3, 6),
+        numericInput("param_len_eff",
+                     lbl_tip("Efficacy when adherent (0-1)",
+                             sheet_src(LEN_KEYS[1], "eff_adherent")),
+                     value = len_eff_d$value, min = 0, max = 1, step = 0.01,
+                     width = "100%"),
+        numericInput("param_len_dur",
+                     lbl_tip("Protection per shot (months)",
+                             sheet_src(LEN_KEYS[1], "shot_coverage_years")),
+                     value = years_to_mo(len_dur_d$value),
+                     min = 0, max = MAX_DURATION_MONTHS, step = 0.5, width = "100%"),
+        NULL
       ),
+      uiOutput("chk_param_len_eff"),
+      uiOutput("chk_param_len_dur"),
+      conflict_note(len_eff_d),
+      conflict_note(len_dur_d),
+      param_hdr("Probability of returning for a second injection, by group (0-1)"),
+      do.call(layout_columns, c(list(col_widths = rep(3, 4)), unname(lapply(LEN_KEYS, ret_input)))),
+      do.call(layout_columns, c(list(col_widths = rep(3, 4)),
+                                unname(lapply(LEN_KEYS, function(k) uiOutput(paste0("chk_param_ret_", k)))))),
       
       # ---------------- Unit costs ----------------
-      h5(style = "margin-top:18px;", "Unit costs"),
-      card(
-        fill = FALSE,
-        card_header("PrEP unit costs (USD per person initiating)"),
-        card_body(fillable = FALSE, do.call(layout_columns, c(list(col_widths = rep(6, length(cost_rows))), cost_rows)))
+      sec_hdr("Unit costs (USD)"),
+      param_hdr("Oral PrEP, per person initiating"),
+      do.call(layout_columns, c(list(col_widths = rep(3, 4)), unname(lapply(ORAL_KEYS, cost_input)))),
+      do.call(layout_columns, c(list(col_widths = rep(3, 4)),
+                                unname(lapply(ORAL_KEYS, function(k) uiOutput(paste0("chkcost_", k)))))),
+      param_hdr("Lenacapavir, per person initiating"),
+      do.call(layout_columns, c(list(col_widths = rep(3, 4)), unname(lapply(LEN_KEYS, cost_input)))),
+      do.call(layout_columns, c(list(col_widths = rep(3, 4)),
+                                unname(lapply(LEN_KEYS, function(k) uiOutput(paste0("chkcost_", k)))))),
+      layout_columns(
+        col_widths = c(3, 9),
+        numericInput("cost_art_standard",
+                     lbl_tip("ART, per person-year",
+                             paste("Standard of care cost for providing one year of treatment, excluding viral load testing.")),
+                     value = art_d$value, min = 0, step = 1, width = "100%"),
+        NULL
       ),
-      card(
-        fill = FALSE,
-        card_header("ART unit cost"),
-        card_body(
-          fillable = FALSE,
-          numericInput("cost_art_standard", "Standard ART cost (USD per person-year)",
-                       value = art_d$value, min = 0, step = 1, width = "320px"),
-          uiOutput("chkcost_art"),
-          div(style = "font-size: 11px; color: #6b7280; margin-top: -6px;",
-              sprintf("Default: %s — %s", fmt_money(art_d$value), art_d$source)),
-          div(style = "font-size: 11px; color: #b45309; margin-top: 6px;",
-              strong("Note: "),
-              "DSD and multi-month dispensing costs are fractional multipliers of ",
-              "this value, so changing it also changes those. That is intended.")
-        )
-      ),
+      uiOutput("chkcost_art"),
       
-      # ---------------- Single reset ----------------
-      div(style = "margin-top:18px;",
+      # ---------------- Reset ----------------
+      div(style = "margin-top:10px;",
           actionButton("reset_all_params", "Reset all values to defaults",
-                       class = "btn-outline-secondary"),
+                       class = "btn-outline-secondary btn-sm"),
           uiOutput("param_reset_status"))
     )
   })
@@ -1191,21 +1206,6 @@ server <- function(input, output, session) {
         }, ignoreInit = TRUE)
       }
       
-      output[[paste0("derived_", key)]] <- renderUI({
-        row <- subset(effective_intervention_params(), intervention_key == key)
-        val <- tryCatch(
-          derive_prep_efficacy(
-            eff_adherent = row$eff_adherent,
-            person_years = row$person_years_on_prep,
-            return_rate  = row$second_shot_return_rate,
-            shot_years   = row$shot_coverage_years,
-            fallback     = NA_real_, key = key),
-          error = function(e) NA_real_)
-        validate(need(length(val) == 1 && !is.na(val),
-                      "Derived efficacy unavailable — check the assumptions above."))
-        div(style = "font-size:12px; margin-top:-4px;",
-            strong(sprintf("Derived efficacy: %.3f", val)))
-      })
       
       output[[paste0("chkcost_", key)]] <- renderUI({
         v <- input[[paste0("cost_", key)]]
@@ -2236,6 +2236,16 @@ server <- function(input, output, session) {
     tagList(scenario_columns)
   })
   
+  # Both tabs are renderUI inside nav_panels, so Shiny suspends them until the
+  # tab is first shown. That is what makes Results stale:
+  #   - baseline_ui suspended => input$baseline_* is NULL on a fresh session,
+  #     so anyone who opens Results or Scenarios first is served fallbacks.
+  #   - scenario_ui suspended => a baseline edit invalidates it but does not
+  #     re-run it, so input$scenario1_*/scenario2_* keep the PRE-EDIT values
+  #     and the scenario bars on Results do not move until Scenarios is visited.
+  # Rendering eagerly makes the existing design behave as written.
+  outputOptions(output, "baseline_ui", suspendWhenHidden = FALSE)
+  outputOptions(output, "scenario_ui", suspendWhenHidden = FALSE)
   # ========================================================================
   # PREP AND MMD TOTAL INDICATORS
   # ========================================================================
@@ -2376,7 +2386,18 @@ server <- function(input, output, session) {
   # ========================================================================
   # COLLECT INPUT VALUES
   # ========================================================================
-  
+  # Preset PrEP product totals. The fallback for every total-mode read taken
+  # before the owning tab has rendered -- mirrors the `preset[[int_key]]`
+  # fallback the per-intervention loops already use.
+  preset_prep_totals <- reactive({
+    p <- baseline_values()
+    list(
+      oral = (p[["prep_oral_fsw"]]  %||% 0) + (p[["prep_oral_msm"]]  %||% 0) +
+        (p[["prep_oral_agyw"]] %||% 0) + (p[["prep_oral_general"]] %||% 0),
+      lena = (p[["prep_lenacapavir_fsw"]]  %||% 0) + (p[["prep_lenacapavir_msm"]]  %||% 0) +
+        (p[["prep_lenacapavir_agyw"]] %||% 0) + (p[["prep_lenacapavir_general"]] %||% 0)
+    )
+  })
   baseline_input_values <- reactive({
     # Fallback source: the scaled regional preset. Used when the Baseline tab
     # hasn't been rendered yet (so input$baseline_* is still NULL) — without
@@ -2406,8 +2427,9 @@ server <- function(input, output, session) {
     # the 8 group buckets from the entered oral/lenacapavir totals here so the
     # rest of the pipeline (and the logic file) is unchanged.
     if (identical(input$prep_entry_mode %||% PREP_ENTRY_MODE_DEFAULT, "total")) {
-      sp <- split_prep_total(input[["baseline_prep_total_oral"]] %||% 0,
-                             input[["baseline_prep_total_lena"]] %||% 0)
+      pt <- preset_prep_totals()
+      sp <- split_prep_total(coalesce_num(input[["baseline_prep_total_oral"]], pt$oral),
+                             coalesce_num(input[["baseline_prep_total_lena"]], pt$lena))
       for (k in c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general",
                   "prep_lenacapavir_fsw", "prep_lenacapavir_msm", "prep_lenacapavir_agyw", "prep_lenacapavir_general"))
         baseline[[k]] <- sp[[k]]
@@ -2465,8 +2487,12 @@ server <- function(input, output, session) {
       }
     }
     if (identical(input$prep_entry_mode %||% PREP_ENTRY_MODE_DEFAULT, "total")) {
-      sp <- split_prep_total(input[["scenario1_prep_total_oral"]] %||% 0,
-                             input[["scenario1_prep_total_lena"]] %||% 0)
+      pt <- preset_prep_totals()
+      sp <- split_prep_total(
+        coalesce_num(input[["scenario1_prep_total_oral"]],
+                     coalesce_num(input[["baseline_prep_total_oral"]], pt$oral)),
+        coalesce_num(input[["scenario1_prep_total_lena"]],
+                     coalesce_num(input[["baseline_prep_total_lena"]], pt$lena)))
       for (k in c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general",
                   "prep_lenacapavir_fsw", "prep_lenacapavir_msm", "prep_lenacapavir_agyw", "prep_lenacapavir_general"))
         scenario[[k]] <- sp[[k]]
@@ -2495,8 +2521,12 @@ server <- function(input, output, session) {
       }
     }
     if (identical(input$prep_entry_mode %||% PREP_ENTRY_MODE_DEFAULT, "total")) {
-      sp <- split_prep_total(input[["scenario2_prep_total_oral"]] %||% 0,
-                             input[["scenario2_prep_total_lena"]] %||% 0)
+      pt <- preset_prep_totals()
+      sp <- split_prep_total(
+        coalesce_num(input[["scenario2_prep_total_oral"]],
+                     coalesce_num(input[["baseline_prep_total_oral"]], pt$oral)),
+        coalesce_num(input[["scenario2_prep_total_lena"]],
+                     coalesce_num(input[["baseline_prep_total_lena"]], pt$lena)))
       for (k in c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general",
                   "prep_lenacapavir_fsw", "prep_lenacapavir_msm", "prep_lenacapavir_agyw", "prep_lenacapavir_general"))
         scenario[[k]] <- sp[[k]]
