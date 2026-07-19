@@ -1516,13 +1516,14 @@ server <- function(input, output, session) {
                           value = years_to_mo(sheet_val(key, "person_years_on_prep")),
                           min = 0, max = MAX_DURATION_MONTHS, width = "100%")
     }
-    # Stays on the raw 0-1 scale -- only the decimal separator changes. step is
-    # gone with the swap, as with dur_input(): autoNumeric has no spinners.
+    # Shown as a percentage (0-100); the sheet stores a raw 0-1 fraction, so
+    # frac_to_pct() in and pct_to_frac() out (observer below). step is gone
+    # with the swap, as with dur_input(): autoNumeric has no spinners.
     ret_input <- function(key) {
       decimalNumericInput(paste0("param_ret_", key),
                           grp_lbl(key, sheet_src(key, "second_shot_return_rate")),
-                          value = sheet_val(key, "second_shot_return_rate"),
-                          min = 0, max = 1, width = "100%")
+                          value = frac_to_pct(sheet_val(key, "second_shot_return_rate")),
+                          min = 0, max = 100, width = "100%")
     }
     # Tooltip text comes from the sheet's src_unit_cost column -- no default
     # value baked in here. Until that column is populated for a key, the key
@@ -1643,7 +1644,7 @@ server <- function(input, output, session) {
       uiOutput("chk_param_len_dur"),
       conflict_note(len_eff_d),
       conflict_note(len_dur_d),
-      param_hdr("Probability of returning for second injection , by group (0-1)"),
+      param_hdr("Probability of returning for second injection , by group (%)"),
       do.call(layout_columns, c(list(col_widths = rep(3, 4)), unname(lapply(LEN_KEYS, ret_input)))),
       do.call(layout_columns, c(list(col_widths = rep(3, 4)),
                                 unname(lapply(LEN_KEYS, function(k) uiOutput(paste0("chk_param_ret_", k)))))),
@@ -1764,12 +1765,12 @@ server <- function(input, output, session) {
       
       if (is_len) {
         output[[paste0("chk_param_ret_", key)]] <- renderUI({
-          chk_range(input[[paste0("param_ret_", key)]], 0, 1)
+          chk_range(input[[paste0("param_ret_", key)]], 0, 100, "%")
         })
         observeEvent(input[[paste0("param_ret_", key)]], {
           v <- input[[paste0("param_ret_", key)]]
-          if (!ok_range(v, 0, 1)) return()
-          set_eff_override(key, "second_shot_return_rate", v)
+          if (!ok_range(v, 0, 100)) return()
+          set_eff_override(key, "second_shot_return_rate", pct_to_frac(v))
         }, ignoreInit = TRUE)
       } else {
         output[[paste0("chk_param_dur_", key)]] <- renderUI({
@@ -1957,7 +1958,7 @@ server <- function(input, output, session) {
     }
     for (key in LEN_KEYS) {
       updateNumericInput(session, paste0("param_ret_", key),
-                         value = sheet_val(key, "second_shot_return_rate"))
+                         value = frac_to_pct(sheet_val(key, "second_shot_return_rate")))
     }
     # These three are autonumericInput now (currencyNumericInput), but
     # updateNumericInput() still drives them -- see the note above
