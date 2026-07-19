@@ -1610,7 +1610,7 @@ server <- function(input, output, session) {
       layout_columns(
         col_widths = c(3, 9),
         decimalNumericInput("param_oral_eff",
-                            lbl_tip("Efficacy when adherent (%)",
+                            lbl_tip("Effectiveness (%)",
                                     sheet_src(ORAL_KEYS[1], "eff_adherent")),
                             value = frac_to_pct(oral_eff_d$value),
                             min = 0, max = 100, width = "100%"),
@@ -1626,14 +1626,14 @@ server <- function(input, output, session) {
       # ---------------- Lenacapavir ----------------
       sec_hdr("Lenacapavir"),
       layout_columns(
-        col_widths = c(3, 3, 6),
+        col_widths = c(3, 3.2, 6),
         decimalNumericInput("param_len_eff",
-                            lbl_tip("Efficacy when adherent (%)",
+                            lbl_tip("Effectiveness (%)",
                                     sheet_src(LEN_KEYS[1], "eff_adherent")),
                             value = frac_to_pct(len_eff_d$value),
                             min = 0, max = 100, width = "100%"),
         decimalNumericInput("param_len_dur",
-                            lbl_tip("Protection per shot (months)",
+                            lbl_tip("Duration of protection per dose (months)",
                                     sheet_src(LEN_KEYS[1], "shot_coverage_years")),
                             value = years_to_mo(len_dur_d$value),
                             min = 0, max = MAX_DURATION_MONTHS, width = "100%"),
@@ -1643,7 +1643,7 @@ server <- function(input, output, session) {
       uiOutput("chk_param_len_dur"),
       conflict_note(len_eff_d),
       conflict_note(len_dur_d),
-      param_hdr("Probability of returning for a second injection, by group (0-1)"),
+      param_hdr("Probability of returning for second injection , by group (0-1)"),
       do.call(layout_columns, c(list(col_widths = rep(3, 4)), unname(lapply(LEN_KEYS, ret_input)))),
       do.call(layout_columns, c(list(col_widths = rep(3, 4)),
                                 unname(lapply(LEN_KEYS, function(k) uiOutput(paste0("chk_param_ret_", k)))))),
@@ -1656,7 +1656,7 @@ server <- function(input, output, session) {
       # group -- NOT its override channel, which is invisible to the user by
       # design and is the tab's business, not theirs.
       sec_hdr("Unit costs: prevention (USD)"),
-      param_hdr("Oral PrEP, per person initiating"),
+      param_hdr("Oral PrEP, cost of a full 12 months per person"),
       cost_rows(ORAL_KEYS, lblf = grp_lbl),
       param_hdr("Lenacapavir, per person initiating"),
       cost_rows(LEN_KEYS, lblf = grp_lbl),

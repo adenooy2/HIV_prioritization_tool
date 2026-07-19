@@ -334,6 +334,63 @@ derive_prep_efficacy <- function(eff_adherent = NULL,
   eff_adherent * py
 }
 
+# ============================================================================
+# ORAL PrEP COST-BY-DURATION SCALE
+# ----------------------------------------------------------------------------
+# `unit_cost` for the four prep_oral_* keys is the cost of a FULL 12 MONTHS of
+# oral PrEP for one person. Almost nobody stays 12 months, so the charge is
+# scaled down by how long they actually stay:
+#
+#   charge per initiate = annual_unit_cost x prep_oral_cost_frac(months, key)
+#
+# The scale is a STEP function -- flat within a quarter, jumping at months 4, 7
+# and 10. Months are CEILINGED first, so 2.3 months is charged as 3 months
+# (= 52.7% of the annual cost for AGYW).
+#
+# THE CEILING IS A COST-SIDE RULE ONLY. Protection is untouched: efficacy still
+# runs off the raw, unrounded person_years_on_prep through
+# derive_prep_efficacy() (0.20 py -> 0.148 efficacy, NOT ceilinged to 0.25).
+# The two are deliberately asymmetric -- a partial month of pills is paid for
+# in full but only protects for the days it covers.
+#
+# These fractions are GLOBAL (identical in every country). The ANNUAL cost they
+# scale is COUNTRY-SPECIFIC (basic_hiv_data.csv cost_prep_oral_*, or the Excel
+# intervention_params unit_cost row as the global fallback).
+# Source: Alex, 2026-07 (supplied scale).
+#
+# LENACAPAVIR IS NOT SCALED. prep_lenacapavir_* are absent from the table below,
+# so prep_oral_cost_frac() returns 1 for them and they charge unit_cost in full,
+# exactly as before. LEN costing is a separate piece of work.
+#
+# MEAN-DURATION CAVEAT: person_years_on_prep is a cohort MEAN (person-years of
+# protection per initiate), not a typical person's stay. Pushing a mean through
+# a step function is not the same as averaging the step function over the real
+# spread of durations, so total oral PrEP cost is approximate whenever durations
+# are dispersed. Documented, accepted.
+#
+#                       m1-3    m4-6    m7-9   m10-12
+PREP_ORAL_COST_FRAC <- list(
+  prep_oral_agyw    = c(0.527,  0.684,  0.842,  1.000),
+  prep_oral_fsw     = c(0.531,  0.687,  0.843,  1.000),
+  prep_oral_msm     = c(0.522,  0.681,  0.840,  1.000),
+  prep_oral_general = c(0.529,  0.685,  0.843,  1.000)
+)
+
+# months -> fraction of the annual unit cost, for ONE intervention key.
+#
+#   key not in PREP_ORAL_COST_FRAC (LEN, vmmc, condoms, ...) -> 1 (charge full)
+#   months absent / NA / <= 0                                -> 0 (charge nothing)
+#   months > 12                                              -> 1 (capped)
+#
+# ceiling(ceiling(months) / 3) spells the rule out in the order it is stated:
+# round the part-month up to a whole month first, then find its quarter.
+prep_oral_cost_frac <- function(months, key) {
+  scale <- PREP_ORAL_COST_FRAC[[key]]
+  if (is.null(scale)) return(1)
+  if (length(months) != 1 || is.na(months) || months <= 0) return(0)
+  scale[min(4, ceiling(ceiling(months) / 3))]
+}
+
 # ----------------------------------------------------------------------------
 # require_efficacy(): single validator for every PrEP efficacy read.
 #
@@ -408,6 +465,14 @@ build_intervention_groups <- function(intervention_params){
           unit_label = "people initiating PrEP this year",
           efficacy = prep_eff("prep_oral_fsw"),
           eligible_pop = "n_fsw",
+          # Same sheet row prep_eff() reads. Carried onto the built object so the
+          # prevention cost loop can scale the annual unit_cost by duration --
+          # see prep_oral_cost_frac(). This is why the Parameters-tab months box
+          # moves cost and efficacy together and they cannot drift apart.
+          person_years_on_prep =
+            subset(intervention_params, intervention_key == "prep_oral_fsw")$person_years_on_prep,
+          # unit_cost is now a FULL-YEAR (12-month) cost per person -- NOT a
+          # per-initiate charge. The cost loop multiplies it down.
           unit_cost = subset(intervention_params, intervention_key == "prep_oral_fsw")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
           outcomes = c("adult_infections")
@@ -418,6 +483,14 @@ build_intervention_groups <- function(intervention_params){
           unit_label = "people initiating PrEP this year",
           efficacy = prep_eff("prep_oral_msm"),
           eligible_pop = "n_msm",
+          # Same sheet row prep_eff() reads. Carried onto the built object so the
+          # prevention cost loop can scale the annual unit_cost by duration --
+          # see prep_oral_cost_frac(). This is why the Parameters-tab months box
+          # moves cost and efficacy together and they cannot drift apart.
+          person_years_on_prep =
+            subset(intervention_params, intervention_key == "prep_oral_msm")$person_years_on_prep,
+          # unit_cost is now a FULL-YEAR (12-month) cost per person -- NOT a
+          # per-initiate charge. The cost loop multiplies it down.
           unit_cost = subset(intervention_params, intervention_key == "prep_oral_msm")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
           outcomes = c("adult_infections")
@@ -428,6 +501,14 @@ build_intervention_groups <- function(intervention_params){
           unit_label = "people initiating PrEP this year",
           efficacy = prep_eff("prep_oral_agyw"),
           eligible_pop = "n_agyw",
+          # Same sheet row prep_eff() reads. Carried onto the built object so the
+          # prevention cost loop can scale the annual unit_cost by duration --
+          # see prep_oral_cost_frac(). This is why the Parameters-tab months box
+          # moves cost and efficacy together and they cannot drift apart.
+          person_years_on_prep =
+            subset(intervention_params, intervention_key == "prep_oral_agyw")$person_years_on_prep,
+          # unit_cost is now a FULL-YEAR (12-month) cost per person -- NOT a
+          # per-initiate charge. The cost loop multiplies it down.
           unit_cost = subset(intervention_params, intervention_key == "prep_oral_agyw")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
           outcomes = c("adult_infections")
@@ -446,6 +527,14 @@ build_intervention_groups <- function(intervention_params){
           unit_label = "people initiating PrEP this year",
           efficacy = prep_eff("prep_oral_general"),
           eligible_pop = "n_general_all",
+          # Same sheet row prep_eff() reads. Carried onto the built object so the
+          # prevention cost loop can scale the annual unit_cost by duration --
+          # see prep_oral_cost_frac(). This is why the Parameters-tab months box
+          # moves cost and efficacy together and they cannot drift apart.
+          person_years_on_prep =
+            subset(intervention_params, intervention_key == "prep_oral_general")$person_years_on_prep,
+          # unit_cost is now a FULL-YEAR (12-month) cost per person -- NOT a
+          # per-initiate charge. The cost loop multiplies it down.
           unit_cost = subset(intervention_params, intervention_key == "prep_oral_general")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_oral")$unit_cost %||% 0),
           outcomes = c("adult_infections")
@@ -3342,7 +3431,15 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       # Non-PrEP keys (condoms, vmmc, ...) never appear in cost_overrides_prep,
       # so they transparently keep the global cost.
       unit_cost_eff <- context$cost_overrides_prep[[int_key]] %||% intervention$unit_cost
-      charge_cost("prevention", units_costed * unit_cost_eff)
+      # Oral PrEP only: unit_cost_eff is a FULL-YEAR cost, scaled down by the
+      # months people actually stay on PrEP. Driven by the SAME
+      # person_years_on_prep that drives efficacy, so cost and impact cannot
+      # drift apart. The ceiling inside prep_oral_cost_frac() is cost-side only
+      # -- efficacy uses the raw, unrounded person-years.
+      # Every non-oral key (LEN, vmmc, condoms) returns frac = 1: charged in full.
+      dur_months <- (intervention$person_years_on_prep %||% NA_real_) * 12
+      cost_frac  <- prep_oral_cost_frac(dur_months, int_key)
+      charge_cost("prevention", units_costed * unit_cost_eff * cost_frac)
     }
   }
   # ========================================================================

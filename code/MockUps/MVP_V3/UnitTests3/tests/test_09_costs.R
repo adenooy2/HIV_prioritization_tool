@@ -371,6 +371,7 @@ test_that("multi-intervention total cost = sum of single-intervention costs", {
   
   ig_new <- intervention_groups
   ig_new$prevention$interventions$prep_oral_fsw$unit_cost <- 80
+  ig_new$prevention$interventions$prep_oral_fsw$person_years_on_prep <- 1  # pin 12 mo -> prep_oral_cost_frac = 1.000, so expected costs are unchanged
   ig_new$prevention$interventions$prep_oral_fsw$efficacy  <- 0.99
   ig_new$prevention$interventions$condoms$unit_cost   <- 0.10
   ig_new$prevention$interventions$condoms$efficacy    <- 0.80
@@ -529,6 +530,7 @@ test_that("prevention cost uses context$cost_overrides_prep when supplied", {
   
   ig_new <- intervention_groups
   ig_new$prevention$interventions$prep_oral_fsw$unit_cost <- 80  # global
+  ig_new$prevention$interventions$prep_oral_fsw$person_years_on_prep <- 1  # pin 12 mo -> prep_oral_cost_frac = 1.000, so expected costs are unchanged
   with_intervention_groups(list(prevention = ig_new$prevention))
   
   pops   <- calculate_populations(base_ctx())
@@ -578,6 +580,7 @@ test_that("prevention cost falls back to global unit_cost when cost_overrides_pr
   
   ig_new <- intervention_groups
   ig_new$prevention$interventions$prep_oral_fsw$unit_cost <- 80
+  ig_new$prevention$interventions$prep_oral_fsw$person_years_on_prep <- 1  # pin 12 mo -> prep_oral_cost_frac = 1.000, so expected costs are unchanged
   with_intervention_groups(list(prevention = ig_new$prevention))
   
   ctx <- base_ctx()
@@ -593,6 +596,154 @@ test_that("prevention cost falls back to global unit_cost when cost_overrides_pr
   expect_lte(abs(result$prevention_cost - 1 * 80), 1)  # 1 unit × global 80
 })
 # ---------------------------------------------------------------------------
+# 9.7f Oral PrEP annual cost is scaled by months on PrEP (prep_oral_cost_frac)
+# ---------------------------------------------------------------------------
+# WHAT: prep_oral_* unit_cost is now the cost of a FULL 12 MONTHS per person.
+#       The prevention cost loop multiplies it by prep_oral_cost_frac(months,
+#       key), where months = person_years_on_prep × 12, ceilinged to a whole
+#       month, then mapped to a quarterly step:
+#         m1-3 -> 0.531, m4-6 -> 0.687, m7-9 -> 0.843, m10-12 -> 1.000  (FSW)
+#
+# WHY: This is the whole point of the change. A refactor that drops the scale,
+#      or reads person_years off the wrong object, would silently restore
+#      full-year charging (≈ +88% on a 2.4-month cohort). The other prep_oral
+#      fixtures pin person_years to 1 (frac 1.000) so THEY can't catch a broken
+#      scale — this test is the one that exercises frac ≠ 1.
+#
+# NOTE: The CEILING IS COST-SIDE ONLY. Efficacy still uses raw person_years
+#      (tested in test_14 / test_04). Nothing here asserts on efficacy.
+#
+# HOW: prep_oral_fsw unit_cost = 80 (annual), 5,000 initiations (below the
+#      n_fsw cap of 12,112.5, so units_costed = 5,000 exactly — same cap logic
+#      as 9.6/9.8, no shrinkage). Vary person_years_on_prep and pin the
+#      resulting prevention_cost:
+#        Part A: py = 0.20 (2.4 mo). ceiling(2.4)=3 -> quarter 1 -> 0.531.
+#                5,000 × 80 × 0.531 = 212,400.
+#        Part B: py = 0.35 (4.2 mo). ceiling(4.2)=5 -> quarter 2 -> 0.687.
+#                5,000 × 80 × 0.687 = 274,800. (Crosses a bracket boundary, so
+#                a broken ceiling/quarter map that Part A alone would miss —
+#                e.g. flooring instead of ceiling — fails here.)
+# ---------------------------------------------------------------------------
+test_that("oral PrEP prevention cost is scaled by months on PrEP", {
+  with_hiv_params(LIVE_PARAMS_COSTS)
+  override_cost_globals()
+  
+  # ---- Part A: 2.4 months -> 0.531 ----
+  ig_a <- intervention_groups
+  ig_a$prevention$interventions$prep_oral_fsw$unit_cost            <- 80    # annual
+  ig_a$prevention$interventions$prep_oral_fsw$person_years_on_prep <- 0.20  # 2.4 mo
+  with_intervention_groups(list(prevention = ig_a$prevention))
+  
+  pops   <- calculate_populations(base_ctx())
+  interv <- zero_interventions(); interv$prep_oral_fsw <- 5000  # below n_fsw cap
+  
+  r_a <- calculate_scenario_outcomes(
+    base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  # 5,000 × 80 × 0.531 = 212,400
+  expect_lte(abs(r_a$prevention_cost - 212400), 2)
+  
+  # ---- Part B: 4.2 months -> 0.687 (crosses a bracket boundary) ----
+  ig_b <- intervention_groups
+  ig_b$prevention$interventions$prep_oral_fsw$unit_cost            <- 80
+  ig_b$prevention$interventions$prep_oral_fsw$person_years_on_prep <- 0.35  # 4.2 mo
+  with_intervention_groups(list(prevention = ig_b$prevention))
+  
+  r_b <- calculate_scenario_outcomes(
+    base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  # 5,000 × 80 × 0.687 = 274,800
+  expect_lte(abs(r_b$prevention_cost - 274800), 2)
+})
+
+# ---------------------------------------------------------------------------
+# 9.7g prep_oral_cost_frac(): pure-function boundary and edge behaviour
+# ---------------------------------------------------------------------------
+# WHAT: Direct unit tests of the helper, independent of the cost loop. Pins the
+#       ceiling rule, the three quarter jumps, the >12 cap, the 0/NA guard, and
+#       the "unknown key charges in full" fallback that keeps lenacapavir,
+#       vmmc and condoms on the old full-charge path.
+#
+# WHY: 9.7f proves the helper is WIRED IN; this proves the helper is CORRECT at
+#      its boundaries, where a step function is most fragile (off-by-one in the
+#      quarter index, floor-vs-ceiling, the m3/m4 and m12/m13 edges).
+#
+# HOW: Expected values read directly off PREP_ORAL_COST_FRAC for FSW
+#      (0.531 / 0.687 / 0.843 / 1.000). No model run.
+# ---------------------------------------------------------------------------
+test_that("prep_oral_cost_frac() maps months to the quarterly step correctly", {
+  k <- "prep_oral_fsw"  # 0.531 / 0.687 / 0.843 / 1.000
+  
+  # Ceiling: any part-month rounds UP into the next whole month.
+  expect_equal(prep_oral_cost_frac(0.1, k), 0.531)  # ceiling -> 1 -> Q1
+  expect_equal(prep_oral_cost_frac(2.3, k), 0.531)  # ceiling -> 3 -> Q1
+  expect_equal(prep_oral_cost_frac(3.0, k), 0.531)  # exactly 3 -> still Q1
+  
+  # Quarter boundaries (the three jumps).
+  expect_equal(prep_oral_cost_frac(3.01, k), 0.687) # ceiling -> 4 -> Q2
+  expect_equal(prep_oral_cost_frac(6.0,  k), 0.687) # exactly 6 -> Q2
+  expect_equal(prep_oral_cost_frac(6.01, k), 0.843) # ceiling -> 7 -> Q3
+  expect_equal(prep_oral_cost_frac(9.0,  k), 0.843) # exactly 9 -> Q3
+  expect_equal(prep_oral_cost_frac(9.01, k), 1.000) # ceiling -> 10 -> Q4
+  expect_equal(prep_oral_cost_frac(12.0, k), 1.000) # exactly 12 -> Q4
+  
+  # Above the annual ceiling: capped at Q4, never indexes past the vector.
+  expect_equal(prep_oral_cost_frac(13.0,  k), 1.000)
+  expect_equal(prep_oral_cost_frac(120.0, k), 1.000)
+  
+  # Zero / missing duration charges NOTHING (no pills, no cost).
+  expect_equal(prep_oral_cost_frac(0,        k), 0)
+  expect_equal(prep_oral_cost_frac(-1,       k), 0)
+  expect_equal(prep_oral_cost_frac(NA_real_, k), 0)
+  
+  # Unknown / non-oral keys charge IN FULL (frac = 1). This is what keeps
+  # lenacapavir and every other prevention key on the pre-change path.
+  expect_equal(prep_oral_cost_frac(2.4, "prep_lenacapavir_fsw"), 1)
+  expect_equal(prep_oral_cost_frac(2.4, "vmmc"),                 1)
+  expect_equal(prep_oral_cost_frac(2.4, "condoms"),              1)
+  
+  # All four oral groups resolve to their own row, not a shared default.
+  expect_equal(prep_oral_cost_frac(1, "prep_oral_agyw"),    0.527)
+  expect_equal(prep_oral_cost_frac(1, "prep_oral_msm"),     0.522)
+  expect_equal(prep_oral_cost_frac(1, "prep_oral_general"), 0.529)
+})
+
+# ---------------------------------------------------------------------------
+# 9.7h Lenacapavir prevention cost is NOT scaled by duration
+# ---------------------------------------------------------------------------
+# WHAT: prep_lenacapavir_* must still charge unit_cost in full per initiate,
+#       regardless of any person_years_on_prep on the object. The oral scale
+#       must not leak onto LEN.
+#
+# WHY: The two products share the prevention cost loop and the person_years
+#      field name. A change that scaled ALL prep_* keys (not just oral) would
+#      pass every oral test above and silently discount lenacapavir.
+#
+# HOW: prep_lenacapavir_fsw unit_cost = 100, and deliberately set a short
+#      person_years_on_prep (0.20) that WOULD scale an oral key to 0.531.
+#      5,000 initiations below the n_fsw cap. Expected = 5,000 × 100 = 500,000
+#      (full charge — no 0.531 discount).
+# ---------------------------------------------------------------------------
+test_that("lenacapavir prevention cost is charged in full, not duration-scaled", {
+  with_hiv_params(LIVE_PARAMS_COSTS)
+  override_cost_globals()
+  
+  ig_new <- intervention_groups
+  ig_new$prevention$interventions$prep_lenacapavir_fsw$unit_cost            <- 100
+  # A duration that WOULD discount an oral key to 0.531 — must be ignored here.
+  ig_new$prevention$interventions$prep_lenacapavir_fsw$person_years_on_prep <- 0.20
+  with_intervention_groups(list(prevention = ig_new$prevention))
+  
+  pops   <- calculate_populations(base_ctx())
+  interv <- zero_interventions(); interv$prep_lenacapavir_fsw <- 5000  # below cap
+  
+  result <- calculate_scenario_outcomes(
+    base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
+  )
+  # 5,000 × 100 = 500,000 (NOT 265,500 = ×0.531)
+  expect_lte(abs(result$prevention_cost - 5e5), 2)
+})
+# ---------------------------------------------------------------------------
 # 9.8 total_cost = total_intervention_cost + art_provision_cost
 # ---------------------------------------------------------------------------
 # WHAT: Line 2363: total_cost <- total_intervention_cost + art_provision_cost.
@@ -605,6 +756,7 @@ test_that("total_cost = total_intervention_cost + art_provision_cost (within rou
   
   ig_new <- intervention_groups
   ig_new$prevention$interventions$prep_oral_fsw$unit_cost <- 80
+  ig_new$prevention$interventions$prep_oral_fsw$person_years_on_prep <- 1  # pin 12 mo -> prep_oral_cost_frac = 1.000, so expected costs are unchanged
   with_intervention_groups(list(prevention = ig_new$prevention))
   
   pops <- calculate_populations(base_ctx())
@@ -797,6 +949,7 @@ test_that("full multi-intervention baseline: total_intervention_cost = 518,174 a
   
   # Prevention
   ig_new$prevention$interventions$prep_oral_fsw$unit_cost      <- 80
+  ig_new$prevention$interventions$prep_oral_fsw$person_years_on_prep <- 1  # pin 12 mo -> prep_oral_cost_frac = 1.000, so expected costs are unchanged
   ig_new$prevention$interventions$prep_oral_fsw$efficacy       <- 0.99
   ig_new$prevention$interventions$condoms$unit_cost            <- 0.10
   ig_new$prevention$interventions$condoms$efficacy             <- 0.80

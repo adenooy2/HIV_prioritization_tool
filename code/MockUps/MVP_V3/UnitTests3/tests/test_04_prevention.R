@@ -172,6 +172,7 @@ test_that("PrEP cost uses intervention_value capped at n_fsw (below cap)", {
   with_hiv_params(LIVE_PARAMS_PREVENTION_04)
   ig_new <- intervention_groups
   ig_new$prevention$interventions$prep_oral_fsw$unit_cost <- 80
+  ig_new$prevention$interventions$prep_oral_fsw$person_years_on_prep <- 1  # pin 12 mo -> prep_oral_cost_frac = 1.000, so expected costs are unchanged
   ig_new$prevention$interventions$prep_oral_fsw$efficacy  <- 0.99
   with_intervention_groups(list(prevention = ig_new$prevention))
   
@@ -193,6 +194,7 @@ test_that("PrEP cost capped at n_fsw when input exceeds it", {
   with_hiv_params(LIVE_PARAMS_PREVENTION_04)
   ig_new <- intervention_groups
   ig_new$prevention$interventions$prep_oral_fsw$unit_cost <- 80
+  ig_new$prevention$interventions$prep_oral_fsw$person_years_on_prep <- 1  # pin 12 mo -> prep_oral_cost_frac = 1.000, so expected costs are unchanged
   ig_new$prevention$interventions$prep_oral_fsw$efficacy  <- 0.99
   with_intervention_groups(list(prevention = ig_new$prevention))
   
