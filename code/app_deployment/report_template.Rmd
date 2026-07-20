@@ -18,6 +18,7 @@ params:
   diff_s2: !r list()
   populations: !r list()
   interventions: !r list()
+  prep_delivery: !r list()
 ---
 
 ```{css, echo=FALSE}
@@ -182,6 +183,7 @@ diff_s1     <- p$diff_s1
 diff_s2     <- p$diff_s2
 pops        <- p$populations
 ig          <- p$interventions
+pd          <- p$prep_delivery
 
 # Formatters
 fmt_n     <- function(x) format(round(as.numeric(x)), big.mark = ",", scientific = FALSE)
@@ -247,34 +249,31 @@ knitr::kable(goals_tbl, format = "html", escape = FALSE,
 
 ```{r tbl-epi, results='asis'}
 # Cell builder: value plus delta span when a delta value is supplied.
+# Shared with the cost table below (this chunk runs first).
 cell <- function(val, delta = NULL, good_when = "down", money = FALSE) {
   v <- if (money) fmt_money(val) else fmt_n(val)
   if (is.null(delta)) return(v)
   paste0(v, " ", fmt_delta(delta, good_when, money))
 }
 
+# Absolute end-of-year values (with change from baseline), mirroring the
+# on-screen "Key Epidemiological Outcomes" cards. ART initiations and
+# suppression change are shown in the Health outcomes table below.
 epi_tbl <- data.frame(
   Outcome = c("New adult acquisitions", "New infant acquisitions",
-              "HIV-related deaths", "ART initiations",
-              "End-of-year on ART (suppressed)"),
+              "HIV-related deaths"),
   Baseline = c(fmt_n(out_base$end_new_infections),
                fmt_n(out_base$end_infant_infections),
-               fmt_n(out_base$end_deaths),
-               fmt_n(out_base$art_initiations),
-               fmt_n(out_base$end_suppressed)),
+               fmt_n(out_base$end_deaths)),
   `Scenario 1` = c(
     cell(out_s1$end_new_infections,    diff_s1$diff_new_infections,    "down"),
     cell(out_s1$end_infant_infections, diff_s1$diff_infant_infections, "down"),
-    cell(out_s1$end_deaths,            diff_s1$diff_deaths,            "down"),
-    cell(out_s1$art_initiations,       diff_s1$diff_art_initiations,   "up"),
-    cell(out_s1$end_suppressed,        diff_s1$diff_suppressed,        "up")
+    cell(out_s1$end_deaths,            diff_s1$diff_deaths,            "down")
   ),
   `Scenario 2` = c(
     cell(out_s2$end_new_infections,    diff_s2$diff_new_infections,    "down"),
     cell(out_s2$end_infant_infections, diff_s2$diff_infant_infections, "down"),
-    cell(out_s2$end_deaths,            diff_s2$diff_deaths,            "down"),
-    cell(out_s2$art_initiations,       diff_s2$diff_art_initiations,   "up"),
-    cell(out_s2$end_suppressed,        diff_s2$diff_suppressed,        "up")
+    cell(out_s2$end_deaths,            diff_s2$diff_deaths,            "down")
   ),
   check.names = FALSE
 )
@@ -283,30 +282,44 @@ knitr::kable(epi_tbl, format = "html", escape = FALSE,
              table.attr = 'class="report-table"')
 ```
 
-## Cost analysis
+## Health outcomes (relative to baseline)
 
-```{r tbl-cost, results='asis'}
-cost_tbl <- data.frame(
-  `Cost category` = c("Intervention costs", "ART provision", "Total programme cost"),
-  Baseline = c(fmt_money(out_base$total_intervention_cost),
-               fmt_money(out_base$art_provision_cost),
-               paste0("<strong>", fmt_money(out_base$total_cost), "</strong>")),
+```{r tbl-health, results='asis'}
+# Signed change vs baseline with % change, coloured like the on-screen
+# "Health Outcomes" cards (green = better, red = worse). good_when = "up"
+# means a positive change is good (ART initiations, suppression); "down"
+# means a negative change is good (acquisitions, deaths). Baseline is the
+# reference, so only the two scenarios are shown.
+fmt_change <- function(delta, pct, good_when) {
+  if (is.null(delta) || is.na(delta)) return("&mdash;")
+  cls <- if (delta == 0) "delta-neutral"
+         else if ((delta > 0 && good_when == "up") ||
+                  (delta < 0 && good_when == "down")) "delta-negative"
+         else "delta-positive"
+  sign_char <- if (delta > 0) "+" else if (delta < 0) "-" else ""
+  pct_str <- if (is.null(pct) || is.na(pct)) "" else sprintf(" (%+.1f%%)", pct)
+  sprintf('<span class="%s">%s%s%s</span>', cls, sign_char, fmt_n(abs(delta)), pct_str)
+}
+
+health_tbl <- data.frame(
+  `Change vs baseline` = c("ART initiations", "Adult acquisitions",
+                           "HIV-related deaths", "On ART & suppressed"),
   `Scenario 1` = c(
-    cell(out_s1$total_intervention_cost, diff_s1$diff_intervention_cost, "down", money = TRUE),
-    cell(out_s1$art_provision_cost,      diff_s1$diff_art_provision_cost, "down", money = TRUE),
-    paste0("<strong>", fmt_money(out_s1$total_cost), "</strong> ",
-           fmt_delta(diff_s1$diff_total_cost, "down", money = TRUE))
+    fmt_change(diff_s1$diff_art_initiations, diff_s1$pct_art_initiations, "up"),
+    fmt_change(diff_s1$diff_new_infections,  diff_s1$pct_new_infections,  "down"),
+    fmt_change(diff_s1$diff_deaths,          diff_s1$pct_deaths,          "down"),
+    fmt_change(diff_s1$diff_suppressed,      diff_s1$pct_suppressed,      "up")
   ),
   `Scenario 2` = c(
-    cell(out_s2$total_intervention_cost, diff_s2$diff_intervention_cost, "down", money = TRUE),
-    cell(out_s2$art_provision_cost,      diff_s2$diff_art_provision_cost, "down", money = TRUE),
-    paste0("<strong>", fmt_money(out_s2$total_cost), "</strong> ",
-           fmt_delta(diff_s2$diff_total_cost, "down", money = TRUE))
+    fmt_change(diff_s2$diff_art_initiations, diff_s2$pct_art_initiations, "up"),
+    fmt_change(diff_s2$diff_new_infections,  diff_s2$pct_new_infections,  "down"),
+    fmt_change(diff_s2$diff_deaths,          diff_s2$pct_deaths,          "down"),
+    fmt_change(diff_s2$diff_suppressed,      diff_s2$pct_suppressed,      "up")
   ),
   check.names = FALSE
 )
-knitr::kable(cost_tbl, format = "html", escape = FALSE,
-             align = c("l", "r", "r", "r"),
+knitr::kable(health_tbl, format = "html", escape = FALSE,
+             align = c("l", "r", "r"),
              table.attr = 'class="report-table"')
 ```
 
@@ -343,36 +356,149 @@ ggplot(cascade_df,
         panel.grid.minor = element_blank())
 ```
 
-## Impact summary — change from baseline
+## Cost analysis
 
-```{r impact-summary, fig.width=8, fig.height=3.6, out.width="100%"}
-mk_impact_df <- function(diff_obj, scen_label) {
-  data.frame(
-    Outcome = c("Acquisitions", "Deaths", "ART\ninitiations"),
-    Value   = c(diff_obj$diff_new_infections,
-                diff_obj$diff_deaths,
-                diff_obj$diff_art_initiations),
-    is_good = c(diff_obj$diff_new_infections < 0,
-                diff_obj$diff_deaths        < 0,
-                diff_obj$diff_art_initiations >= 0),
-    Scenario = scen_label
-  )
-}
+```{r tbl-cost, results='asis'}
+cost_tbl <- data.frame(
+  `Cost category` = c("Intervention costs", "ART provision", "Total programme cost"),
+  Baseline = c(fmt_money(out_base$total_intervention_cost),
+               fmt_money(out_base$art_provision_cost),
+               paste0("<strong>", fmt_money(out_base$total_cost), "</strong>")),
+  `Scenario 1` = c(
+    cell(out_s1$total_intervention_cost, diff_s1$diff_intervention_cost, "down", money = TRUE),
+    cell(out_s1$art_provision_cost,      diff_s1$diff_art_provision_cost, "down", money = TRUE),
+    paste0("<strong>", fmt_money(out_s1$total_cost), "</strong> ",
+           fmt_delta(diff_s1$diff_total_cost, "down", money = TRUE))
+  ),
+  `Scenario 2` = c(
+    cell(out_s2$total_intervention_cost, diff_s2$diff_intervention_cost, "down", money = TRUE),
+    cell(out_s2$art_provision_cost,      diff_s2$diff_art_provision_cost, "down", money = TRUE),
+    paste0("<strong>", fmt_money(out_s2$total_cost), "</strong> ",
+           fmt_delta(diff_s2$diff_total_cost, "down", money = TRUE))
+  ),
+  check.names = FALSE
+)
+knitr::kable(cost_tbl, format = "html", escape = FALSE,
+             align = c("l", "r", "r", "r"),
+             table.attr = 'class="report-table"')
+```
 
-impact_df <- rbind(mk_impact_df(diff_s1, "Scenario 1"),
-                   mk_impact_df(diff_s2, "Scenario 2"))
+### Cost by programme area (US$)
 
-ggplot(impact_df, aes(x = Outcome, y = Value, fill = is_good)) +
-  geom_col(width = 0.65) +
-  geom_hline(yintercept = 0, colour = "#374151", linewidth = 0.4) +
-  facet_wrap(~ Scenario, nrow = 1) +
-  scale_fill_manual(values = c("TRUE" = "#10b981", "FALSE" = "#ef4444"),
-                    guide = "none") +
-  scale_y_continuous(labels = comma) +
-  labs(x = NULL, y = "People (relative to baseline)") +
+```{r cost-breakdown-plot, fig.width=8, fig.height=3.6, out.width="100%"}
+library(ggplot2)
+library(scales)
+
+cost_cat_levels <- c("ART provision", "Prevention", "Testing",
+                     "Treatment monitoring & quality",
+                     "Retention & Adherence", "Advanced HIV")
+cost_cat_colors <- c(
+  "ART provision"                  = "#475569",
+  "Prevention"                     = "#10b981",
+  "Testing"                        = "#3b82f6",
+  "Treatment monitoring & quality" = "#f59e0b",
+  "Retention & Adherence"          = "#ec4899",
+  "Advanced HIV"                   = "#8b5cf6"
+)
+pull_cost <- function(o) c(o$art_provision_cost, o$prevention_cost, o$testing_cost,
+                           o$treatment_monitoring_cost, o$retention_cost,
+                           o$advanced_disease_cost)
+
+cost_bd <- data.frame(
+  Scenario = factor(rep(c("Baseline", "Scenario 1", "Scenario 2"),
+                        each = length(cost_cat_levels)),
+                    levels = c("Baseline", "Scenario 1", "Scenario 2")),
+  Category = factor(rep(cost_cat_levels, times = 3), levels = cost_cat_levels),
+  Cost     = c(pull_cost(out_base), pull_cost(out_s1), pull_cost(out_s2))
+)
+
+cost_bd$bar_total <- as.numeric(tapply(cost_bd$Cost, cost_bd$Scenario, sum)[as.character(cost_bd$Scenario)])
+cost_bd$frac      <- ifelse(cost_bd$bar_total > 0, cost_bd$Cost / cost_bd$bar_total, 0)
+cost_tot <- data.frame(
+  Scenario  = factor(levels(cost_bd$Scenario), levels = levels(cost_bd$Scenario)),
+  bar_total = as.numeric(tapply(cost_bd$Cost, cost_bd$Scenario, sum))
+)
+
+ggplot(cost_bd, aes(x = Scenario, y = Cost, fill = Category)) +
+  # reverse => first level (ART provision) at the BOTTOM (cascade order)
+  geom_col(width = 0.62, position = position_stack(reverse = TRUE)) +
+  geom_text(aes(label = ifelse(frac >= 0.03, scales::dollar(Cost, accuracy = 1), "")),
+            position = position_stack(vjust = 0.5, reverse = TRUE),
+            colour = "white", fontface = "bold", size = 2.7) +
+  geom_text(data = cost_tot, inherit.aes = FALSE,
+            aes(x = Scenario, y = bar_total, label = scales::dollar(bar_total, accuracy = 1)),
+            vjust = -0.4, fontface = "bold", size = 3) +
+  scale_fill_manual(values = cost_cat_colors, breaks = cost_cat_levels) +
+  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.10))) +
+  labs(x = NULL, y = "Cost (US$)", fill = NULL) +
   theme_minimal(base_size = 10) +
-  theme(strip.text = element_text(face = "bold"),
-        panel.grid.minor = element_blank())
+  theme(legend.position = "right", panel.grid.major.x = element_blank())
+```
+
+```{r tbl-cost-breakdown, results='asis'}
+vb  <- pull_cost(out_base)
+v1  <- pull_cost(out_s1)
+v2  <- pull_cost(out_s2)
+bd_tbl <- data.frame(
+  `Cost category` = c(cost_cat_levels, "Total programme cost"),
+  Baseline        = c(fmt_money(vb), paste0("<strong>", fmt_money(sum(vb)), "</strong>")),
+  `Scenario 1`    = c(fmt_money(v1), paste0("<strong>", fmt_money(sum(v1)), "</strong>")),
+  `Scenario 2`    = c(fmt_money(v2), paste0("<strong>", fmt_money(sum(v2)), "</strong>")),
+  check.names = FALSE
+)
+knitr::kable(bd_tbl, format = "html", escape = FALSE,
+             align = c("l", "r", "r", "r"),
+             table.attr = 'class="report-table"')
+```
+
+<div class="page-break"></div>
+
+## PrEP delivery by group
+
+```{r tbl-prep, results='asis'}
+# Shows where each scenario's PrEP lands across FSW/MSM/AGYW/General. In total
+# entry mode this reflects the split of the entered oral/lenacapavir totals,
+# including any amount reallocated to General or not delivered.
+render_prep_block <- function(label, d) {
+  if (is.null(d) || is.null(d$table) || nrow(d$table) == 0) return(invisible())
+  t <- d$table
+  cat(sprintf('<h3 style="font-size:11pt;color:#1F3864;margin:10px 0 2px;">%s</h3>',
+              htmltools::htmlEscape(label)))
+  if (identical(d$mode, "total")) {
+    cat(sprintf(paste0('<p style="margin:0 0 4px;">Entered as programme totals ',
+                       '&mdash; oral PrEP: <strong>%s</strong>; lenacapavir: ',
+                       '<strong>%s</strong>. These totals are split across groups using the ',
+                       'model&rsquo;s default allocation shares; per-group delivery ',
+                       'is shown below.</p>'),
+                fmt_n(d$entered_oral), fmt_n(d$entered_lena)))
+    if (!is.null(d$overflow_to_general) && d$overflow_to_general > 0.5)
+      cat(sprintf('<p style="margin:0 0 4px;">%s reallocated to General (a targeted group reached 100%%).</p>',
+                  fmt_n(d$overflow_to_general)))
+    if (!is.null(d$discarded) && d$discarded > 0.5)
+      cat(sprintf('<p style="margin:0 0 4px;">%s not delivered &mdash; all groups at 100%%.</p>',
+                  fmt_n(d$discarded)))
+  } else {
+    cat('<p style="margin:0 0 4px;">Entered directly by group.</p>')
+  }
+  body <- paste(vapply(seq_len(nrow(t)), function(i) sprintf(
+    '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
+    htmltools::htmlEscape(t$Group[i]),
+    fmt_n(t[["Oral PrEP"]][i]), fmt_n(t$Lenacapavir[i]), fmt_n(t$Total[i]),
+    if (is.na(t$Population[i]))   "&mdash;" else fmt_n(t$Population[i]),
+    if (is.na(t[["Coverage %"]][i])) "&mdash;" else sprintf("%.1f%%", t[["Coverage %"]][i])
+  ), character(1)), collapse = "\n")
+  cat('<table class="report-table">\n',
+      '<thead><tr><th>Group</th><th>Oral PrEP</th><th>Lenacapavir</th>',
+      '<th>Total</th><th>Population</th><th>Coverage</th></tr></thead>\n<tbody>\n',
+      body, '\n</tbody>\n</table>\n', sep = "")
+}
+if (!is.null(pd) && length(pd) > 0) {
+  render_prep_block("Baseline",   pd$baseline)
+  render_prep_block("Scenario 1", pd$scenario1)
+  render_prep_block("Scenario 2", pd$scenario2)
+} else {
+  cat("<p><em>PrEP delivery detail unavailable.</em></p>")
+}
 ```
 
 ## Intervention volumes by scenario
