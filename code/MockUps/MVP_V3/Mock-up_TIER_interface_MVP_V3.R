@@ -193,6 +193,21 @@ decimalNumericInput <- function(inputId, label, value, min = NA, max = NA,
 ui <- page_sidebar(
   tags$head(tags$style(HTML("
     hr { margin-top: 0.75rem; margin-bottom: 0.5rem; }
+       /* Parameters-tab spacing. Every bslib::layout_columns() grid carries class
+       `bslib-mb-spacing` (~1rem margin-bottom) -- THAT is the tab's real vertical
+       spacer, not .form-group. Cost rows bundle box+validation+caption in one
+       .dsd-cell (one grid/row); effectiveness rows use a separate validation grid
+       (two grids/row), so effectiveness sections carried an extra grid margin and
+       read taller. Fix: hide a validation grid outright when all its outputs are
+       empty. It's identified as a grid that HAS outputs but NO .shiny-input-container
+       -- which excludes input grids and cost grids (their outputs sit beside an
+       input in the same grid). Bare (non-grid) validation outputs still collapse
+       via :empty. When a message fires, the output is non-empty and the grid
+       reappears. */
+    .param-tab .shiny-html-output:empty { display: none; }
+    .param-tab .bslib-grid:has(.shiny-html-output):not(:has(.shiny-input-container)):not(:has(.shiny-html-output:not(:empty))) {
+      display: none;
+    }
     .disabled-input { margin: 0; }
     .disabled-input .form-group { margin-bottom: 0; }
     /* ART cost adjustment cells: box and its caption read as one unit, so drop
@@ -1441,7 +1456,7 @@ server <- function(input, output, session) {
   # The group names below it are then sub-labels, not peers.
   param_hdr <- function(text, txt = NA_character_) {
     tags$label(class = "control-label",
-               style = "display:block; margin:12px 0 2px;",
+               style = "display:block; margin:5px 0 1px;", 
                text, param_tip(txt))
   }
   # Group name under a param_hdr: deliberately lighter than the header above it.
@@ -1509,15 +1524,15 @@ server <- function(input, output, session) {
     # within a group (Oral PrEP, Prevention, ...): sized ABOVE the theme's control
     # labels (17px vs 16px) so it reads as a header, with a smaller top margin now
     # that grp_hdr carries the major separation between groups.
-    grp_hdr <- function(txt, top = 22) {
+    grp_hdr <- function(txt, top = 14) {                          # was top = 22
       div(style = sprintf(paste0("font-size:20px; font-weight:700; color:#111827; ",
-                                 "margin:%dpx 0 6px; padding-bottom:4px; ",
+                                 "margin:%dpx 0 3px; padding-bottom:3px; ",       # was 0 6px / pb 4px
                                  "border-bottom:2px solid #cbd5e1;"), top),
           txt)
     }
     sec_hdr <- function(txt) {
-      tagList(div(style = "font-weight:700; font-size:17px; margin:8px 0 2px;", txt),
-              hr(style = "margin:2px 0 8px;"))
+      tagList(div(style = "font-weight:700; font-size:17px; margin:5px 0 1px;", txt),
+              hr(style = "margin:1px 0 4px;"))
     }
     
     # step is gone with the swap to decimalNumericInput(): autoNumeric has no
@@ -1616,6 +1631,7 @@ server <- function(input, output, session) {
     }
     
     div(
+      class = "param-tab",
       style = "max-height: 78vh; overflow-y: auto; padding-right: 15px;",
       
       # ---------------- Effectiveness parameters ----------------
@@ -1664,9 +1680,6 @@ server <- function(input, output, session) {
       do.call(layout_columns, c(list(col_widths = rep(3, 4)),
                                 unname(lapply(LEN_KEYS, function(k) uiOutput(paste0("chk_param_ret_", k)))))),
       
-      do.call(layout_columns, c(list(col_widths = rep(3, 4)),
-                                unname(lapply(LEN_KEYS, function(k) uiOutput(paste0("chk_param_ret_", k)))))),
-      
       # ---------------- Treatment monitoring & quality ----------------
       # Effect assumption (NOT a cost, so it sits with the PrEP effect boxes
       # above, not in the ART-cost region). pp gain in viral suppression among
@@ -1688,7 +1701,7 @@ server <- function(input, output, session) {
         NULL
       ),
       uiOutput("chk_param_cv12_supp_impact"),
-      div(style = "font-size:11px; color:#6b7280; margin:-4px 0 10px;",
+      div(style = "font-size:11px; color:#6b7280; margin:-2px 0 5px;", 
           "Percentage-point gain in viral suppression among established ART ",
           "clients (on ART >1 year). Applied only where annual clinical visits ",
           "are switched on in a scenario."),
@@ -1743,7 +1756,7 @@ server <- function(input, output, session) {
       
       # ---------------- ART cost adjustments ----------------
       grp_hdr("ART cost adjustments"),
-      div(style = "font-size:11px; color:#6b7280; margin:-4px 0 10px;",
+      div(style = "font-size:11px; color:#6b7280; margin:-2px 0 5px;", 
           "Signed USD per person-year enrolled, charged on stable clients. ",
           "Negative = saving against standard facility-based care; positive = premium. ",
           "Applied as a share of the ART unit cost above."),
