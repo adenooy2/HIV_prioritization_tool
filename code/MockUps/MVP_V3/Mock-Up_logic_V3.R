@@ -3026,24 +3026,25 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
   n_est_treated_base <- n_established_on_art - n_est_supp_base
   
   # ── Annual clinical visit: deferred suppression effect ─────────────────────
-  # `efficacy` for this intervention is the TARGET percentage-point gain in
-  # established suppression (e.g. 0.01 = +1pp), NOT a conversion fraction like
-  # other viral_suppression rows. Applying it to the established HEADCOUNT makes
-  # the pp gain constant across countries regardless of baseline suppression s.
+  # `efficacy` is a CONVERSION FRACTION of the currently-UNSUPPRESSED established
+  # pool (n_est_treated_base) moved to suppressed at 100% coverage — the same
+  # conversion-probability semantics as EAC / other viral_suppression rows, NOT
+  # a flat percentage-point gain. So efficacy = 0.01 converts 1% of the
+  # unsuppressed-established pool, and the resulting pp gain on established
+  # suppression is efficacy * (1 - s): it SHRINKS as baseline suppression s rises
+  # (diminishing headroom), rather than staying a country-constant +pp.
   #
-  # This is the algebraic equivalent of converting target_pp/(1-s) of the
-  # unsuppressed-established pool, but without the 1/(1-s) division — so a
-  # country at 100% suppression yields a finite contribution that the shift cap
-  # below (min(., n_est_treated_base) at line ~2321) correctly floors to 0,
-  # instead of Inf/NaN.
+  # Self-limiting by construction: because it scales n_est_treated_base (not the
+  # full headcount), even efficacy = 1.0 converts only the available unsuppressed
+  # pool, and s -> 1 yields ~0 (no 1/(1-s) division, no Inf/NaN).
   #
   # Flows into additional_suppressed BEFORE the shift allocation, so it is
-  # capped at n_est_treated_base and cannot push end_suppressed above end_on_art
-  # (guarded by tests 8.5/8.6).
+  # further capped at n_est_treated_base and cannot push end_suppressed above
+  # end_on_art (guarded by tests 8.5/8.6).
   cv12_cov_frac  <- (interventions$clinical_visit_12month %||% 0) / 100
-  cv12_target_pp <- all_interventions$clinical_visit_12month$efficacy %||% 0
+  cv12_conv_frac <- all_interventions$clinical_visit_12month$efficacy %||% 0
   additional_suppressed <- additional_suppressed +
-    n_established_on_art * cv12_cov_frac * cv12_target_pp
+    n_est_treated_base * cv12_cov_frac * cv12_conv_frac
   
   # New initiates: suppress at testing_art_init_supp (typically ~0.9 by year-end).
   # This is the 12-month suppression rate for new starts, which is generally

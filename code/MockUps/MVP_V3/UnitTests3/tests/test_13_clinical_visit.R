@@ -9,15 +9,16 @@
 #     moving people out of the unsuppressed-ESTABLISHED pool. Because the model
 #     equates "stable" with "suppressed" (prop_on_art_stable_diff = 0), there is
 #     no stable-specific unsuppressed pool; the effect acts on n_est_treated_base.
-#       *** THIS FILE ASSERTS THE X-EQUIVALENT EFFECT BLOCK ***
-#           additional_suppressed += n_established_on_art * cov_frac * target_pp
-#       where `efficacy` (from the Excel sheet) is a TARGET percentage-point
-#       gain (0.01 = +1pp), applied to the established headcount so the pp gain
-#       is constant across countries. If you revert to the Y block
+#      #       *** THIS FILE ASSERTS THE Y CONVERSION-FRACTION EFFECT BLOCK ***
 #           additional_suppressed += n_est_treated_base * cov_frac * efficacy
-#       the effect formula and 12.1's expected numbers change (under Y the shift
-#       is n_est_treated_base * efficacy). Ask for updated expected values before
-#       reverting rather than re-pointing the path.
+#       where `efficacy` (from the Excel sheet) is a CONVERSION FRACTION of the
+#       unsuppressed-established pool (0.01 = convert 1% of it). The resulting pp
+#       gain on established suppression is efficacy * (1 - s), so it shrinks as
+#       baseline suppression rises. If you revert to the X block
+#           additional_suppressed += n_established_on_art * cov_frac * target_pp
+#       the effect becomes a country-constant +pp and 12.1's numbers change
+#       (under X the shift is n_established_on_art * target_pp, i.e. 1/(1-s)
+#       larger). Ask for updated expected values before reverting.
 #   - COST (in-loop, ~line 1806): charged on STABLE clients enrolled
 #       clinical_visit_cost_adjustment += number_reached * art_cost_standard * unit_cost
 #     where number_reached = on_art_stable * coverage, unit_cost is a FRACTION of
@@ -154,35 +155,33 @@ override_cascade_globals <- function(mort = LIVE_MORT_RATES, envir = parent.fram
           envir = envir)
   invisible(NULL)
 }
-
 # ---------------------------------------------------------------------------
-# 12.1 EFFECT: constant +target_pp on established suppression (X-equivalent)
+# 12.1 EFFECT: conversion fraction of the unsuppressed-established pool (Y)
 # ---------------------------------------------------------------------------
 # WHAT: At 100% coverage the intervention adds
-#         n_established_on_art * 1.0 * target_pp = 34,070.4 * 0.01 = 340.704
-#       to additional_suppressed. That shift (340.704 < n_est_treated_base =
-#       3,407.04, so the cap does NOT bind) moves 340.704 people from the
+#         n_est_treated_base * 1.0 * efficacy = 3,407.04 * 0.01 = 34.0704
+#       to additional_suppressed. That shift (34.07 << n_est_treated_base =
+#       3,407.04, so the cap does NOT bind) moves 34.0704 people from the
 #       unsuppressed-established pool into suppressed. With mortality zeroed it
 #       passes through to end_suppressed unchanged.
-# WHY:  Pins the X-equivalent formula (headcount * pp) AND its defining
-#       property: a CONSTANT +1pp on established suppression regardless of the
-#       country's baseline suppression. Also confirms it's a pure reshuffle
-#       WITHIN on-ART (end_on_art must not move).
+# WHY:  Pins the Y formula (unsuppressed pool * conversion fraction) AND its
+#       defining property: the pp gain on established suppression is
+#       efficacy * (1 - s) = 0.01 * 0.10 = +0.10pp, so it SHRINKS as the
+#       country's baseline suppression rises (not a country-constant +pp).
+#       Also confirms it's a pure reshuffle WITHIN on-ART (end_on_art unchanged).
 # HOW:  Compare coverage-100 vs coverage-0 (all else equal, both is_baseline).
-#         d(end_suppressed)          = 340.704            -> ~341 after rounding
-#         established suppression     = 90.00% -> 91.00%   (+1.00pp)
+#         d(end_suppressed)          = 34.0704            -> ~34 after rounding
+#         established suppression     = 90.00% -> 90.10%   (+0.10pp)
 #         d(end_on_art)              = 0                  (treated<->supp reshuffle)
-#       target_pp = 0.01 is chosen so the cap does NOT bind. Note target_pp =
-#       0.10 would SATURATE (34,070.4*0.10 = 3,407.04 = n_est_treated_base) — a
-#       fixture coincidence to avoid when picking a test value under X.
-# NOTE (Y revert): under the Y block the shift is n_est_treated_base * efficacy,
-#       so the same +1pp effect would require efficacy = 0.10, not 0.01.
+# NOTE (X revert): under the X block the shift is n_established_on_art * efficacy,
+#       i.e. 1/(1-s) larger, so the same 0.01 input would give +1.00pp not +0.10pp.
 # ---------------------------------------------------------------------------
-test_that("clinical_visit_12month adds a constant +target_pp to established suppression (X)", {
+# ---------------------------------------------------------------------------
+test_that("clinical_visit_12month converts efficacy-fraction of unsuppressed established (Y)", {
   skip_if_no_cv12()
   with_hiv_params(LIVE_PARAMS_CASCADE)
   override_cascade_globals(mort = ZERO_MORT_RATES)   # isolate shift from mortality
-  override_cv12(efficacy = 0.01, unit_cost = 0)      # TEST target_pp = +1pp
+  override_cv12(efficacy = 0.01, unit_cost = 0)      # TEST: convert 1% of unsuppressed
 
   ctx  <- make_fixture_context(test_yield = 0.05, prior_year_tests = NULL,
                                yield_multipliers = list())
@@ -201,13 +200,13 @@ test_that("clinical_visit_12month adds a constant +target_pp to established supp
   # Sanity: zeroed-mortality baseline end_suppressed = n_est_supp_base = 30,663.36
   expect_lte(abs(r_base$end_suppressed - 30663), 2)
 
-  # Effect: +340.704 suppressed (rounds to ~341)
-  expect_lte(abs((r_cv$end_suppressed - r_base$end_suppressed) - 341), 2)
+  # Effect: +34.0704 suppressed (rounds to ~34)
+  expect_lte(abs((r_cv$end_suppressed - r_base$end_suppressed) - 34), 2)
   #print(r_cv$end_suppressed)
-  # Defining X property: established suppression rises by a constant +1pp
+  # Defining Y property: established suppression rises by efficacy*(1-s) = +0.10pp
   supp_frac_base <- r_base$end_suppressed / r_base$end_on_art
   supp_frac_cv   <- r_cv$end_suppressed   / r_cv$end_on_art
-  expect_lte(abs((supp_frac_cv - supp_frac_base) - 0.01), 0.001)
+  expect_lte(abs((supp_frac_cv - supp_frac_base) - 0.001), 0.0002)
 
   # Pure reshuffle within on-ART: end_on_art unchanged
   expect_lte(abs(r_cv$end_on_art - r_base$end_on_art), 2)
