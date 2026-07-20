@@ -118,7 +118,7 @@ load_intervention_params <- function(){
 # Falls back to hardcoded defaults if the download fails.
 # ============================================================================
 load_hiv_model_params <- function() {
-  sharepoint_url_params <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
+  sharepoint_url_params <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=yS82SG&download=1"
   
   temp_file_params <- tempfile(fileext = ".xlsx")
   download.file(sharepoint_url_params, temp_file_params,
@@ -462,7 +462,7 @@ build_intervention_groups <- function(intervention_params){
         prep_oral_fsw = list(
           name = "Oral PrEP (FSW)",
           type = "absolute",
-          unit_label = "people initiating PrEP this year",
+          unit_label = "people receiving or initiating PrEP this year",
           efficacy = prep_eff("prep_oral_fsw"),
           eligible_pop = "n_fsw",
           # Same sheet row prep_eff() reads. Carried onto the built object so the
@@ -480,7 +480,7 @@ build_intervention_groups <- function(intervention_params){
         prep_oral_msm = list(
           name = "Oral PrEP (MSM)",
           type = "absolute",
-          unit_label = "people initiating PrEP this year",
+          unit_label = "people receiving or initiating PrEP this year",
           efficacy = prep_eff("prep_oral_msm"),
           eligible_pop = "n_msm",
           # Same sheet row prep_eff() reads. Carried onto the built object so the
@@ -498,7 +498,7 @@ build_intervention_groups <- function(intervention_params){
         prep_oral_agyw = list(
           name = "Oral PrEP (AGYW)",
           type = "absolute",
-          unit_label = "people initiating PrEP this year",
+          unit_label = "people receiving or initiating PrEP this year",
           efficacy = prep_eff("prep_oral_agyw"),
           eligible_pop = "n_agyw",
           # Same sheet row prep_eff() reads. Carried onto the built object so the
@@ -524,7 +524,7 @@ build_intervention_groups <- function(intervention_params){
         prep_oral_general = list(
           name = "Oral PrEP (General)",
           type = "absolute",
-          unit_label = "people initiating PrEP this year",
+          unit_label = "people receiving or initiating PrEP this year",
           efficacy = prep_eff("prep_oral_general"),
           eligible_pop = "n_general_all",
           # Same sheet row prep_eff() reads. Carried onto the built object so the
@@ -542,7 +542,7 @@ build_intervention_groups <- function(intervention_params){
         prep_lenacapavir_fsw = list(
           name = "Lenacapavir (FSW)",
           type = "absolute",
-          unit_label = "people initiating PrEP this year",
+          unit_label = "people receiving or initiating PrEP this year",
           efficacy = prep_eff("prep_lenacapavir_fsw"),
           eligible_pop = "n_fsw",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_fsw")$unit_cost %||%
@@ -552,7 +552,7 @@ build_intervention_groups <- function(intervention_params){
         prep_lenacapavir_msm = list(
           name = "Lenacapavir (MSM)",
           type = "absolute",
-          unit_label = "people initiating PrEP this year",
+          unit_label = "people receiving or initiating PrEP this year",
           efficacy = prep_eff("prep_lenacapavir_msm"),
           eligible_pop = "n_msm",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_msm")$unit_cost %||%
@@ -562,7 +562,7 @@ build_intervention_groups <- function(intervention_params){
         prep_lenacapavir_agyw = list(
           name = "Lenacapavir (AGYW)",
           type = "absolute",
-          unit_label = "people initiating PrEP this year",
+          unit_label = "people receiving or initiating PrEP this year",
           efficacy = prep_eff("prep_lenacapavir_agyw"),
           eligible_pop = "n_agyw",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_agyw")$unit_cost %||%
@@ -572,7 +572,7 @@ build_intervention_groups <- function(intervention_params){
         prep_lenacapavir_general = list(
           name = "Lenacapavir (General)",
           type = "absolute",
-          unit_label = "people initiating PrEP this year",
+          unit_label = "people receiving or initiating PrEP this year",
           efficacy = prep_eff("prep_lenacapavir_general"),
           eligible_pop = "n_general_all",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_general")$unit_cost %||%

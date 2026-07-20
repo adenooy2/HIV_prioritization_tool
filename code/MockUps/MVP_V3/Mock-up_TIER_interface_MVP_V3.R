@@ -287,17 +287,17 @@ ui <- page_sidebar(
     #   style = "color: #777; font-size: 0.85em; margin-right: auto;",
     #   em("This app logs anonymised usage data (country of access, scenario inputs, timing). IP addresses are hashed and not stored. No personal or patient data is collected.")
     # ),
-    # TEMP: Validation feedback link — remove after validation period ends
-    span(
-      icon("clipboard-check"), " ",
-      tags$a(
-        href   = "https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=f_74E4DG7kuhFmNZHWvuMmCh7_sn9aVLibTDrfIQKjtURENRUFVMQVRXWldOMkFMMU1MSFBDOVk5Ti4u",
-        target = "_blank",
-        rel    = "noopener noreferrer",
-        "Validation Feedback Form",
-        style  = "color: #2563eb;"
-      )
-    ),
+    # # TEMP: Validation feedback link — remove after validation period ends
+    # span(
+    #   icon("clipboard-check"), " ",
+    #   tags$a(
+    #     href   = "https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=f_74E4DG7kuhFmNZHWvuMmCh7_sn9aVLibTDrfIQKjtURENRUFVMQVRXWldOMkFMMU1MSFBDOVk5Ti4u",
+    #     target = "_blank",
+    #     rel    = "noopener noreferrer",
+    #     "Validation Feedback Form",
+    #     style  = "color: #2563eb;"
+    #   )
+    # ),
     # END TEMP
     #span("Found a bug or have a suggestion?"),
     actionLink("open_feedback",
@@ -420,7 +420,7 @@ ui <- page_sidebar(
     nav_panel(
       "Baseline Coverage",
       h4("Adjust baseline coverage values"),
-      p(strong("Note:"),"Baseline coverage values should reflect services that were delivered in the most recent year. Current values were pre-populated using available data (e.g GAM) and literature where relvant. Please review the values below, and update any for which you have more accurate values."),
+      p(strong("Note:"),"Baseline coverage values should reflect services that were delivered in the most recent year. Current values were pre-populated using available data (e.g GAM) and literature where relevant. Please review the values below, and update any for which you have more accurate values."),
       # PrEP entry-mode toggle (GLOBAL): governs the Baseline tab AND both
       # Scenarios. Rendered here in the static UI (created once) so its state
       # in input$prep_entry_mode is stable and never reset by a re-render.
@@ -533,6 +533,13 @@ ui <- page_sidebar(
           )
         ),
         
+        # Cascade Chart - Combined
+        h3("HIV Care Cascade: Baseline vs Scenarios (End of Year)", class = "mt-4 mb-3"),
+        card(
+          card_header("Combined Cascade Comparison"),
+          card_body(plotOutput("cascade_combined", height = "500px"))
+        ),
+        
         # Cost Analysis Row
         h3("Cost Analysis", class = "mt-4 mb-3"),
         layout_columns(
@@ -560,30 +567,24 @@ ui <- page_sidebar(
           )
         ),
         
-        # Cascade Chart - Combined
-        h3("HIV Care Cascade: Baseline vs Scenarios (End of Year)", class = "mt-4 mb-3"),
-        card(
-          card_header("Combined Cascade Comparison"),
-          card_body(plotOutput("cascade_combined", height = "500px"))
-        ),
         # card(
         #   card_header("Cascade Numbers"),
         #   card_body(tableOutput("cascade_table"))
         # ),
         
         # Other Outcomes Row
-        h3("Key Outcomes Summary", class = "mt-4 mb-3"),
-        layout_columns(
-          col_widths = c(6, 6),
-          card(
-            card_header("Scenario 1 - Impact Summary"),
-            card_body(plotOutput("plot_scenario1", height = "400px"))
-          ),
-          card(
-            card_header("Scenario 2 - Impact Summary"),
-            card_body(plotOutput("plot_scenario2", height = "400px"))
-          )
-        ),
+        # h3("Key Outcomes Summary", class = "mt-4 mb-3"),
+        # layout_columns(
+        #   col_widths = c(6, 6),
+        #   card(
+        #     card_header("Scenario 1 - Impact Summary"),
+        #     card_body(plotOutput("plot_scenario1", height = "400px"))
+        #   ),
+        #   card(
+        #     card_header("Scenario 2 - Impact Summary"),
+        #     card_body(plotOutput("plot_scenario2", height = "400px"))
+        #   )
+        # ),
         
         div(style = "height: 50px;")
       )
@@ -1503,8 +1504,19 @@ server <- function(input, output, session) {
     len_eff_d  <- shared_default(LEN_KEYS,  "eff_adherent", fmt = pct_detail_fmt)
     len_dur_d  <- shared_default(LEN_KEYS,  "shot_coverage_years", fmt = mo_detail_fmt)
     
+    # Two header tiers. grp_hdr = top-level group (Effectiveness parameters /
+    # Unit costs / ART cost adjustments): largest, bordered. sec_hdr = subsection
+    # within a group (Oral PrEP, Prevention, ...): sized ABOVE the theme's control
+    # labels (17px vs 16px) so it reads as a header, with a smaller top margin now
+    # that grp_hdr carries the major separation between groups.
+    grp_hdr <- function(txt, top = 22) {
+      div(style = sprintf(paste0("font-size:20px; font-weight:700; color:#111827; ",
+                                 "margin:%dpx 0 6px; padding-bottom:4px; ",
+                                 "border-bottom:2px solid #cbd5e1;"), top),
+          txt)
+    }
     sec_hdr <- function(txt) {
-      tagList(div(style = "font-weight:600; font-size:13px; margin:14px 0 2px;", txt),
+      tagList(div(style = "font-weight:700; font-size:17px; margin:8px 0 2px;", txt),
               hr(style = "margin:2px 0 8px;"))
     }
     
@@ -1606,6 +1618,9 @@ server <- function(input, output, session) {
     div(
       style = "max-height: 78vh; overflow-y: auto; padding-right: 15px;",
       
+      # ---------------- Effectiveness parameters ----------------
+      grp_hdr("Effectiveness parameters", top = 2),
+      
       # ---------------- Oral PrEP ----------------
       sec_hdr("Oral PrEP"),
       layout_columns(
@@ -1649,6 +1664,36 @@ server <- function(input, output, session) {
       do.call(layout_columns, c(list(col_widths = rep(3, 4)),
                                 unname(lapply(LEN_KEYS, function(k) uiOutput(paste0("chk_param_ret_", k)))))),
       
+      do.call(layout_columns, c(list(col_widths = rep(3, 4)),
+                                unname(lapply(LEN_KEYS, function(k) uiOutput(paste0("chk_param_ret_", k)))))),
+      
+      # ---------------- Treatment monitoring & quality ----------------
+      # Effect assumption (NOT a cost, so it sits with the PrEP effect boxes
+      # above, not in the ART-cost region). pp gain in viral suppression among
+      # established clients from annual vs 6-monthly visits. Reaches the model as
+      # an $eff override on clinical_visit_12month$efficacy -- same channel as the
+      # PrEP effectiveness boxes -- so the logic file and test_13 are untouched.
+      # Sheet stores a fraction (0.01 = +1pp), box shows pp: frac_to_pct in /
+      # pct_to_frac out. Default resolves from the sheet; blank until the
+      # efficacy row is populated in intervention_params.
+      sec_hdr("Treatment monitoring & quality"),
+      layout_columns(
+        col_widths = c(4, 8),
+        decimalNumericInput(
+          "param_cv12_supp_impact",
+          lbl_tip("Suppression impact of annual vs 6-monthly clinical visits (pp)",
+                  sheet_src("clinical_visit_12month", "efficacy")),
+          value = frac_to_pct(sheet_val("clinical_visit_12month", "efficacy")),
+          min = 0, max = 10, width = "100%"),
+        NULL
+      ),
+      uiOutput("chk_param_cv12_supp_impact"),
+      div(style = "font-size:11px; color:#6b7280; margin:-4px 0 10px;",
+          "Percentage-point gain in viral suppression among established ART ",
+          "clients (on ART >1 year). Applied only where annual clinical visits ",
+          "are switched on in a scenario."),
+      
+      # ---------------- Unit costs ----------------
       # ---------------- Unit costs ----------------
       # Sectioned by the five cost categories the model reports (cost_by_cat in
       # the logic; prevention_cost / testing_cost / ... in the return), so a user
@@ -1656,7 +1701,8 @@ server <- function(input, output, session) {
       # same name here. The section a key sits in is its intervention_groups
       # group -- NOT its override channel, which is invisible to the user by
       # design and is the tab's business, not theirs.
-      sec_hdr("Unit costs: prevention (USD)"),
+      grp_hdr("Unit costs (USD)"),
+      sec_hdr("Prevention"),
       param_hdr("Oral PrEP, cost of a full 12 months per person"),
       cost_rows(ORAL_KEYS, lblf = grp_lbl),
       param_hdr("Lenacapavir, per person initiating"),
@@ -1664,7 +1710,7 @@ server <- function(input, output, session) {
       param_hdr("Other prevention, per unit delivered"),
       cost_rows(c("vmmc", "condoms", "infant_prophylaxis")),
       
-      sec_hdr("Unit costs: testing & diagnosis (USD)"),
+      sec_hdr("Testing & diagnosis"),
       param_hdr("HIV testing services, per test performed"),
       cost_rows(c("test_facility_general", "test_network", "test_index",
                   "test_community", "test_kpsti")),
@@ -1673,7 +1719,7 @@ server <- function(input, output, session) {
       param_hdr("Antenatal, postnatal and infant, per person tested"),
       cost_rows(c("anc_hiv_testing", "pnc_hiv_testing", "eid")),
       
-      sec_hdr("Unit costs: treatment monitoring & quality (USD)"),
+      sec_hdr("Treatment monitoring & quality"),
       layout_columns(
         col_widths = c(3, 9),
         currencyNumericInput("cost_art_standard",
@@ -1686,17 +1732,17 @@ server <- function(input, output, session) {
       param_hdr("Viral load monitoring, per test performed"),
       cost_rows("vl_monitoring_routine"),
       
-      sec_hdr("Unit costs: retention & adherence support (USD)"),
+      sec_hdr("Retention & adherence support"),
       param_hdr("Per person reached"),
       cost_rows(c("adherence_counseling", "tracking_tracing",
                   "anc_vl_testing", "pnc_vl_testing")),
       
-      sec_hdr("Unit costs: advanced HIV disease (USD)"),
+      sec_hdr("Advanced HIV disease"),
       param_hdr("Per person reached"),
       cost_rows(c("cd4_testing", "ahd_package")),
       
       # ---------------- ART cost adjustments ----------------
-      sec_hdr("ART cost adjustments"),
+      grp_hdr("ART cost adjustments"),
       div(style = "font-size:11px; color:#6b7280; margin:-4px 0 10px;",
           "Signed USD per person-year enrolled, charged on stable clients. ",
           "Negative = saving against standard facility-based care; positive = premium. ",
@@ -1733,6 +1779,7 @@ server <- function(input, output, session) {
   
   output$chk_param_oral_eff <- renderUI({ chk_range(input$param_oral_eff, 0, 100, "%") })
   output$chk_param_len_eff  <- renderUI({ chk_range(input$param_len_eff,  0, 100, "%") })
+  output$chk_param_cv12_supp_impact <- renderUI({ chk_range(input$param_cv12_supp_impact, 0, 10, " pp") })
   output$chk_param_len_dur  <- renderUI({
     chk_range(input$param_len_dur, 0, MAX_DURATION_MONTHS, " months")
   })
@@ -1754,6 +1801,12 @@ server <- function(input, output, session) {
     v <- input$param_len_dur
     if (!ok_range(v, 0, MAX_DURATION_MONTHS)) return()
     for (key in LEN_KEYS) set_eff_override(key, "shot_coverage_years", mo_to_years(v))
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$param_cv12_supp_impact, {
+    v <- input$param_cv12_supp_impact
+    if (!ok_range(v, 0, 10)) return()
+    set_eff_override("clinical_visit_12month", "efficacy", pct_to_frac(v))
   }, ignoreInit = TRUE)
   
   # Per-group inputs + per-group derived readouts. local() so each closure
@@ -1952,6 +2005,8 @@ server <- function(input, output, session) {
                        value = frac_to_pct(shared_default(LEN_KEYS, "eff_adherent")$value))
     updateNumericInput(session, "param_len_dur",
                        value = years_to_mo(shared_default(LEN_KEYS, "shot_coverage_years")$value))
+    updateNumericInput(session, "param_cv12_supp_impact",
+                       value = frac_to_pct(sheet_val("clinical_visit_12month", "efficacy")))
     for (key in ORAL_KEYS) {
       updateNumericInput(session, paste0("param_dur_", key),
                          value = years_to_mo(sheet_val(key, "person_years_on_prep")))
@@ -2783,13 +2838,13 @@ server <- function(input, output, session) {
             )
           ), interventions_ui)
         }
-        interventions_ui <- c(interventions_ui, list(
-          div(
-            style = "margin-top: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;",
-            h6("Total PrEP Coverage:", style = "margin-bottom: 5px;"),
-            uiOutput("prep_total_baseline")
-          )
-        ))
+        # interventions_ui <- c(interventions_ui, list(
+        #   div(
+        #     style = "margin-top: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;",
+        #     h6("Total PrEP Coverage:", style = "margin-bottom: 5px;"),
+        #     uiOutput("prep_total_baseline")
+        #   )
+        # ))
       }
       
       if (group_key == "treatment_monitoring") {
@@ -2927,20 +2982,20 @@ server <- function(input, output, session) {
           )
           interventions_ui <- c(total_rows, interventions_ui)
         }
-        interventions_ui <- c(interventions_ui, list(
-          layout_columns(
-            col_widths = c(4, 4, 4),
-            div(),
-            div(
-              h6("Total PrEP:", style = "margin-top: 15px;"),
-              uiOutput("prep_total_scenario1")
-            ),
-            div(
-              h6("Total PrEP:", style = "margin-top: 15px;"),
-              uiOutput("prep_total_scenario2")
-            )
-          )
-        ))
+        # interventions_ui <- c(interventions_ui, list(
+        #   layout_columns(
+        #     col_widths = c(4, 4, 4),
+        #     div(),
+        #     div(
+        #       h6("Total PrEP:", style = "margin-top: 15px;"),
+        #       uiOutput("prep_total_scenario1")
+        #     ),
+        #     div(
+        #       h6("Total PrEP:", style = "margin-top: 15px;"),
+        #       uiOutput("prep_total_scenario2")
+        #     )
+        #   )
+        # ))
       }
       
       if (group_key == "treatment_monitoring") {

@@ -77,7 +77,7 @@ load_intervention_params <- function(){
 # Falls back to hardcoded defaults if the download fails.
 # ============================================================================
 load_hiv_model_params <- function() {
-  sharepoint_url_params <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
+  sharepoint_url_params <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=yS82SG&download=1"
   
   temp_file_params <- tempfile(fileext = ".xlsx")
   download.file(sharepoint_url_params, temp_file_params,
