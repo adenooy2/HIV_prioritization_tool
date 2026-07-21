@@ -218,6 +218,8 @@ test_that("prep_lenacapavir cost capped at n_fsw (same rule as prep_oral)", {
   ig_new <- intervention_groups
   ig_new$prevention$interventions$prep_lenacapavir_fsw$unit_cost <- 100
   ig_new$prevention$interventions$prep_lenacapavir_fsw$efficacy  <- 1.00
+  ig_new$prevention$interventions$prep_lenacapavir_fsw$second_shot_return_rate <- 1  # full return -> multiplier 1.0
+  
   with_intervention_groups(list(prevention = ig_new$prevention))
   
   ctx  <- base_ctx()
@@ -228,9 +230,27 @@ test_that("prep_lenacapavir cost capped at n_fsw (same rule as prep_oral)", {
   result <- calculate_scenario_outcomes(
     ctx, interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-  # Expected: 5,000 x 100 = 500,000
+  # Expected: 5,000 x 100 x (0.58 + 0.42x1) = 500,000
   expect_close(result$total_intervention_cost, 5e5)
 })
+
+###4.8 d
+test_that("prep_lenacapavir cost scaled by second-shot return rate", {
+  with_hiv_params(LIVE_PARAMS_PREVENTION_04)
+  ig_new <- intervention_groups
+  ig_new$prevention$interventions$prep_lenacapavir_fsw$unit_cost <- 100
+  ig_new$prevention$interventions$prep_lenacapavir_fsw$efficacy  <- 1.00
+  ig_new$prevention$interventions$prep_lenacapavir_fsw$second_shot_return_rate <- 0.5
+  with_intervention_groups(list(prevention = ig_new$prevention))
+  
+  ctx  <- base_ctx(); pops <- calculate_populations(ctx)
+  interv <- zero_interventions(); interv$prep_lenacapavir_fsw <- 5000
+  result <- calculate_scenario_outcomes(ctx, interv, pops,
+                                        is_baseline = TRUE, baseline_interventions = interv)
+  # 5,000 x 100 x (0.58 + 0.42 x 0.5) = 5,000 x 100 x 0.79 = 395,000
+  expect_close(result$total_intervention_cost, 3.95e5)
+})
+
 # ---------------------------------------------------------------------------
 # 4.9 VMMC cost capped at all uncircumcised males (HIV+ and HIV-)
 # ---------------------------------------------------------------------------

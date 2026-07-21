@@ -740,8 +740,9 @@ test_that("lenacapavir prevention cost is charged in full, not duration-scaled",
   result <- calculate_scenario_outcomes(
     base_ctx(), interv, pops, is_baseline = TRUE, baseline_interventions = interv
   )
-  # 5,000 × 100 = 500,000 (NOT 265,500 = ×0.531)
-  expect_lte(abs(result$prevention_cost - 5e5), 2)
+  # 500,000 x (0.58 + 0.42 x 0.5) = 395,000
+  expect_close(result$prevention_cost, 3.95e5)
+  # rename: "lenacapavir prevention cost scaled by second-shot return, not duration"
 })
 # ---------------------------------------------------------------------------
 # 9.8 total_cost = total_intervention_cost + art_provision_cost
