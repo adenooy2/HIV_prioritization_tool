@@ -68,6 +68,20 @@ tryCatch(
 PREP_ENTRY_MODE_DEFAULT <- "total"
 
 # ============================================================================
+# RESULTS-PAGE METRIC TOGGLES
+# ============================================================================
+# ART initiations is hidden by default: the cascade-identity ceiling makes it
+# FALL when retention improves (a smaller diagnosed-not-on-ART gap lowers
+# max_art_initiations), which reads as a bug to external reviewers. The metric
+# is still computed in the logic layer and still returned by diff_scenario1()
+# / diff_scenario2() -- only the display is suppressed.
+# Flip to TRUE to restore it in the health-outcome cards, the two scenario bar
+# charts and the PDF report. All four display sites read this one constant;
+# it is passed into the Rmd via report_params rather than relying on the
+# report's environment inheriting globalenv().
+SHOW_ART_INITIATIONS <- FALSE
+
+# ============================================================================
 # COMMA-FORMATTED NUMERIC INPUT (thousands separators for large counts)
 # ============================================================================
 # Drop-in numericInput() replacement for "absolute" (raw-count) fields where
@@ -356,9 +370,10 @@ ui <- page_sidebar(
         
         
         h4("What is TIER-Plus"),
-        p("TIER-Plus is an extension of the original TIER prioritization tool. It aims to enable stakeholders to compare outcome and cost trade-offs across HIV interventions though an accessible, interactive platform.  It takes a current programme picture and lets the user vary the volume of interventions to compare how cascade outcomes, new HIV acquisitions, deaths, and total cost are expected to move in response."),
-        p(strong("Important: TIER-Plus is intended as a support tool for prioritization conversations. "), "As such, the tool is ", em("indicative "),
-          " of the direction and rough magnitude of impact of different choices. To make the tool quick and easy to use, and applicable across many contexts, it does not have the full complexity of other modelling tools. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decisions supported by this tool."),
+        p("TIER-Plus is a planning tool for national HIV programme stakeholders to support annual budget allocation and resource prioritization decisions. It enables users to model how resource allocation across different HIV interventions—prevention, testing, treatment, and retention—translates into projected changes in key outcomes, including progress toward the 90-90-90 targets, new HIV acquisitions, mortality, and programme costs."),
+        p("The tool uses the most recent programme data as a baseline reference point and allows country teams to systematically model the epidemiological and financial implications of scaling up or scaling down different interventions relative to current levels. Through an accessible, scenario-based platform, users can evaluate multiple allocation strategies side-by-side, compare their relative impact on outcomes, and make evidence-informed prioritization decisions that can be substantiated during planning and advocacy processes."),
+       h4("Important to know:"),
+         p(" TIER-Plus is designed to inform and support annual planning deliberations within country-led processes. The tool provides indicative estimates of direction and relative magnitude of impact, which facilitates comparison across scenarios. All final budgetary allocations, epidemiological targets, and implementation specifications should be derived from country-led planning processes grounded in local epidemiological context and operational capacity. TIER-Plus functions as a complementary analytical resource and does not replace other validated modeling methodologies or country decision-making authority."),
         
         h4("How to use the tool"),
         tags$ol(
@@ -368,6 +383,8 @@ ui <- page_sidebar(
                   "Populate each intervention with the volume and coverage of services delivered in the year prior (see ", em("What the baseline represents"), " below)."),
           tags$li(strong("Build a scenario. "),
                   "Adjust intervention volumes up or down from baseline. You can scale things in either direction."),
+          tags$li(strong("Adjust assumptions. "),
+                  "Model assumptions surrounding intervention effectiveness and cost can be adjusted from the defaults if required."),
           tags$li(strong("Compare. "),
                   "The output shows the estimated differences between each scenario and baseline. This includes the 95-targets, expected acquisitions, infant acquisitions, deaths and budget. Positive ", tags$q("acquisitions averted"), " and ", tags$q("deaths averted"),
                   " mean the scenario outperforms baseline. Negative values mean it does worse — useful for testing budget-cut scenarios."),
@@ -383,7 +400,7 @@ ui <- page_sidebar(
         
         h5(strong("Prevention")),
         tags$ul(
-          tags$li(strong("Oral PrEP / Lenacapavir: "), "Number of individuals currently receiving and/or initiated on PrEP, entered separately for FSW, MSM, and AGYW (15-24)."),
+          tags$li(strong("Oral PrEP / Lenacapavir: "), "Number of individuals currently receiving and/or initiated on PrEP, entered either as a total or separately for FSW, MSM, and AGYW (15-24) and the general population."),
           tags$li(strong("Condoms: "), "Total number of condoms distributed in the year."),
           tags$li(strong("VMMC: "), "Voluntary medical male circumcisions performed in the year."),
           tags$li(strong("Infant prophylaxis: "), "Percentage of HIV-exposed infants receiving HIV prophylaxis (e.g. NVP) to reduce vertical transmission.")
@@ -409,8 +426,9 @@ ui <- page_sidebar(
           tags$li(strong("Multi-month dispensing (3-month, 6-month, 12-month): "), "Percentage of stable ART clients enrolled in MMD (categories are mutually exclusive; the three must sum to ≤100%)."),
           tags$li(strong("Community ART pick-up: "), "Percentage of MMD-enrolled clients receiving refills via community pickup instead of facility, applied equally across MMD-3/6/12. Has no effect when MMD enrolment is zero."),
           tags$li(strong("Enhanced Adherence Counselling (EAC):"), "Percentage of individuals identified as unsuppressed (through a recent viral load)."),
-          tags$li(strong("Tracking and tracing: "), "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool.")
-        ),
+          tags$li(strong("Tracking and tracing: "), "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool."),
+          tags$li(strong("Frequency of clinical visits for stable clients: "),"The frequency at which stable ART clients must return for clinical visits, either every 6 months of every 12 months.")
+          ),
         
         h5(strong("Advanced HIV disease")),
         tags$ul(
@@ -3995,19 +4013,29 @@ server <- function(input, output, session) {
     outcomes <- outcomes_scenario1()
     diff <- diff_scenario1()
     
+    # Whichever row comes first keeps the wider bottom margin (mb-3) so the
+    # card's internal spacing is identical whether or not ART is shown.
+    acq_cls <- if (SHOW_ART_INITIATIONS)
+      "d-flex justify-content-between border-bottom pb-2 mb-2"
+    else
+      "d-flex justify-content-between border-bottom pb-2 mb-3"
+    
+    # tagList() drops NULL children, so an `if` with no `else` is enough to
+    # omit the ART row entirely -- see SHOW_ART_INITIATIONS at top of file.
     tagList(
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
-          strong("Change in ART Initiations:"),
-          strong(
-            style = paste0("color: ",
-                           ifelse(diff$diff_art_initiations > 0, "green",
-                                  ifelse(diff$diff_art_initiations < 0, "red", "gray")), ";"),
-            paste0(ifelse(diff$diff_art_initiations > 0, "+", ""),
-                   format(diff$diff_art_initiations, big.mark = ",")),
-            fmt_pct(diff$pct_art_initiations, good_direction = 1)
-          )
+      if (SHOW_ART_INITIATIONS) div(
+        class = "d-flex justify-content-between border-bottom pb-2 mb-3",
+        strong("Change in ART Initiations:"),
+        strong(
+          style = paste0("color: ",
+                         ifelse(diff$diff_art_initiations > 0, "green",
+                                ifelse(diff$diff_art_initiations < 0, "red", "gray")), ";"),
+          paste0(ifelse(diff$diff_art_initiations > 0, "+", ""),
+                 format(diff$diff_art_initiations, big.mark = ",")),
+          fmt_pct(diff$pct_art_initiations, good_direction = 1)
+        )
       ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
+      div(class = acq_cls,
           strong("Change in Acquisitions:"),
           span(
             # diff_new_infections: +ve = more infections (bad, red); -ve = fewer (good, green)
@@ -4049,19 +4077,29 @@ server <- function(input, output, session) {
     outcomes <- outcomes_scenario2()
     diff <- diff_scenario2()
     
+    # Whichever row comes first keeps the wider bottom margin (mb-3) so the
+    # card's internal spacing is identical whether or not ART is shown.
+    acq_cls <- if (SHOW_ART_INITIATIONS)
+      "d-flex justify-content-between border-bottom pb-2 mb-2"
+    else
+      "d-flex justify-content-between border-bottom pb-2 mb-3"
+    
+    # tagList() drops NULL children, so an `if` with no `else` is enough to
+    # omit the ART row entirely -- see SHOW_ART_INITIATIONS at top of file.
     tagList(
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
-          strong("Change in ART Initiations:"),
-          strong(
-            style = paste0("color: ",
-                           ifelse(diff$diff_art_initiations > 0, "green",
-                                  ifelse(diff$diff_art_initiations < 0, "red", "gray")), ";"),
-            paste0(ifelse(diff$diff_art_initiations > 0, "+", ""),
-                   format(diff$diff_art_initiations, big.mark = ",")),
-            fmt_pct(diff$pct_art_initiations, good_direction = 1)
-          )
+      if (SHOW_ART_INITIATIONS) div(
+        class = "d-flex justify-content-between border-bottom pb-2 mb-3",
+        strong("Change in ART Initiations:"),
+        strong(
+          style = paste0("color: ",
+                         ifelse(diff$diff_art_initiations > 0, "green",
+                                ifelse(diff$diff_art_initiations < 0, "red", "gray")), ";"),
+          paste0(ifelse(diff$diff_art_initiations > 0, "+", ""),
+                 format(diff$diff_art_initiations, big.mark = ",")),
+          fmt_pct(diff$pct_art_initiations, good_direction = 1)
+        )
       ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
+      div(class = acq_cls,
           strong("Change in Acquisitions:"),
           span(
             # diff_new_infections: +ve = more infections (bad, red); -ve = fewer (good, green)
@@ -4288,30 +4326,37 @@ server <- function(input, output, session) {
     diff <- diff_scenario1()
     diff2 <- diff_scenario2()    # needed for the shared y-axis range
     
+    # ART initiations is an optional third bar (SHOW_ART_INITIATIONS, top of
+    # file). c() drops NULL, so every column shrinks together and data.frame()
+    # still sees equal-length vectors.
     plot_data <- data.frame(
-      Outcome = c("Acquisitions", "Deaths", "ART\nInitiations"),
+      Outcome = c("Acquisitions", "Deaths",
+                  if (SHOW_ART_INITIATIONS) "ART\nInitiations"),
       Value   = c(diff$diff_new_infections,
                   diff$diff_deaths,
-                  diff$diff_art_initiations),
+                  if (SHOW_ART_INITIATIONS) diff$diff_art_initiations),
       # is_good = TRUE when the change is favourable (green); FALSE when adverse (red).
       # Infections/Deaths: fewer is better -> Value < 0 is good.
       # ART Initiations:   more is better  -> Value > 0 is good.
       is_good = c(diff$diff_new_infections < 0,
                   diff$diff_deaths        < 0,
-                  diff$diff_art_initiations >= 0),
+                  if (SHOW_ART_INITIATIONS) (diff$diff_art_initiations >= 0)),
       Baseline = c(outcomes_baseline()$end_new_infections,
                    outcomes_baseline()$end_deaths,
-                   outcomes_baseline()$art_initiations)
+                   if (SHOW_ART_INITIATIONS) outcomes_baseline()$art_initiations)
     )
     
     # Shared y-axis range across BOTH scenario plots so bar heights are
     # directly comparable. Computed from the union of both scenarios' diffs.
-    all_vals <- c(diff$diff_new_infections,  diff$diff_deaths,  diff$diff_art_initiations,
-                  diff2$diff_new_infections, diff2$diff_deaths, diff2$diff_art_initiations)
+    all_vals <- c(diff$diff_new_infections,  diff$diff_deaths,
+                  diff2$diff_new_infections, diff2$diff_deaths,
+                  if (SHOW_ART_INITIATIONS) c(diff$diff_art_initiations,
+                                              diff2$diff_art_initiations))
     y_lim <- range(c(all_vals, 0), na.rm = TRUE)
     
     ggplot(plot_data, aes(x = Outcome, y = Value, fill = is_good)) +
-      geom_col(width = 0.7) +
+      # narrower bars when ART is hidden so two columns do not look stretched
+      geom_col(width = if (SHOW_ART_INITIATIONS) 0.7 else 0.5) +
       geom_hline(yintercept = 0, colour = "#374151", linewidth = 0.4) +
       scale_fill_manual(values = c("TRUE" = "#10b981", "FALSE" = "#ef4444"), guide = "none") +
       scale_y_continuous(labels = comma, limits = y_lim) +
@@ -4328,29 +4373,36 @@ server <- function(input, output, session) {
     diff <- diff_scenario2()
     diff1 <- diff_scenario1()    # needed for the shared y-axis range
     
+    # ART initiations is an optional third bar (SHOW_ART_INITIATIONS, top of
+    # file). c() drops NULL, so every column shrinks together and data.frame()
+    # still sees equal-length vectors.
     plot_data <- data.frame(
-      Outcome = c("Acquisitions", "Deaths", "ART\nInitiations"),
+      Outcome = c("Acquisitions", "Deaths",
+                  if (SHOW_ART_INITIATIONS) "ART\nInitiations"),
       Value   = c(diff$diff_new_infections,
                   diff$diff_deaths,
-                  diff$diff_art_initiations),
+                  if (SHOW_ART_INITIATIONS) diff$diff_art_initiations),
       # is_good = TRUE when the change is favourable (green); FALSE when adverse (red).
       # Infections/Deaths: fewer is better -> Value < 0 is good.
       # ART Initiations:   more is better  -> Value > 0 is good.
       is_good = c(diff$diff_new_infections < 0,
                   diff$diff_deaths        < 0,
-                  diff$diff_art_initiations >= 0),
+                  if (SHOW_ART_INITIATIONS) (diff$diff_art_initiations >= 0)),
       Baseline = c(outcomes_baseline()$end_new_infections,
                    outcomes_baseline()$end_deaths,
-                   outcomes_baseline()$art_initiations)
+                   if (SHOW_ART_INITIATIONS) outcomes_baseline()$art_initiations)
     )
     
     # Shared y-axis range — must match the calculation in plot_scenario1.
-    all_vals <- c(diff$diff_new_infections,  diff$diff_deaths,  diff$diff_art_initiations,
-                  diff1$diff_new_infections, diff1$diff_deaths, diff1$diff_art_initiations)
+    all_vals <- c(diff$diff_new_infections,  diff$diff_deaths,
+                  diff1$diff_new_infections, diff1$diff_deaths,
+                  if (SHOW_ART_INITIATIONS) c(diff$diff_art_initiations,
+                                              diff1$diff_art_initiations))
     y_lim <- range(c(all_vals, 0), na.rm = TRUE)
     
     ggplot(plot_data, aes(x = Outcome, y = Value, fill = is_good)) +
-      geom_col(width = 0.7) +
+      # narrower bars when ART is hidden so two columns do not look stretched
+      geom_col(width = if (SHOW_ART_INITIATIONS) 0.7 else 0.5) +
       geom_hline(yintercept = 0, colour = "#374151", linewidth = 0.4) +
       scale_fill_manual(values = c("TRUE" = "#10b981", "FALSE" = "#ef4444"), guide = "none") +
       scale_y_continuous(labels = comma, limits = y_lim) +
@@ -4520,6 +4572,9 @@ server <- function(input, output, session) {
         diff_s2         = isolate(diff_scenario2()),
         populations     = isolate(populations()),
         interventions   = intervention_groups,
+        # Passed explicitly rather than relying on the Rmd's env inheriting
+        # globalenv() -- that coupling is invisible and breaks silently.
+        show_art_initiations = SHOW_ART_INITIATIONS,
         # Per-scenario PrEP allocation so the report can show where an entered
         # total landed (delivered per group, coverage, overflow-to-General).
         prep_delivery   = isolate(list(
