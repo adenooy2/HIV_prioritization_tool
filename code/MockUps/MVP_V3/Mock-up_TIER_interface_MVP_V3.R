@@ -370,10 +370,10 @@ ui <- page_sidebar(
         
         
         h4("What is TIER-Plus"),
-        p("TIER-Plus is a planning tool for national HIV programme stakeholders to support annual budget allocation and resource prioritization decisions. It enables users to model how resource allocation across different HIV interventions—prevention, testing, treatment, and retention—translates into projected changes in key outcomes, including progress toward the 90-90-90 targets, new HIV acquisitions, mortality, and programme costs."),
+        p("TIER-Plus is a planning tool for national HIV programme stakeholders to support annual budget allocation and resource prioritization decisions. It enables users to model how resource allocation across different HIV interventions—prevention, testing, treatment, and retention—translates into projected changes in key outcomes, including progress toward the 95-95-95 targets, new HIV acquisitions, mortality, and programme costs."),
         p("The tool uses the most recent programme data as a baseline reference point and allows country teams to systematically model the epidemiological and financial implications of scaling up or scaling down different interventions relative to current levels. Through an accessible, scenario-based platform, users can evaluate multiple allocation strategies side-by-side, compare their relative impact on outcomes, and make evidence-informed prioritization decisions that can be substantiated during planning and advocacy processes."),
-       h4("Important to know:"),
-         p(" TIER-Plus is designed to inform and support annual planning deliberations within country-led processes. The tool provides indicative estimates of direction and relative magnitude of impact, which facilitates comparison across scenarios. All final budgetary allocations, epidemiological targets, and implementation specifications should be derived from country-led planning processes grounded in local epidemiological context and operational capacity. TIER-Plus functions as a complementary analytical resource and does not replace other validated modeling methodologies or country decision-making authority."),
+        h4("Important to know:"),
+        p(" TIER-Plus is designed to inform and support annual planning deliberations within country-led processes. The tool provides indicative estimates of direction and relative magnitude of impact, which facilitates comparison across scenarios. All final budgetary allocations, epidemiological targets, and implementation specifications should be derived from country-led planning processes grounded in local epidemiological context and operational capacity. TIER-Plus functions as a complementary analytical resource and does not replace other validated modeling methodologies or country decision-making authority."),
         
         h4("How to use the tool"),
         tags$ol(
@@ -428,7 +428,7 @@ ui <- page_sidebar(
           tags$li(strong("Enhanced Adherence Counselling (EAC):"), "Percentage of individuals identified as unsuppressed (through a recent viral load)."),
           tags$li(strong("Tracking and tracing: "), "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool."),
           tags$li(strong("Frequency of clinical visits for stable clients: "),"The frequency at which stable ART clients must return for clinical visits, either every 6 months of every 12 months.")
-          ),
+        ),
         
         h5(strong("Advanced HIV disease")),
         tags$ul(
@@ -1458,6 +1458,136 @@ server <- function(input, output, session) {
   ac_ok  <- function(ac) length(ac) == 1 && !is.na(ac) && ac > 0
   usd_fmt <- function(x) scales::dollar(x, accuracy = 0.01)
   pct_fmt <- function(f) sprintf("%+.1f%%", f * 100)
+  
+  # ==========================================================================
+  # CHANGED-PARAMETER SUMMARY (PDF appendix)
+  # --------------------------------------------------------------------------
+  # Returns data.frame(Section, Parameter, Default, `Set to`) listing every
+  # value that currently differs from its default, or a ZERO-ROW frame when
+  # nothing has been touched. The report omits the appendix entirely on zero
+  # rows, so this function -- not n_overrides() -- is the single arbiter of
+  # "was anything changed". They can disagree by design: n_overrides() counts
+  # the fanned-out store entries for the badge, this collapses them for reading.
+  #
+  # Three things this deliberately does NOT do the naive way:
+  #   * The shared efficacy inputs FAN OUT to four group keys each (see the
+  #     param_oral_eff / param_len_eff / param_len_dur observers). Listing the
+  #     raw store would print four identical rows for one edit, so those types
+  #     collapse to a single row -- but ONLY when all four keys carry the
+  #     override AND agree. A partial or divergent state falls through to the
+  #     per-key loop rather than hiding behind one summary line.
+  #   * DSD costs are tested by COMPARISON, not presence, because the box stores
+  #     a derived absolute and the (round(ac*(1+f),2) - ac)/ac round trip carries
+  #     ~1e-5 relative error -- the same reason n_dsd_changed() compares.
+  #     Presence-testing would report untouched rows as changed.
+  #   * Values are formatted in the unit the PARAMETERS TAB shows (percent,
+  #     months, USD), not the unit the sheet stores (fraction, years), so the
+  #     appendix and the box the user actually edited read the same.
+  #
+  # Overrides are cleared on country switch (the input$region observer above),
+  # so this is always relative to the currently selected country -- no staleness.
+  param_override_summary <- reactive({
+    cc <- country_calibration()
+    ac <- effective_art_cost()
+    
+    rows <- list()
+    add <- function(section, parameter, default, set_to) {
+      rows[[length(rows) + 1]] <<- data.frame(
+        Section = section, Parameter = parameter,
+        Default = default, `Set to` = set_to,
+        check.names = FALSE, stringsAsFactors = FALSE
+      )
+    }
+    
+    ok1      <- function(x) length(x) == 1 && !is.na(x)
+    f_pct    <- function(f) if (ok1(f)) sprintf("%g%%", round(f * 100, 6)) else "\u2014"
+    f_mo     <- function(y) if (ok1(y)) sprintf("%g months", round(y * 12, 2)) else "\u2014"
+    f_usd    <- function(x) if (ok1(x)) usd_fmt(x) else "\u2014"
+    int_name <- function(k) {
+      g  <- INT_GROUP_OF[[k]]
+      nm <- if (!is.null(g)) intervention_groups[[g]]$interventions[[k]]$name else NULL
+      if (is.null(nm)) k else nm
+    }
+    
+    e <- param_overrides$eff
+    
+    # ---- efficacy and duration: collapse the fan-out types first ------------
+    collapsed <- character(0)
+    fanout <- list(
+      list(keys = ORAL_KEYS, pt = "eff_adherent",
+           label = "Oral PrEP \u2014 efficacy when adherent",   fmt = f_pct),
+      list(keys = LEN_KEYS,  pt = "eff_adherent",
+           label = "Lenacapavir \u2014 efficacy when adherent", fmt = f_pct),
+      list(keys = LEN_KEYS,  pt = "shot_coverage_years",
+           label = "Lenacapavir \u2014 protection per shot",    fmt = f_mo)
+    )
+    for (f in fanout) {
+      vals <- lapply(f$keys, function(k) e[[k]][[f$pt]])
+      if (!all(vapply(vals, ok1, logical(1)))) next
+      if (length(unique(round(unlist(vals), 10))) != 1) next
+      defs <- vapply(f$keys, function(k) sheet_val(k, f$pt), numeric(1))
+      add("Efficacy", f$label,
+          if (length(unique(round(defs, 10))) == 1) f$fmt(defs[[1]]) else "varies by group",
+          f$fmt(vals[[1]]))
+      collapsed <- c(collapsed, paste(f$keys, f$pt, sep = "|"))
+    }
+    
+    pt_label <- c(eff_adherent         = "efficacy when adherent",
+                  shot_coverage_years  = "protection per shot",
+                  person_years_on_prep = "time on PrEP per initiate",
+                  efficacy             = "suppression impact")
+    pt_fmt <- list(eff_adherent         = f_pct,
+                   shot_coverage_years  = f_mo,
+                   person_years_on_prep = f_mo,
+                   efficacy             = f_pct)
+    for (k in names(e)) {
+      for (pt in names(e[[k]])) {
+        if (paste(k, pt, sep = "|") %in% collapsed) next
+        fmt <- pt_fmt[[pt]]
+        if (is.null(fmt)) fmt <- function(x) if (ok1(x)) format(x) else "\u2014"
+        lab <- pt_label[[pt]]
+        if (is.null(lab) || is.na(lab)) lab <- pt
+        add("Efficacy", paste0(int_name(k), " \u2014 ", lab),
+            fmt(sheet_val(k, pt)), fmt(e[[k]][[pt]]))
+      }
+    }
+    
+    # ---- unit costs: three stores, one default resolver ---------------------
+    for (store in c("cost", "cost_test", "cost_flat")) {
+      lst <- param_overrides[[store]]
+      for (k in names(lst)) {
+        d <- cost_default_of(k, cc)
+        add("Unit costs", paste0(cost_label(k), " (default from ", d$source, ")"),
+            f_usd(d$value), f_usd(lst[[k]]))
+      }
+    }
+    
+    # ---- ART cost per person-year, and the DSD models priced off it ---------
+    if (!is.null(param_overrides$art_cost)) {
+      d <- art_cost_default(cc)
+      add("ART cost",
+          paste0("Standard ART cost per person-year (default from ", d$source, ")"),
+          f_usd(d$value), f_usd(param_overrides$art_cost))
+    }
+    if (ac_ok(ac)) {
+      for (k in names(param_overrides$dsd_abs)) {
+        d <- dsd_cost_default(k, ac)$total
+        v <- param_overrides$dsd_abs[[k]]
+        # Same comparison n_dsd_changed() uses -- see the header note.
+        if (ok1(d) && isTRUE(all.equal(round(v, 2), round(d, 2)))) next
+        add("ART cost",
+            paste0(dsd_label(k), " \u2014 total ART cost per person-year"),
+            f_usd(d), f_usd(v))
+      }
+    }
+    
+    if (length(rows) == 0) {
+      return(data.frame(Section = character(0), Parameter = character(0),
+                        Default = character(0), `Set to` = character(0),
+                        check.names = FALSE, stringsAsFactors = FALSE))
+    }
+    do.call(rbind, rows)
+  })
   
   # Info bubble, same construction as make_intervention_tip() on the Scenarios
   # tab. Returns NULL when there's no text, so the icon is skipped rather than
@@ -4575,6 +4705,9 @@ server <- function(input, output, session) {
         # Passed explicitly rather than relying on the Rmd's env inheriting
         # globalenv() -- that coupling is invisible and breaks silently.
         show_art_initiations = SHOW_ART_INITIATIONS,
+        # Changed-parameter appendix. Zero-row data.frame when nothing was
+        # touched -- the template drops the whole appendix on that.
+        param_overrides = isolate(param_override_summary()),
         # Per-scenario PrEP allocation so the report can show where an entered
         # total landed (delivered per group, coverage, overflow-to-General).
         prep_delivery   = isolate(list(
