@@ -19,6 +19,8 @@ params:
   populations: !r list()
   interventions: !r list()
   prep_delivery: !r list()
+  param_overrides: !r data.frame()
+  show_art_initiations: false
 ---
 
 ```{css, echo=FALSE}
@@ -184,6 +186,28 @@ diff_s2     <- p$diff_s2
 pops        <- p$populations
 ig          <- p$interventions
 pd          <- p$prep_delivery
+po          <- p$param_overrides
+
+# PrEP entry mode is a single GLOBAL toggle in the app (input$prep_entry_mode),
+# so baseline and both scenarios always share it -- reading one is enough.
+# Defaults to by-group if prep_delivery is absent (standalone knit).
+prep_mode   <- if (!is.null(pd$baseline$mode)) pd$baseline$mode else "group"
+prep_total  <- identical(prep_mode, "total")
+
+# The eight per-group PrEP keys. In total-entry mode these are DERIVED by
+# split_prep_total() rather than entered, so they are collapsed to two rows in
+# the intervention table (see that chunk).
+PREP_GROUP_KEYS <- c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw",
+                     "prep_oral_general", "prep_lenacapavir_fsw",
+                     "prep_lenacapavir_msm", "prep_lenacapavir_agyw",
+                     "prep_lenacapavir_general")
+PREP_ORAL_KEYS <- grep("^prep_oral_", PREP_GROUP_KEYS, value = TRUE)
+PREP_LENA_KEYS <- grep("^prep_lenacapavir_", PREP_GROUP_KEYS, value = TRUE)
+
+# ART initiations is optional -- set by SHOW_ART_INITIATIONS in the app file
+# and passed through report_params. isTRUE() guards against the param being
+# absent when the template is knitted standalone.
+show_art    <- isTRUE(p$show_art_initiations)
 
 # Formatters
 fmt_n     <- function(x) format(round(as.numeric(x)), big.mark = ",", scientific = FALSE)
@@ -301,17 +325,20 @@ fmt_change <- function(delta, pct, good_when) {
   sprintf('<span class="%s">%s%s%s</span>', cls, sign_char, fmt_n(abs(delta)), pct_str)
 }
 
+# c() drops NULL, so `if (show_art)` with no `else` removes the row from all
+# three columns at once and keeps the vectors the same length.
 health_tbl <- data.frame(
-  `Change vs baseline` = c("ART initiations", "Adult acquisitions",
+  `Change vs baseline` = c(if (show_art) "ART initiations",
+                           "Adult acquisitions",
                            "HIV-related deaths", "On ART & suppressed"),
   `Scenario 1` = c(
-    fmt_change(diff_s1$diff_art_initiations, diff_s1$pct_art_initiations, "up"),
+    if (show_art) fmt_change(diff_s1$diff_art_initiations, diff_s1$pct_art_initiations, "up"),
     fmt_change(diff_s1$diff_new_infections,  diff_s1$pct_new_infections,  "down"),
     fmt_change(diff_s1$diff_deaths,          diff_s1$pct_deaths,          "down"),
     fmt_change(diff_s1$diff_suppressed,      diff_s1$pct_suppressed,      "up")
   ),
   `Scenario 2` = c(
-    fmt_change(diff_s2$diff_art_initiations, diff_s2$pct_art_initiations, "up"),
+    if (show_art) fmt_change(diff_s2$diff_art_initiations, diff_s2$pct_art_initiations, "up"),
     fmt_change(diff_s2$diff_new_infections,  diff_s2$pct_new_infections,  "down"),
     fmt_change(diff_s2$diff_deaths,          diff_s2$pct_deaths,          "down"),
     fmt_change(diff_s2$diff_suppressed,      diff_s2$pct_suppressed,      "up")
@@ -451,35 +478,35 @@ knitr::kable(bd_tbl, format = "html", escape = FALSE,
              table.attr = 'class="report-table"')
 ```
 
-<div class="page-break"></div>
-
-## PrEP delivery by group
-
 ```{r tbl-prep, results='asis'}
-# Shows where each scenario's PrEP lands across FSW/MSM/AGYW/General. In total
-# entry mode this reflects the split of the entered oral/lenacapavir totals,
-# including any amount reallocated to General or not delivered.
+# BY-GROUP entry mode: show where each scenario's PrEP lands across
+# FSW/MSM/AGYW/General, with population denominators and coverage.
+#
+# TOTAL entry mode: the per-group split is produced by split_prep_total(), not
+# entered by the user, so the breakdown is suppressed (the entered totals appear
+# in "Intervention volumes" instead). The overflow/undelivered notes are the one
+# thing NOT suppressed: if part of an entered total could not be delivered, the
+# volumes table shows the DELIVERED figure and the gap would otherwise be
+# invisible. When nothing overflowed or was discarded there is nothing to say
+# and the whole section -- heading and page break included -- is dropped.
+prep_note_lines <- function(d) {
+  if (is.null(d)) return(character(0))
+  out <- character(0)
+  if (!is.null(d$overflow_to_general) && d$overflow_to_general > 0.5)
+    out <- c(out, sprintf("%s reallocated to the general population (a targeted group reached 100%% coverage)",
+                          fmt_n(d$overflow_to_general)))
+  if (!is.null(d$discarded) && d$discarded > 0.5)
+    out <- c(out, sprintf("%s not delivered &mdash; all groups already at 100%% coverage",
+                          fmt_n(d$discarded)))
+  out
+}
+
 render_prep_block <- function(label, d) {
   if (is.null(d) || is.null(d$table) || nrow(d$table) == 0) return(invisible())
   t <- d$table
   cat(sprintf('<h3 style="font-size:11pt;color:#1F3864;margin:10px 0 2px;">%s</h3>',
               htmltools::htmlEscape(label)))
-  if (identical(d$mode, "total")) {
-    cat(sprintf(paste0('<p style="margin:0 0 4px;">Entered as programme totals ',
-                       '&mdash; oral PrEP: <strong>%s</strong>; lenacapavir: ',
-                       '<strong>%s</strong>. These totals are split across groups using the ',
-                       'model&rsquo;s default allocation shares; per-group delivery ',
-                       'is shown below.</p>'),
-                fmt_n(d$entered_oral), fmt_n(d$entered_lena)))
-    if (!is.null(d$overflow_to_general) && d$overflow_to_general > 0.5)
-      cat(sprintf('<p style="margin:0 0 4px;">%s reallocated to General (a targeted group reached 100%%).</p>',
-                  fmt_n(d$overflow_to_general)))
-    if (!is.null(d$discarded) && d$discarded > 0.5)
-      cat(sprintf('<p style="margin:0 0 4px;">%s not delivered &mdash; all groups at 100%%.</p>',
-                  fmt_n(d$discarded)))
-  } else {
-    cat('<p style="margin:0 0 4px;">Entered directly by group.</p>')
-  }
+  cat('<p style="margin:0 0 4px;">Entered directly by group.</p>')
   body <- paste(vapply(seq_len(nrow(t)), function(i) sprintf(
     '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
     htmltools::htmlEscape(t$Group[i]),
@@ -492,12 +519,38 @@ render_prep_block <- function(label, d) {
       '<th>Total</th><th>Population</th><th>Coverage</th></tr></thead>\n<tbody>\n',
       body, '\n</tbody>\n</table>\n', sep = "")
 }
-if (!is.null(pd) && length(pd) > 0) {
-  render_prep_block("Baseline",   pd$baseline)
-  render_prep_block("Scenario 1", pd$scenario1)
-  render_prep_block("Scenario 2", pd$scenario2)
-} else {
+
+scen_labels <- list(baseline = "Baseline", scenario1 = "Scenario 1",
+                    scenario2 = "Scenario 2")
+
+if (is.null(pd) || length(pd) == 0) {
+  cat('<div class="page-break"></div>\n')
+  cat('<h2>PrEP delivery</h2>\n')
   cat("<p><em>PrEP delivery detail unavailable.</em></p>")
+} else if (!prep_total) {
+  cat('<div class="page-break"></div>\n')
+  cat('<h2>PrEP delivery by group</h2>\n')
+  for (k in names(scen_labels)) render_prep_block(scen_labels[[k]], pd[[k]])
+} else {
+  notes <- lapply(names(scen_labels), function(k) prep_note_lines(pd[[k]]))
+  names(notes) <- names(scen_labels)
+  if (any(lengths(notes) > 0)) {
+    cat('<div class="page-break"></div>\n')
+    cat('<h2>PrEP allocation notes</h2>\n')
+    cat('<p style="margin:0 0 6px;">PrEP was entered as programme totals. ',
+        'The volumes shown elsewhere in this report are the amounts ',
+        '<strong>delivered</strong>; where an entered total exceeded what the ',
+        'eligible population could absorb, the difference is noted below.</p>\n',
+        sep = "")
+    for (k in names(scen_labels)) {
+      if (length(notes[[k]]) == 0) next
+      cat(sprintf('<h3 style="font-size:11pt;color:#1F3864;margin:10px 0 2px;">%s</h3>\n',
+                  htmltools::htmlEscape(scen_labels[[k]])))
+      cat('<ul style="margin:0 0 6px 18px;">',
+          paste(sprintf("<li>%s</li>", notes[[k]]), collapse = ""),
+          '</ul>\n', sep = "")
+    }
+  }
 }
 ```
 
@@ -513,13 +566,51 @@ for (gkey in names(ig)) {
     '<tr style="background-color:#eef2f7;"><td colspan="4"><strong>%s</strong></td></tr>',
     htmltools::htmlEscape(grp$name)
   )
+  # In total-entry mode the eight per-group PrEP keys were never entered by the
+  # user -- baseline_input_values() derives them via split_prep_total(). Print
+  # two delivered totals instead, positioned where the first PrEP row would
+  # have been. Summing the DELIVERED per-group values (rather than echoing the
+  # entered total) keeps every number in this table one the model actually used;
+  # any shortfall is reconciled in "PrEP allocation notes".
+  if (prep_total && any(PREP_GROUP_KEYS %in% names(grp$interventions))) {
+    sum_keys <- function(vals, keys)
+      sum(vapply(keys, function(k) { v <- vals[[k]]; if (is.null(v)) 0 else as.numeric(v) },
+                 numeric(1)), na.rm = TRUE)
+    for (tk in list(list(nm = "Oral PrEP (programme total, all groups)", keys = PREP_ORAL_KEYS),
+                    list(nm = "Lenacapavir (programme total, all groups)", keys = PREP_LENA_KEYS))) {
+      rows[[length(rows) + 1]] <- sprintf(
+        "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",
+        htmltools::htmlEscape(tk$nm),
+        fmt_n(sum_keys(base_vals, tk$keys)),
+        fmt_n(sum_keys(s1_vals,   tk$keys)),
+        fmt_n(sum_keys(s2_vals,   tk$keys))
+      )
+    }
+  }
   for (ikey in names(grp$interventions)) {
+    if (prep_total && ikey %in% PREP_GROUP_KEYS) next
     int <- grp$interventions[[ikey]]
     bv  <- base_vals[[ikey]]; if (is.null(bv)) bv <- 0
     s1v <- s1_vals[[ikey]];   if (is.null(s1v)) s1v <- 0
     s2v <- s2_vals[[ikey]];   if (is.null(s2v)) s2v <- 0
+    # clinical_visit_12month is typed "coverage" so it travels on the same
+    # numeric 0/100 contract as the other coverage inputs, but it is a binary
+    # 6-vs-12-month choice (radioGroupButtons in the app, choiceValues 0/100).
+    # Printing it as "100.0%" is meaningless to a report reader, so render the
+    # choice label instead. >= 50 is the same threshold the app uses to pick
+    # the selected button.
     is_pct <- isTRUE(int$type == "coverage")
-    fmt_v <- function(x) if (is_pct) sprintf("%.1f%%", x) else fmt_n(x)
+    fmt_v <- if (identical(ikey, "clinical_visit_12month")) {
+      function(x) {
+        xn <- suppressWarnings(as.numeric(x))
+        if (!isTRUE(is.finite(xn))) "&mdash;"
+        else if (xn >= 50) "Every 12 months" else "Every 6 months"
+      }
+    } else if (is_pct) {
+      function(x) sprintf("%.1f%%", x)
+    } else {
+      fmt_n
+    }
     rows[[length(rows) + 1]] <- sprintf(
       "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",
       htmltools::htmlEscape(int$name),
@@ -533,6 +624,48 @@ cat('<table>\n<thead>',
     paste(rows, collapse = "\n"),
     '\n</tbody>\n</table>',
     sep = "")
+```
+
+```{r appendix-params, results='asis'}
+# APPENDIX -- model parameters changed from defaults.
+#
+# Omitted ENTIRELY when nothing was changed (Alex's call): a run at defaults
+# says so by the absence of the appendix, not by an empty table. param_overrides
+# arrives as a zero-row data.frame in that case, built by
+# param_override_summary() in the app file -- which is the single arbiter of
+# what counts as "changed". Do not re-derive that here.
+#
+# Grouped by Section with a spanning header row, matching the intervention
+# volumes table above. Values arrive pre-formatted in the units the Parameters
+# tab displays (percent / months / USD), so this chunk does no conversion.
+has_overrides <- !is.null(po) && is.data.frame(po) && nrow(po) > 0
+
+if (has_overrides) {
+  cat('<div class="page-break"></div>\n')
+  cat('<h2>Appendix &mdash; model parameters changed from defaults</h2>\n')
+  cat('<p style="margin:0 0 8px;">The results in this report were produced with ',
+      'the parameter values below in place of the tool&rsquo;s defaults. ',
+      'All parameters not listed here were left at their default values.</p>\n',
+      sep = "")
+  arows <- character(0)
+  for (sec in unique(po$Section)) {
+    arows <- c(arows, sprintf(
+      '<tr style="background-color:#eef2f7;"><td colspan="3"><strong>%s</strong></td></tr>',
+      htmltools::htmlEscape(sec)))
+    sub <- po[po$Section == sec, , drop = FALSE]
+    for (i in seq_len(nrow(sub))) {
+      arows <- c(arows, sprintf(
+        "<tr><td>%s</td><td>%s</td><td>%s</td></tr>",
+        htmltools::htmlEscape(sub$Parameter[i]),
+        htmltools::htmlEscape(sub$Default[i]),
+        sprintf("<strong>%s</strong>", htmltools::htmlEscape(sub[["Set to"]][i]))))
+    }
+  }
+  cat('<table>\n<thead>',
+      '<tr><th>Parameter</th><th>Default</th><th>Used in this report</th></tr>',
+      '</thead>\n<tbody>\n', paste(arows, collapse = "\n"),
+      '\n</tbody>\n</table>\n', sep = "")
+}
 ```
 
 <div class="footer-note">

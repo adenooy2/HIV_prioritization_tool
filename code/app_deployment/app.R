@@ -72,6 +72,20 @@ tryCatch(
 PREP_ENTRY_MODE_DEFAULT <- "total"
 
 # ============================================================================
+# RESULTS-PAGE METRIC TOGGLES
+# ============================================================================
+# ART initiations is hidden by default: the cascade-identity ceiling makes it
+# FALL when retention improves (a smaller diagnosed-not-on-ART gap lowers
+# max_art_initiations), which reads as a bug to external reviewers. The metric
+# is still computed in the logic layer and still returned by diff_scenario1()
+# / diff_scenario2() -- only the display is suppressed.
+# Flip to TRUE to restore it in the health-outcome cards, the two scenario bar
+# charts and the PDF report. All four display sites read this one constant;
+# it is passed into the Rmd via report_params rather than relying on the
+# report's environment inheriting globalenv().
+SHOW_ART_INITIATIONS <- FALSE
+
+# ============================================================================
 # COMMA-FORMATTED NUMERIC INPUT (thousands separators for large counts)
 # ============================================================================
 # Drop-in numericInput() replacement for "absolute" (raw-count) fields where
@@ -360,9 +374,10 @@ ui <- page_sidebar(
         
         
         h4("What is TIER-Plus"),
-        p("TIER-Plus is an extension of the original TIER prioritization tool. It aims to enable stakeholders to compare outcome and cost trade-offs across HIV interventions though an accessible, interactive platform.  It takes a current programme picture and lets the user vary the volume of interventions to compare how cascade outcomes, new HIV acquisitions, deaths, and total cost are expected to move in response."),
-        p(strong("Important: TIER-Plus is intended as a support tool for prioritization conversations. "), "As such, the tool is ", em("indicative "),
-          " of the direction and rough magnitude of impact of different choices. To make the tool quick and easy to use, and applicable across many contexts, it does not have the full complexity of other modelling tools. Specific numbers used for budgeting, target-setting, or operational planning should come from country-led processes, with decisions supported by this tool."),
+        p("TIER-Plus is a planning tool for national HIV programme stakeholders to support annual budget allocation and resource prioritization decisions. It enables users to model how resource allocation across different HIV interventions—prevention, testing, treatment, and retention—translates into projected changes in key outcomes, including progress toward the 95-95-95 targets, new HIV acquisitions, mortality, and programme costs."),
+        p("The tool uses the most recent programme data as a baseline reference point and allows country teams to systematically model the epidemiological and financial implications of scaling up or scaling down different interventions relative to current levels. Through an accessible, scenario-based platform, users can evaluate multiple allocation strategies side-by-side, compare their relative impact on outcomes, and make evidence-informed prioritization decisions that can be substantiated during planning and advocacy processes."),
+        h4("Important to know:"),
+        p(" TIER-Plus is designed to inform and support annual planning deliberations within country-led processes. The tool provides indicative estimates of direction and relative magnitude of impact, which facilitates comparison across scenarios. All final budgetary allocations, epidemiological targets, and implementation specifications should be derived from country-led planning processes grounded in local epidemiological context and operational capacity. TIER-Plus functions as a complementary analytical resource and does not replace other validated modeling methodologies or country decision-making authority."),
         
         h4("How to use the tool"),
         tags$ol(
@@ -372,6 +387,8 @@ ui <- page_sidebar(
                   "Populate each intervention with the volume and coverage of services delivered in the year prior (see ", em("What the baseline represents"), " below)."),
           tags$li(strong("Build a scenario. "),
                   "Adjust intervention volumes up or down from baseline. You can scale things in either direction."),
+          tags$li(strong("Adjust assumptions. "),
+                  "Model assumptions surrounding intervention effectiveness and cost can be adjusted from the defaults if required."),
           tags$li(strong("Compare. "),
                   "The output shows the estimated differences between each scenario and baseline. This includes the 95-targets, expected acquisitions, infant acquisitions, deaths and budget. Positive ", tags$q("acquisitions averted"), " and ", tags$q("deaths averted"),
                   " mean the scenario outperforms baseline. Negative values mean it does worse — useful for testing budget-cut scenarios."),
@@ -387,7 +404,7 @@ ui <- page_sidebar(
         
         h5(strong("Prevention")),
         tags$ul(
-          tags$li(strong("Oral PrEP / Lenacapavir: "), "Number of individuals currently receiving and/or initiated on PrEP, entered separately for FSW, MSM, and AGYW (15-24)."),
+          tags$li(strong("Oral PrEP / Lenacapavir: "), "Number of individuals currently receiving and/or initiated on PrEP, entered either as a total or separately for FSW, MSM, and AGYW (15-24) and the general population."),
           tags$li(strong("Condoms: "), "Total number of condoms distributed in the year."),
           tags$li(strong("VMMC: "), "Voluntary medical male circumcisions performed in the year."),
           tags$li(strong("Infant prophylaxis: "), "Percentage of HIV-exposed infants receiving HIV prophylaxis (e.g. NVP) to reduce vertical transmission.")
@@ -413,7 +430,8 @@ ui <- page_sidebar(
           tags$li(strong("Multi-month dispensing (3-month, 6-month, 12-month): "), "Percentage of stable ART clients enrolled in MMD (categories are mutually exclusive; the three must sum to ≤100%)."),
           tags$li(strong("Community ART pick-up: "), "Percentage of MMD-enrolled clients receiving refills via community pickup instead of facility, applied equally across MMD-3/6/12. Has no effect when MMD enrolment is zero."),
           tags$li(strong("Enhanced Adherence Counselling (EAC):"), "Percentage of individuals identified as unsuppressed (through a recent viral load)."),
-          tags$li(strong("Tracking and tracing: "), "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool.")
+          tags$li(strong("Tracking and tracing: "), "Outreach to people lost to follow-up to bring them back into care. Applied after DSD has already prevented some LTFU, against the remaining LTFU pool."),
+          tags$li(strong("Frequency of clinical visits for stable clients: "),"The frequency at which stable ART clients must return for clinical visits, either every 6 months of every 12 months.")
         ),
         
         h5(strong("Advanced HIV disease")),
@@ -1445,6 +1463,136 @@ server <- function(input, output, session) {
   usd_fmt <- function(x) scales::dollar(x, accuracy = 0.01)
   pct_fmt <- function(f) sprintf("%+.1f%%", f * 100)
   
+  # ==========================================================================
+  # CHANGED-PARAMETER SUMMARY (PDF appendix)
+  # --------------------------------------------------------------------------
+  # Returns data.frame(Section, Parameter, Default, `Set to`) listing every
+  # value that currently differs from its default, or a ZERO-ROW frame when
+  # nothing has been touched. The report omits the appendix entirely on zero
+  # rows, so this function -- not n_overrides() -- is the single arbiter of
+  # "was anything changed". They can disagree by design: n_overrides() counts
+  # the fanned-out store entries for the badge, this collapses them for reading.
+  #
+  # Three things this deliberately does NOT do the naive way:
+  #   * The shared efficacy inputs FAN OUT to four group keys each (see the
+  #     param_oral_eff / param_len_eff / param_len_dur observers). Listing the
+  #     raw store would print four identical rows for one edit, so those types
+  #     collapse to a single row -- but ONLY when all four keys carry the
+  #     override AND agree. A partial or divergent state falls through to the
+  #     per-key loop rather than hiding behind one summary line.
+  #   * DSD costs are tested by COMPARISON, not presence, because the box stores
+  #     a derived absolute and the (round(ac*(1+f),2) - ac)/ac round trip carries
+  #     ~1e-5 relative error -- the same reason n_dsd_changed() compares.
+  #     Presence-testing would report untouched rows as changed.
+  #   * Values are formatted in the unit the PARAMETERS TAB shows (percent,
+  #     months, USD), not the unit the sheet stores (fraction, years), so the
+  #     appendix and the box the user actually edited read the same.
+  #
+  # Overrides are cleared on country switch (the input$region observer above),
+  # so this is always relative to the currently selected country -- no staleness.
+  param_override_summary <- reactive({
+    cc <- country_calibration()
+    ac <- effective_art_cost()
+    
+    rows <- list()
+    add <- function(section, parameter, default, set_to) {
+      rows[[length(rows) + 1]] <<- data.frame(
+        Section = section, Parameter = parameter,
+        Default = default, `Set to` = set_to,
+        check.names = FALSE, stringsAsFactors = FALSE
+      )
+    }
+    
+    ok1      <- function(x) length(x) == 1 && !is.na(x)
+    f_pct    <- function(f) if (ok1(f)) sprintf("%g%%", round(f * 100, 6)) else "\u2014"
+    f_mo     <- function(y) if (ok1(y)) sprintf("%g months", round(y * 12, 2)) else "\u2014"
+    f_usd    <- function(x) if (ok1(x)) usd_fmt(x) else "\u2014"
+    int_name <- function(k) {
+      g  <- INT_GROUP_OF[[k]]
+      nm <- if (!is.null(g)) intervention_groups[[g]]$interventions[[k]]$name else NULL
+      if (is.null(nm)) k else nm
+    }
+    
+    e <- param_overrides$eff
+    
+    # ---- efficacy and duration: collapse the fan-out types first ------------
+    collapsed <- character(0)
+    fanout <- list(
+      list(keys = ORAL_KEYS, pt = "eff_adherent",
+           label = "Oral PrEP \u2014 efficacy when adherent",   fmt = f_pct),
+      list(keys = LEN_KEYS,  pt = "eff_adherent",
+           label = "Lenacapavir \u2014 efficacy when adherent", fmt = f_pct),
+      list(keys = LEN_KEYS,  pt = "shot_coverage_years",
+           label = "Lenacapavir \u2014 protection per shot",    fmt = f_mo)
+    )
+    for (f in fanout) {
+      vals <- lapply(f$keys, function(k) e[[k]][[f$pt]])
+      if (!all(vapply(vals, ok1, logical(1)))) next
+      if (length(unique(round(unlist(vals), 10))) != 1) next
+      defs <- vapply(f$keys, function(k) sheet_val(k, f$pt), numeric(1))
+      add("Efficacy", f$label,
+          if (length(unique(round(defs, 10))) == 1) f$fmt(defs[[1]]) else "varies by group",
+          f$fmt(vals[[1]]))
+      collapsed <- c(collapsed, paste(f$keys, f$pt, sep = "|"))
+    }
+    
+    pt_label <- c(eff_adherent         = "efficacy when adherent",
+                  shot_coverage_years  = "protection per shot",
+                  person_years_on_prep = "time on PrEP per initiate",
+                  efficacy             = "suppression impact")
+    pt_fmt <- list(eff_adherent         = f_pct,
+                   shot_coverage_years  = f_mo,
+                   person_years_on_prep = f_mo,
+                   efficacy             = f_pct)
+    for (k in names(e)) {
+      for (pt in names(e[[k]])) {
+        if (paste(k, pt, sep = "|") %in% collapsed) next
+        fmt <- pt_fmt[[pt]]
+        if (is.null(fmt)) fmt <- function(x) if (ok1(x)) format(x) else "\u2014"
+        lab <- pt_label[[pt]]
+        if (is.null(lab) || is.na(lab)) lab <- pt
+        add("Efficacy", paste0(int_name(k), " \u2014 ", lab),
+            fmt(sheet_val(k, pt)), fmt(e[[k]][[pt]]))
+      }
+    }
+    
+    # ---- unit costs: three stores, one default resolver ---------------------
+    for (store in c("cost", "cost_test", "cost_flat")) {
+      lst <- param_overrides[[store]]
+      for (k in names(lst)) {
+        d <- cost_default_of(k, cc)
+        add("Unit costs", paste0(cost_label(k), " (default from ", d$source, ")"),
+            f_usd(d$value), f_usd(lst[[k]]))
+      }
+    }
+    
+    # ---- ART cost per person-year, and the DSD models priced off it ---------
+    if (!is.null(param_overrides$art_cost)) {
+      d <- art_cost_default(cc)
+      add("ART cost",
+          paste0("Standard ART cost per person-year (default from ", d$source, ")"),
+          f_usd(d$value), f_usd(param_overrides$art_cost))
+    }
+    if (ac_ok(ac)) {
+      for (k in names(param_overrides$dsd_abs)) {
+        d <- dsd_cost_default(k, ac)$total
+        v <- param_overrides$dsd_abs[[k]]
+        # Same comparison n_dsd_changed() uses -- see the header note.
+        if (ok1(d) && isTRUE(all.equal(round(v, 2), round(d, 2)))) next
+        add("ART cost",
+            paste0(dsd_label(k), " \u2014 total ART cost per person-year"),
+            f_usd(d), f_usd(v))
+      }
+    }
+    
+    if (length(rows) == 0) {
+      return(data.frame(Section = character(0), Parameter = character(0),
+                        Default = character(0), `Set to` = character(0),
+                        check.names = FALSE, stringsAsFactors = FALSE))
+    }
+    do.call(rbind, rows)
+  })
+  
   # Info bubble, same construction as make_intervention_tip() on the Scenarios
   # tab. Returns NULL when there's no text, so the icon is skipped rather than
   # appearing with an empty bubble.
@@ -1701,10 +1849,10 @@ server <- function(input, output, session) {
       # efficacy row is populated in intervention_params.
       sec_hdr("Treatment monitoring & quality"),
       layout_columns(
-        col_widths = c(4, 8),
+        col_widths = c(6, 6),
         decimalNumericInput(
           "param_cv12_supp_impact",
-          lbl_tip("Suppression impact of annual vs 6-monthly clinical visits (pp)",
+          lbl_tip("Suppression impact of annual vs 6-monthly clinical visits (%)",
                   sheet_src("clinical_visit_12month", "efficacy")),
           value = frac_to_pct(sheet_val("clinical_visit_12month", "efficacy")),
           min = 0, max = 10, width = "100%"),
@@ -3999,19 +4147,29 @@ server <- function(input, output, session) {
     outcomes <- outcomes_scenario1()
     diff <- diff_scenario1()
     
+    # Whichever row comes first keeps the wider bottom margin (mb-3) so the
+    # card's internal spacing is identical whether or not ART is shown.
+    acq_cls <- if (SHOW_ART_INITIATIONS)
+      "d-flex justify-content-between border-bottom pb-2 mb-2"
+    else
+      "d-flex justify-content-between border-bottom pb-2 mb-3"
+    
+    # tagList() drops NULL children, so an `if` with no `else` is enough to
+    # omit the ART row entirely -- see SHOW_ART_INITIATIONS at top of file.
     tagList(
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
-          strong("Change in ART Initiations:"),
-          strong(
-            style = paste0("color: ",
-                           ifelse(diff$diff_art_initiations > 0, "green",
-                                  ifelse(diff$diff_art_initiations < 0, "red", "gray")), ";"),
-            paste0(ifelse(diff$diff_art_initiations > 0, "+", ""),
-                   format(diff$diff_art_initiations, big.mark = ",")),
-            fmt_pct(diff$pct_art_initiations, good_direction = 1)
-          )
+      if (SHOW_ART_INITIATIONS) div(
+        class = "d-flex justify-content-between border-bottom pb-2 mb-3",
+        strong("Change in ART Initiations:"),
+        strong(
+          style = paste0("color: ",
+                         ifelse(diff$diff_art_initiations > 0, "green",
+                                ifelse(diff$diff_art_initiations < 0, "red", "gray")), ";"),
+          paste0(ifelse(diff$diff_art_initiations > 0, "+", ""),
+                 format(diff$diff_art_initiations, big.mark = ",")),
+          fmt_pct(diff$pct_art_initiations, good_direction = 1)
+        )
       ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
+      div(class = acq_cls,
           strong("Change in Acquisitions:"),
           span(
             # diff_new_infections: +ve = more infections (bad, red); -ve = fewer (good, green)
@@ -4053,19 +4211,29 @@ server <- function(input, output, session) {
     outcomes <- outcomes_scenario2()
     diff <- diff_scenario2()
     
+    # Whichever row comes first keeps the wider bottom margin (mb-3) so the
+    # card's internal spacing is identical whether or not ART is shown.
+    acq_cls <- if (SHOW_ART_INITIATIONS)
+      "d-flex justify-content-between border-bottom pb-2 mb-2"
+    else
+      "d-flex justify-content-between border-bottom pb-2 mb-3"
+    
+    # tagList() drops NULL children, so an `if` with no `else` is enough to
+    # omit the ART row entirely -- see SHOW_ART_INITIATIONS at top of file.
     tagList(
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-3",
-          strong("Change in ART Initiations:"),
-          strong(
-            style = paste0("color: ",
-                           ifelse(diff$diff_art_initiations > 0, "green",
-                                  ifelse(diff$diff_art_initiations < 0, "red", "gray")), ";"),
-            paste0(ifelse(diff$diff_art_initiations > 0, "+", ""),
-                   format(diff$diff_art_initiations, big.mark = ",")),
-            fmt_pct(diff$pct_art_initiations, good_direction = 1)
-          )
+      if (SHOW_ART_INITIATIONS) div(
+        class = "d-flex justify-content-between border-bottom pb-2 mb-3",
+        strong("Change in ART Initiations:"),
+        strong(
+          style = paste0("color: ",
+                         ifelse(diff$diff_art_initiations > 0, "green",
+                                ifelse(diff$diff_art_initiations < 0, "red", "gray")), ";"),
+          paste0(ifelse(diff$diff_art_initiations > 0, "+", ""),
+                 format(diff$diff_art_initiations, big.mark = ",")),
+          fmt_pct(diff$pct_art_initiations, good_direction = 1)
+        )
       ),
-      div(class = "d-flex justify-content-between border-bottom pb-2 mb-2",
+      div(class = acq_cls,
           strong("Change in Acquisitions:"),
           span(
             # diff_new_infections: +ve = more infections (bad, red); -ve = fewer (good, green)
@@ -4292,30 +4460,37 @@ server <- function(input, output, session) {
     diff <- diff_scenario1()
     diff2 <- diff_scenario2()    # needed for the shared y-axis range
     
+    # ART initiations is an optional third bar (SHOW_ART_INITIATIONS, top of
+    # file). c() drops NULL, so every column shrinks together and data.frame()
+    # still sees equal-length vectors.
     plot_data <- data.frame(
-      Outcome = c("Acquisitions", "Deaths", "ART\nInitiations"),
+      Outcome = c("Acquisitions", "Deaths",
+                  if (SHOW_ART_INITIATIONS) "ART\nInitiations"),
       Value   = c(diff$diff_new_infections,
                   diff$diff_deaths,
-                  diff$diff_art_initiations),
+                  if (SHOW_ART_INITIATIONS) diff$diff_art_initiations),
       # is_good = TRUE when the change is favourable (green); FALSE when adverse (red).
       # Infections/Deaths: fewer is better -> Value < 0 is good.
       # ART Initiations:   more is better  -> Value > 0 is good.
       is_good = c(diff$diff_new_infections < 0,
                   diff$diff_deaths        < 0,
-                  diff$diff_art_initiations >= 0),
+                  if (SHOW_ART_INITIATIONS) (diff$diff_art_initiations >= 0)),
       Baseline = c(outcomes_baseline()$end_new_infections,
                    outcomes_baseline()$end_deaths,
-                   outcomes_baseline()$art_initiations)
+                   if (SHOW_ART_INITIATIONS) outcomes_baseline()$art_initiations)
     )
     
     # Shared y-axis range across BOTH scenario plots so bar heights are
     # directly comparable. Computed from the union of both scenarios' diffs.
-    all_vals <- c(diff$diff_new_infections,  diff$diff_deaths,  diff$diff_art_initiations,
-                  diff2$diff_new_infections, diff2$diff_deaths, diff2$diff_art_initiations)
+    all_vals <- c(diff$diff_new_infections,  diff$diff_deaths,
+                  diff2$diff_new_infections, diff2$diff_deaths,
+                  if (SHOW_ART_INITIATIONS) c(diff$diff_art_initiations,
+                                              diff2$diff_art_initiations))
     y_lim <- range(c(all_vals, 0), na.rm = TRUE)
     
     ggplot(plot_data, aes(x = Outcome, y = Value, fill = is_good)) +
-      geom_col(width = 0.7) +
+      # narrower bars when ART is hidden so two columns do not look stretched
+      geom_col(width = if (SHOW_ART_INITIATIONS) 0.7 else 0.5) +
       geom_hline(yintercept = 0, colour = "#374151", linewidth = 0.4) +
       scale_fill_manual(values = c("TRUE" = "#10b981", "FALSE" = "#ef4444"), guide = "none") +
       scale_y_continuous(labels = comma, limits = y_lim) +
@@ -4332,29 +4507,36 @@ server <- function(input, output, session) {
     diff <- diff_scenario2()
     diff1 <- diff_scenario1()    # needed for the shared y-axis range
     
+    # ART initiations is an optional third bar (SHOW_ART_INITIATIONS, top of
+    # file). c() drops NULL, so every column shrinks together and data.frame()
+    # still sees equal-length vectors.
     plot_data <- data.frame(
-      Outcome = c("Acquisitions", "Deaths", "ART\nInitiations"),
+      Outcome = c("Acquisitions", "Deaths",
+                  if (SHOW_ART_INITIATIONS) "ART\nInitiations"),
       Value   = c(diff$diff_new_infections,
                   diff$diff_deaths,
-                  diff$diff_art_initiations),
+                  if (SHOW_ART_INITIATIONS) diff$diff_art_initiations),
       # is_good = TRUE when the change is favourable (green); FALSE when adverse (red).
       # Infections/Deaths: fewer is better -> Value < 0 is good.
       # ART Initiations:   more is better  -> Value > 0 is good.
       is_good = c(diff$diff_new_infections < 0,
                   diff$diff_deaths        < 0,
-                  diff$diff_art_initiations >= 0),
+                  if (SHOW_ART_INITIATIONS) (diff$diff_art_initiations >= 0)),
       Baseline = c(outcomes_baseline()$end_new_infections,
                    outcomes_baseline()$end_deaths,
-                   outcomes_baseline()$art_initiations)
+                   if (SHOW_ART_INITIATIONS) outcomes_baseline()$art_initiations)
     )
     
     # Shared y-axis range — must match the calculation in plot_scenario1.
-    all_vals <- c(diff$diff_new_infections,  diff$diff_deaths,  diff$diff_art_initiations,
-                  diff1$diff_new_infections, diff1$diff_deaths, diff1$diff_art_initiations)
+    all_vals <- c(diff$diff_new_infections,  diff$diff_deaths,
+                  diff1$diff_new_infections, diff1$diff_deaths,
+                  if (SHOW_ART_INITIATIONS) c(diff$diff_art_initiations,
+                                              diff1$diff_art_initiations))
     y_lim <- range(c(all_vals, 0), na.rm = TRUE)
     
     ggplot(plot_data, aes(x = Outcome, y = Value, fill = is_good)) +
-      geom_col(width = 0.7) +
+      # narrower bars when ART is hidden so two columns do not look stretched
+      geom_col(width = if (SHOW_ART_INITIATIONS) 0.7 else 0.5) +
       geom_hline(yintercept = 0, colour = "#374151", linewidth = 0.4) +
       scale_fill_manual(values = c("TRUE" = "#10b981", "FALSE" = "#ef4444"), guide = "none") +
       scale_y_continuous(labels = comma, limits = y_lim) +
@@ -4524,6 +4706,12 @@ server <- function(input, output, session) {
         diff_s2         = isolate(diff_scenario2()),
         populations     = isolate(populations()),
         interventions   = intervention_groups,
+        # Passed explicitly rather than relying on the Rmd's env inheriting
+        # globalenv() -- that coupling is invisible and breaks silently.
+        show_art_initiations = SHOW_ART_INITIATIONS,
+        # Changed-parameter appendix. Zero-row data.frame when nothing was
+        # touched -- the template drops the whole appendix on that.
+        param_overrides = isolate(param_override_summary()),
         # Per-scenario PrEP allocation so the report can show where an entered
         # total landed (delivered per group, coverage, overflow-to-General).
         prep_delivery   = isolate(list(
