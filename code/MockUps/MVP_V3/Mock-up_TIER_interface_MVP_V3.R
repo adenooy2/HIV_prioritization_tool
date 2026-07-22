@@ -1697,10 +1697,10 @@ server <- function(input, output, session) {
       # efficacy row is populated in intervention_params.
       sec_hdr("Treatment monitoring & quality"),
       layout_columns(
-        col_widths = c(4, 8),
+        col_widths = c(6, 6),
         decimalNumericInput(
           "param_cv12_supp_impact",
-          lbl_tip("Suppression impact of annual vs 6-monthly clinical visits (pp)",
+          lbl_tip("Suppression impact of annual vs 6-monthly clinical visits (%)",
                   sheet_src("clinical_visit_12month", "efficacy")),
           value = frac_to_pct(sheet_val("clinical_visit_12month", "efficacy")),
           min = 0, max = 10, width = "100%"),

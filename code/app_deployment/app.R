@@ -53,6 +53,7 @@ tryCatch(
 # })
 
 
+
 # ============================================================================
 # STARTUP PrEP ENTRY MODE
 # ============================================================================
@@ -1037,7 +1038,7 @@ server <- function(input, output, session) {
   #   $eff[[intervention_key]][[parameter_type]] -> numeric
   #   $cost[[intervention_key]]                  -> numeric (8 PrEP unit costs)
   #   $art_cost                                  -> numeric or NULL
-  #   $dsd_abs[[intervention_key]]               -> numeric (signed USD/person-year)
+  #   $dsd_abs[[intervention_key]]               -> numeric (total USD per person-year under the model)
   #
   # The UI is deliberately NARROWER than the storage: one shared efficacy input
   # per product fans out to that product's four group keys. So the sheet keeps
@@ -1060,10 +1061,11 @@ server <- function(input, output, session) {
                                     cost_flat = list(), dsd_abs = list(),
                                     art_cost = NULL)
   
-  # ART cost adjustments. unit_cost for these five keys is a FRACTION of
-  # art_cost_standard (negative = saving), not USD -- see Mock-Up_logic_V3.R
-  # ~2584 (DSD bundle, dsd_cost_adjustment) and ~2481 (clinical_visit_12month,
-  # clinical_visit_cost_adjustment). Two accumulators, one convention.
+  # ART cost adjustments. The SHEET unit_cost for these five keys stays a FRACTION
+  # of art_cost_standard (negative = saving), not USD -- see Mock-Up_logic_V3.R
+  # ~2584 (DSD bundle) and ~2481 (clinical_visit_12month). Two accumulators, one
+  # convention. The Parameters tab takes the TOTAL ART cost/PY under each model
+  # and converts to that fraction at the boundary as (total - art_cost)/art_cost.
   # The Parameters tab takes USD and converts at the reactive boundary.
   # Split only for LAYOUT (one row each). DSD_COST_KEYS stays the single source
   # of truth for the conversion, the observers and the reset -- never iterate
@@ -1209,30 +1211,28 @@ server <- function(input, output, session) {
                           collapse = "; "))
   }
   
-  # DSD entries count as a change only when the DERIVED fraction differs from the
-  # sheet. Typing the default back in leaves the stored absolute in place -- so
-  # the box stays authoritative and the result stays order-independent -- but it
-  # must not show up in the report as a change that isn't one.
-  # Compare against the default AT THE PRECISION THE BOX CAN EXPRESS -- not by
-  # round-tripping back to a fraction. The field is 2dp, so a sheet fraction of
-  # -0.05 against Botswana's art_cost_standard of 221.82 renders -11.09, not
-  # -11.091; -11.09/221.82 is -0.049995, which fails all.equal against -0.05
-  # (diff 4.5e-6 vs default tolerance 1.5e-8). Every country's art_cost_standard
-  # carries 2 decimals, so frac * ac almost never lands on a clean 2dp value.
-  # Comparing fractions therefore reported all five keys as changed on a
-  # completely untouched tab: the value the box echoes back on first render is
-  # by definition the rounded one.
+  # DSD entries count as a change only when the typed TOTAL differs from the
+  # sheet default total. Typing the default back in leaves the stored total in
+  # place -- the box stays authoritative, the result stays order-independent --
+  # but it must not report as a change that isn't one.
+  # Compare at the precision the box can express. The field is 2dp, so a sheet
+  # fraction of -0.05 against Botswana's art_cost_standard of 221.82 shows as a
+  # total of round(221.82 * 0.95, 2) = 210.73; comparing the derived fraction
+  # (210.73 - 221.82)/221.82 = -0.049995 against -0.05 fails all.equal (diff
+  # 4.5e-6 vs tolerance 1.5e-8). Every art_cost_standard carries 2 decimals, so
+  # ac*(1+frac) rarely lands on a clean 2dp value. Comparing totals at 2dp -- the
+  # value the box echoes on first render -- keeps an untouched tab at zero changes.
   #
-  # Consequence worth knowing: at "default" the model applies round(f*ac, 2)/ac
-  # rather than f exactly -- a relative error of ~1e-5 on the DSD adjustment.
-  # That is the price of a 2dp box and is far below any parameter uncertainty.
+  # Consequence: at "default" the model applies (round(ac*(1+f),2) - ac)/ac
+  # rather than f exactly -- ~1e-5 relative error, far below parameter uncertainty.
+  
   n_dsd_changed <- reactive({
     ac <- effective_art_cost()
     if (!ac_ok(ac)) return(0L)
     ks <- names(param_overrides$dsd_abs)
     if (length(ks) == 0) return(0L)
     sum(vapply(ks, function(k) {
-      d <- dsd_cost_default(k, ac)$abs
+      d <- dsd_cost_default(k, ac)$total
       !(length(d) == 1 && !is.na(d) &&
           isTRUE(all.equal(round(param_overrides$dsd_abs[[k]], 2), round(d, 2))))
     }, logical(1)))
@@ -1285,17 +1285,16 @@ server <- function(input, output, session) {
     for (k in names(param_overrides$cost_flat)) {
       ip$unit_cost[ip$intervention_key == k] <- param_overrides$cost_flat[[k]]
     }
-    # DSD absolutes -> fractions at the ART cost in force RIGHT NOW. Deriving here
-    # rather than at entry is the whole design: the divisor here and the
-    # multiplier in the logic are guaranteed to be the same number, so the typed
-    # USD is what gets charged regardless of what else the user edits afterwards.
-    # ac <= 0 makes the fraction undefined AND makes the logic's
-    # stable_n * ac * frac zero anyway -- leave the sheet fraction; the caption
-    # says the entry isn't being applied.
+    # DSD TOTALS -> sheet fractions at the ART cost in force RIGHT NOW. The box
+    # holds the full ART cost/PY under the model; the sheet fraction the logic
+    # multiplies is the DELTA over standard, so recover it as (total - ac)/ac.
+    # The ac used here and the ac the logic multiplies by are the same number,
+    # so the typed total is what gets charged regardless of later edits. ac <= 0
+    # leaves the sheet fraction; the caption says the entry isn't applied.
     ac <- effective_art_cost()
     if (ac_ok(ac)) {
       for (k in names(param_overrides$dsd_abs)) {
-        ip$unit_cost[ip$intervention_key == k] <- param_overrides$dsd_abs[[k]] / ac
+        ip$unit_cost[ip$intervention_key == k] <- (param_overrides$dsd_abs[[k]] - ac) / ac
       }
     }
     ip
@@ -1393,8 +1392,14 @@ server <- function(input, output, session) {
   # Sheet fraction for a DSD key + the USD/person-year it currently equals.
   dsd_cost_default <- function(key, ac) {
     f <- sheet_val(key, "unit_cost")
-    list(frac = f,
-         abs  = if (length(f) == 1 && !is.na(f)) unname(f * ac) else NA_real_)
+    ok <- length(f) == 1 && !is.na(f)
+    # frac: signed sheet fraction (saving = negative). abs: the USD DELTA it
+    # equals (f * ac). total: the FULL ART cost/PY under the model the box now
+    # shows = standard + delta. Box is parameterised on `total`; the boundary
+    # recovers the delta as (total - ac)/ac back into the sheet fraction.
+    list(frac  = f,
+         abs   = if (ok) unname(f * ac)      else NA_real_,
+         total = if (ok) unname(ac + f * ac) else NA_real_)
   }
   
   # Short display names for the cost boxes. NOT all_interventions[[key]]$name:
@@ -1603,12 +1608,14 @@ server <- function(input, output, session) {
     # equals art_d$value -- but don't rely on that invariant holding.
     ac_render <- isolate(effective_art_cost())
     
-    # No min = 0, unlike every other cost box on this tab: these are signed.
-    # The lower bound (-art_cost) is enforced in chkdsd_ / the observer.
+    # min = 0: the box now holds a TOTAL ART cost/PY under the model, which
+    # cannot be negative. (Old signed-delta floor was -art_cost; total >= 0 is
+    # the same floor expressed as a total.)
     dsd_cost_input <- function(key) {
       currencyNumericInput(paste0("dsdcost_", key),
                            dsd_lbl(key, sheet_src(key, "unit_cost")),
-                           value = dsd_cost_default(key, ac_render)$abs,
+                           value = dsd_cost_default(key, ac_render)$total,
+                           min   = 0,
                            width = "100%")
     }
     # One row of DSD boxes with matching check and caption rows beneath -- the
@@ -1759,10 +1766,10 @@ server <- function(input, output, session) {
       
       # ---------------- ART cost adjustments ----------------
       grp_hdr("ART cost adjustments"),
-      div(style = "font-size:11px; color:#6b7280; margin:-2px 0 5px;", 
-          "Signed USD per person-year enrolled, charged on stable clients. ",
-          "Negative = saving against standard facility-based care; positive = premium. ",
-          "Applied as a share of the ART unit cost above."),
+      div(style = "font-size:11px; color:#6b7280; margin:-2px 0 5px;",
+          "Total ART cost per person-year under each delivery model, charged on ",
+          "enrolled stable clients. The difference from the standard ART unit ",
+          "cost above is what the model applies. Lower values input here represent cost savings."),
       param_hdr("Multi-month dispensing"),
       dsd_row(MMD_KEYS),
       param_hdr("Other differentiated service delivery"),
@@ -1933,22 +1940,21 @@ server <- function(input, output, session) {
         dsd <- param_overrides$dsd_abs
         ovr <- if (key %in% names(dsd)) dsd[[key]] else NULL
         if (!is.null(ovr)) {
-          if (ovr < -ac) {
-            div(style = amber, sprintf(
-              "Saving exceeds ART unit cost (%s/PY) — ART cost will be floored at 0.",
-              usd_fmt(ac)))
-          } else {
-            div(style = grey, sprintf("Applied %s/PY = %s of ART (%s/PY).",
-                                      usd_fmt(ovr), pct_fmt(ovr / ac), usd_fmt(ac)))
-          }
+          # ovr is the TOTAL ART cost/PY under the model; the model applies the
+          # delta over standard. min = 0 keeps ovr >= 0, so the per-key floor is
+          # unreachable (the aggregate floor is handled in the logic file).
+          delta <- ovr - ac
+          div(style = grey, sprintf(
+            "Total %s/PY vs standard %s/PY → %s/PY applied to enrolled clients (%s).",
+            usd_fmt(ovr), usd_fmt(ac), usd_fmt(delta), pct_fmt(delta / ac)))
         } else {
           d <- dsd_cost_default(key, ac)
           if (is.na(d$frac)) {
             div(style = amber, "No sheet value — no adjustment applied.")
           } else {
             div(style = grey, sprintf(
-              "Sheet default %s of ART (%s/PY) = %s/PY. Type a value to fix it in dollars.",
-              pct_fmt(d$frac), usd_fmt(ac), usd_fmt(d$abs)))
+              "Sheet default: total %s/PY (%s of standard %s/PY). Type a total to fix it in dollars.",
+              usd_fmt(d$total), pct_fmt(d$frac), usd_fmt(ac)))
           }
         }
       })
@@ -1959,9 +1965,8 @@ server <- function(input, output, session) {
         validate(
           need(!is.null(v) && !is.na(v),
                "Enter a number — the sheet default is still being used."),
-          need(!ac_ok(ac) || v >= -ac,
-               sprintf("A saving cannot exceed the ART unit cost (%s/PY). Not applied.",
-                       usd_fmt(if (ac_ok(ac)) ac else 0)))
+          need(!ac_ok(ac) || v >= 0,
+               "A total ART cost cannot be negative. Not applied.")
         )
         NULL
       })
@@ -1970,11 +1975,11 @@ server <- function(input, output, session) {
         v  <- input[[paste0("dsdcost_", key)]]
         # observeEvent's handler is isolated: reading effective_art_cost() here
         # creates no dependency, so a later ART edit does NOT re-fire this and
-        # overwrite the stored absolute. That is the point -- the absolute is
+        # overwrite the stored total That is the point -- the total is
         # what the user typed, and only the user retypes it.
         ac <- effective_art_cost()
         if (is.null(v) || is.na(v))  return()
-        if (!ac_ok(ac) || v < -ac)   return()
+        if (!ac_ok(ac) || v < 0)     return()
         d <- param_overrides$dsd_abs
         d[[key]] <- unname(as.numeric(v))
         param_overrides$dsd_abs <- d
@@ -2055,7 +2060,7 @@ server <- function(input, output, session) {
     for (key in DSD_COST_KEYS) {
       # NA guard: a DSD key with no sheet unit_cost yields NA_real_, and pushing
       # NA into the field would blank it rather than restore a default.
-      v <- dsd_cost_default(key, ac_reset)$abs
+      v <- dsd_cost_default(key, ac_reset)$total
       if (length(v) == 1 && !is.na(v)) {
         updateNumericInput(session, paste0("dsdcost_", key), value = v)
       }

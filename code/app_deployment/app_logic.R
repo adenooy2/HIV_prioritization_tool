@@ -391,6 +391,42 @@ prep_oral_cost_frac <- function(months, key) {
   scale[min(4, ceiling(ceiling(months) / 3))]
 }
 
+# ============================================================================
+# LENACAPAVIR COST-BY-CONTINUATION SCALE
+# ----------------------------------------------------------------------------
+# unit_cost for the four prep_lenacapavir_* keys is the FULL ANNUAL cost of LEN
+# for one person (two injections/yr), per group (basic_hiv_data.csv
+# cost_prep_lenacapavir_*, or the Excel unit_cost row as global fallback).
+#
+# Not everyone returns for injection 2. The annual charge is scaled by the SAME
+# second_shot_return_rate that drives LEN efficacy, so cost and impact cannot
+# drift apart -- exactly as person_years_on_prep couples oral cost and efficacy.
+#
+#   charge per initiate = annual_unit_cost x (LEN_FIRST_SHOT_FRAC
+#                                             + LEN_SECOND_SHOT_FRAC x return_rate)
+#
+#   return_rate = 1 (all return) -> full annual cost
+#   return_rate = 0 (none)       -> LEN_FIRST_SHOT_FRAC of annual cost
+#
+# Split supplied by Alex 2026-07: a cost-apportionment assumption, NOT a sourced
+# unit cost. Oral keys are absent from the LEN branch, so this returns 1 for
+# them; the two scales are mutually exclusive by key and multiply safely.
+LEN_FIRST_SHOT_FRAC  <- 0.58   # Alex 2026-07: first-injection share of annual cost
+LEN_SECOND_SHOT_FRAC <- 0.42   # Alex 2026-07: second-injection incremental share
+LEN_COST_KEYS <- c("prep_lenacapavir_fsw", "prep_lenacapavir_msm",
+                   "prep_lenacapavir_agyw", "prep_lenacapavir_general")
+
+# return_rate -> fraction of annual LEN unit cost, for ONE intervention key.
+#   non-LEN key                          -> 1 (defer to oral scale / charge full)
+#   return_rate absent / NA / not len-1  -> 1 (charge full annual = today's behaviour)
+#   return_rate clamped to [0,1] before scaling
+prep_len_cost_frac <- function(return_rate, key) {
+  if (!(key %in% LEN_COST_KEYS)) return(1)
+  if (length(return_rate) != 1 || is.na(return_rate)) return(1)
+  r <- max(0, min(1, return_rate))
+  LEN_FIRST_SHOT_FRAC + LEN_SECOND_SHOT_FRAC * r
+}
+
 # ----------------------------------------------------------------------------
 # require_efficacy(): single validator for every PrEP efficacy read.
 #
@@ -547,6 +583,11 @@ build_intervention_groups <- function(intervention_params){
           eligible_pop = "n_fsw",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_fsw")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
+          # Same second_shot_return_rate prep_eff() reads for efficacy, carried
+          # onto the object so the cost loop can scale the annual LEN unit_cost
+          # by the fraction returning for shot 2 -- see prep_len_cost_frac().
+          second_shot_return_rate =
+            subset(intervention_params, intervention_key == "prep_lenacapavir_fsw")$second_shot_return_rate,
           outcomes = c("adult_infections")
         ),
         prep_lenacapavir_msm = list(
@@ -557,6 +598,11 @@ build_intervention_groups <- function(intervention_params){
           eligible_pop = "n_msm",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_msm")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
+          # Same second_shot_return_rate prep_eff() reads for efficacy, carried
+          # onto the object so the cost loop can scale the annual LEN unit_cost
+          # by the fraction returning for shot 2 -- see prep_len_cost_frac().
+          second_shot_return_rate =
+            subset(intervention_params, intervention_key == "prep_lenacapavir_msm")$second_shot_return_rate,
           outcomes = c("adult_infections")
         ),
         prep_lenacapavir_agyw = list(
@@ -567,6 +613,11 @@ build_intervention_groups <- function(intervention_params){
           eligible_pop = "n_agyw",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_agyw")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
+          # Same second_shot_return_rate prep_eff() reads for efficacy, carried
+          # onto the object so the cost loop can scale the annual LEN unit_cost
+          # by the fraction returning for shot 2 -- see prep_len_cost_frac().
+          second_shot_return_rate =
+            subset(intervention_params, intervention_key == "prep_lenacapavir_agyw")$second_shot_return_rate,
           outcomes = c("adult_infections")
         ),
         prep_lenacapavir_general = list(
@@ -577,6 +628,11 @@ build_intervention_groups <- function(intervention_params){
           eligible_pop = "n_general_all",
           unit_cost = subset(intervention_params, intervention_key == "prep_lenacapavir_general")$unit_cost %||%
             (subset(intervention_params, intervention_key == "prep_lenacapavir")$unit_cost %||% 0),
+          # Same second_shot_return_rate prep_eff() reads for efficacy, carried
+          # onto the object so the cost loop can scale the annual LEN unit_cost
+          # by the fraction returning for shot 2 -- see prep_len_cost_frac().
+          second_shot_return_rate =
+            subset(intervention_params, intervention_key == "prep_lenacapavir_general")$second_shot_return_rate,
           outcomes = c("adult_infections")
         ),
         vmmc = list(
@@ -3439,7 +3495,12 @@ calculate_scenario_outcomes <- function(context, interventions, populations,
       # -- efficacy uses the raw, unrounded person-years.
       # Every non-oral key (LEN, vmmc, condoms) returns frac = 1: charged in full.
       dur_months <- (intervention$person_years_on_prep %||% NA_real_) * 12
-      cost_frac  <- prep_oral_cost_frac(dur_months, int_key)
+      # Oral scale (duration) and LEN scale (return) are mutually exclusive by
+      # key -- each returns 1 for the other's keys -- so multiplying is safe:
+      # oral key = oral_frac x 1; LEN key = 1 x len_frac; neither = 1 x 1.
+      len_ret    <- intervention$second_shot_return_rate %||% NA_real_
+      cost_frac  <- prep_oral_cost_frac(dur_months, int_key) *
+        prep_len_cost_frac(len_ret, int_key)
       charge_cost("prevention", units_costed * unit_cost_eff * cost_frac)
     }
   }
