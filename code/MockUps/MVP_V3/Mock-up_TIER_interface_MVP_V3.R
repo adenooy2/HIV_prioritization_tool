@@ -896,10 +896,18 @@ server <- function(input, output, session) {
     # param_overrides can change, so isolating loses no real reactivity here.
     # The caps DO change on a country or total_pop switch -- both of those also
     # change baseline_values(), which re-invalidates this path and re-reads them.
-    caps <- isolate(list(fsw     = group_pop("fsw"),
-                         msm     = group_pop("msm"),
-                         agyw    = group_pop("agyw"),
-                         general = group_pop("general")))
+    # tryCatch mirrors prep_total_cap() above: strata_sizes() may be unavailable
+    # on an early flush, before the input$region observer has populated
+    # country_calibration()/original_baseline(). allocate_prep_totals() tests
+    # each cap for NA before clipping, so NA caps mean "no clip" -- safe at
+    # startup, and the real caps arrive on the next flush.
+    caps <- isolate(tryCatch(
+      list(fsw     = group_pop("fsw"),
+           msm     = group_pop("msm"),
+           agyw    = group_pop("agyw"),
+           general = group_pop("general")),
+      error = function(e) list(fsw = NA_real_, msm = NA_real_,
+                               agyw = NA_real_, general = NA_real_)))
     allocate_prep_totals(total_oral, total_lena, caps = caps)
   }
   
@@ -2922,14 +2930,39 @@ server <- function(input, output, session) {
     scaled
   })
   
+  # ---- Baseline form SHAPE -------------------------------------------------
+  # The form is built once per SHAPE, not once per value change. "Shape" means
+  # WHICH boxes exist, which depends only on the PrEP entry mode, plus a one-off
+  # flag for whether any country has loaded yet. Values are pushed into the
+  # existing boxes by observeEvent(baseline_values()) further down.
+  #
+  # WHY: baseline_ui previously depended on baseline_values(), so every country
+  # switch and every total_pop edit tore down and rebuilt all ~28 boxes and
+  # their tooltips and shipped that HTML over the websocket. Measured from
+  # Johannesburg to the Helsinki host (216 ms round trip) a country switch cost
+  # ~9.7 s online vs ~2.1 s locally; the rebuild/echo loop was the bulk of it.
+  #
+  # The identical() guard is EXPLICIT rather than relying on reactiveVal's
+  # de-duplication, so an unchanged shape cannot re-fire the rebuild.
+  baseline_ui_shape <- reactiveVal(NULL)
+  observe({
+    shape <- paste0(input$prep_entry_mode %||% PREP_ENTRY_MODE_DEFAULT, "|",
+                    if (length(baseline_values()) > 0) "ready" else "empty")
+    if (!identical(isolate(baseline_ui_shape()), shape)) baseline_ui_shape(shape)
+  })
+  
   # Generate baseline UI
   output$baseline_ui <- renderUI({
-    baseline <- baseline_values()
+    # ONLY reactive dependency is the shape. Values are read under isolate().
+    req(baseline_ui_shape())
+    baseline <- isolate(baseline_values())
     if (length(baseline) == 0) return(NULL)
     
     # PrEP entry mode drives whether the per-group PrEP fields or a single
     # oral/lenacapavir total pair are shown (see prevention block below).
-    prep_mode <- input$prep_entry_mode %||% PREP_ENTRY_MODE_DEFAULT
+    # isolate(): the mode already reaches this renderUI through baseline_ui_shape;
+    # reading it live as well would restore a second dependency for no gain.
+    prep_mode <- isolate(input$prep_entry_mode) %||% PREP_ENTRY_MODE_DEFAULT
     prep_group_keys <- c("prep_oral_fsw", "prep_oral_msm", "prep_oral_agyw", "prep_oral_general",
                          "prep_lenacapavir_fsw", "prep_lenacapavir_msm", "prep_lenacapavir_agyw", "prep_lenacapavir_general")
     
@@ -3416,6 +3449,20 @@ server <- function(input, output, session) {
         }
       }
     }
+    
+    # Total-mode PrEP boxes are NOT intervention keys, so the loop above never
+    # reaches them. While baseline_ui rebuilt on every value change this was
+    # invisible -- the rebuild recomputed them from baseline. Now the form is
+    # built once, so they must be pushed explicitly or they go stale on a
+    # country switch. Summed exactly as baseline_ui derives them, so the box and
+    # the form can never disagree. In "By group" mode these inputs do not exist
+    # and the update messages are harmlessly dropped.
+    oral_tot <- (baseline[["prep_oral_fsw"]]  %||% 0) + (baseline[["prep_oral_msm"]]  %||% 0) +
+      (baseline[["prep_oral_agyw"]] %||% 0) + (baseline[["prep_oral_general"]] %||% 0)
+    lena_tot <- (baseline[["prep_lenacapavir_fsw"]]  %||% 0) + (baseline[["prep_lenacapavir_msm"]]  %||% 0) +
+      (baseline[["prep_lenacapavir_agyw"]] %||% 0) + (baseline[["prep_lenacapavir_general"]] %||% 0)
+    updateNumericInput(session, "baseline_prep_total_oral", value = oral_tot)
+    updateNumericInput(session, "baseline_prep_total_lena", value = lena_tot)
   }, ignoreInit = TRUE)
   # ---- Reset scenarios to baseline ----------------------------------------
   # Clears the touched flags and pushes the current baseline into every scenario
