@@ -33,101 +33,24 @@ options(tier.mort_diag = FALSE)
 }
 
 # ============================================================================
-# STARTUP DATA CACHE
-# ----------------------------------------------------------------------------
-# Shiny Server (open source) starts a NEW R process per user session, so every
-# top-level download here is paid by every visitor, not once at app start.
-# This caches the four startup files on disk so only the first session after a
-# cache expiry pays for them.
-#
-# BEHAVIOUR:
-#   - Fresh cache (< TIER_CACHE_MAX_AGE_HOURS old)  -> use it, no network.
-#   - Stale or missing                              -> download, then cache.
-#   - Download fails but a stale cache exists       -> use stale, WARN loudly.
-#   - Download fails and no cache exists            -> stop(), same as today.
-#
-# The URL is stored alongside each file: if a share link changes, the cache is
-# invalidated automatically rather than silently serving the old document.
-#
-# CONTROLS (environment variables):
-#   TIER_CACHE_DIR             default "cache" relative to the working dir.
-#                              Shiny Server cds into the app dir, so on the
-#                              server this is /srv/shiny-server/tier-plus/cache.
-#   TIER_CACHE_MAX_AGE_HOURS   default 24. Set to 0 to force a fresh download
-#                              (use this when running the test suite).
-# ============================================================================
-TIER_CACHE_DIR <- Sys.getenv("TIER_CACHE_DIR", unset = "cache")
-TIER_CACHE_MAX_AGE_HOURS <- suppressWarnings(
-  as.numeric(Sys.getenv("TIER_CACHE_MAX_AGE_HOURS", unset = "24")))
-if (is.na(TIER_CACHE_MAX_AGE_HOURS)) TIER_CACHE_MAX_AGE_HOURS <- 24
-
-tier_cached_file <- function(url, ext, label) {
-  dir.create(TIER_CACHE_DIR, recursive = TRUE, showWarnings = FALSE)
-  path     <- file.path(TIER_CACHE_DIR, paste0(label, ext))
-  url_path <- file.path(TIER_CACHE_DIR, paste0(label, ".url"))
-  
-  # A changed share link must invalidate the cache, or we would silently keep
-  # serving the document the old link pointed at.
-  url_matches <- file.exists(url_path) &&
-    identical(readLines(url_path, warn = FALSE)[1], url)
-  
-  age_h <- if (file.exists(path)) {
-    as.numeric(difftime(Sys.time(), file.mtime(path), units = "hours"))
-  } else Inf
-  
-  if (url_matches && age_h <= TIER_CACHE_MAX_AGE_HOURS) {
-    message(sprintf("[cache] %s: cached copy, %.1f h old", label, age_h))
-    return(path)
-  }
-  
-  tmp <- paste0(path, ".part")
-  ok <- tryCatch({
-    utils::download.file(url, tmp, mode = "wb", method = "libcurl", quiet = TRUE)
-    isTRUE(file.exists(tmp)) && isTRUE(file.info(tmp)$size > 0)
-  }, error = function(e) {
-    message(sprintf("[cache] %s: download failed -- %s", label, conditionMessage(e)))
-    FALSE
-  })
-  
-  if (isTRUE(ok)) {
-    # Write to .part then rename, so a download interrupted halfway cannot
-    # leave a truncated file that later looks like a valid cache entry.
-    file.rename(tmp, path)
-    writeLines(url, url_path)
-    message(sprintf("[cache] %s: downloaded fresh copy", label))
-    return(path)
-  }
-  
-  unlink(tmp)
-  if (file.exists(path)) {
-    warning(sprintf(
-      "[cache] %s: download FAILED -- falling back to STALE cache (%.1f h old). Figures may be out of date.",
-      label, age_h))
-    return(path)
-  }
-  stop(sprintf("[cache] %s: download failed and no cached copy exists.", label))
-}
-
-# ============================================================================
 # LOAD DATA
 # ============================================================================
-country_data_csv <- readr::read_csv(
-  tier_cached_file("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQBCFFlfF2AaRLcGuaCvNAcJAbE-8Ak2_gDyNJnL0GQu8Ag?e=k5dAU1&download=1",
-                   ".csv", "country_data"),
-  show_col_types = FALSE)
+# Load country data
+response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQBCFFlfF2AaRLcGuaCvNAcJAbE-8Ak2_gDyNJnL0GQu8Ag?e=k5dAU1&download=1")
+country_data_csv <- content(response, as = "parsed", type = "text/csv")
 
-baseline_data_csv <- readr::read_csv(
-  tier_cached_file("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=96oyQi&download=1",
-                   ".csv", "baseline_data"),
-  show_col_types = FALSE)
+# Load country-level baseline intervention volumes
+# Replace the URL below with the actual share link for the baseline CSV
+baseline_response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=96oyQi&download=1")
+baseline_data_csv <- content(baseline_response, as = "parsed", type = "text/csv") 
 
 
 # Load intervention parameters from Excel
 load_intervention_params <- function(){
   sharepoint_url_interventions <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
   
-  temp_file_int <- tier_cached_file(sharepoint_url_interventions, ".xlsx",
-                                    "intervention_params")
+  temp_file_int <- tempfile(fileext = ".xlsx")
+  download.file(sharepoint_url_interventions, temp_file_int, mode = "wb", method = "libcurl")
   
   intervention_params <- read_excel(temp_file_int, col_names = FALSE)
   
@@ -197,8 +120,9 @@ load_intervention_params <- function(){
 load_hiv_model_params <- function() {
   sharepoint_url_params <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=yS82SG&download=1"
   
-  temp_file_params <- tier_cached_file(sharepoint_url_params, ".xlsx",
-                                       "general_values")
+  temp_file_params <- tempfile(fileext = ".xlsx")
+  download.file(sharepoint_url_params, temp_file_params,
+                mode = "wb", method = "libcurl")
   df <- read_excel(temp_file_params, sheet = "general_values")
   out <- as.list(setNames(as.numeric(df$value), df$key))
   out[!is.na(names(out)) & nzchar(names(out))]
