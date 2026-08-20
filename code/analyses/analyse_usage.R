@@ -20,9 +20,15 @@
 #   generate_report("~/Desktop/tier_usage.sqlite")
 #   # Opens the HTML report in your browser automatically.
 #
-#   # With a custom cutoff (events before this UTC instant are dropped):
+#   # With a custom start cutoff (events before this UTC instant are dropped):
 #   generate_report("~/Desktop/tier_usage.sqlite",
 #                   cutoff_utc = as.POSIXct("2026-06-12 10:00:00", tz = "UTC"))
+#
+#   # Bounded window -- keep only events in [start, end] inclusive (UTC).
+#   # end_cutoff_utc = NULL (the default) means no upper bound.
+#   generate_report("~/Desktop/tier_usage.sqlite",
+#                   cutoff_utc     = as.POSIXct("2026-06-12 10:00:00", tz = "UTC"),
+#                   end_cutoff_utc = as.POSIXct("2026-07-31 23:59:59", tz = "UTC"))
 #
 # USAGE (terminal):
 #   Rscript analyse_usage.R ~/Desktop/tier_usage.sqlite
@@ -73,9 +79,10 @@ DEFAULT_CUTOFF_UTC <- as.POSIXct("2026-06-12 10:00:00", tz = "UTC")
 # generated HTML file invisibly.
 # ---------------------------------------------------------------------------
 generate_report <- function(sqlite_path,
-                            output_path = NULL,
-                            cutoff_utc  = DEFAULT_CUTOFF_UTC,
-                            open_after  = interactive()) {
+                            output_path    = NULL,
+                            cutoff_utc     = DEFAULT_CUTOFF_UTC,
+                            end_cutoff_utc = NULL,
+                            open_after     = interactive()) {
   .check_packages()
   
   sqlite_path <- normalizePath(sqlite_path, mustWork = TRUE)
@@ -90,6 +97,24 @@ generate_report <- function(sqlite_path,
   }
   attr(cutoff_utc, "tzone") <- "UTC"
   
+  # Same coercion for the optional end cutoff (NULL = no upper bound)
+  if (!is.null(end_cutoff_utc)) {
+    if (is.character(end_cutoff_utc)) {
+      end_cutoff_utc <- as.POSIXct(end_cutoff_utc, tz = "UTC")
+    }
+    if (!inherits(end_cutoff_utc, "POSIXct")) {
+      stop("end_cutoff_utc must be NULL, a POSIXct, or a parseable character string.",
+           call. = FALSE)
+    }
+    attr(end_cutoff_utc, "tzone") <- "UTC"
+    if (end_cutoff_utc < cutoff_utc) {
+      stop(sprintf(
+        "end_cutoff_utc (%s) is before cutoff_utc (%s).",
+        format(end_cutoff_utc, "%Y-%m-%d %H:%M"),
+        format(cutoff_utc,     "%Y-%m-%d %H:%M")), call. = FALSE)
+    }
+  }
+  
   if (is.null(output_path)) {
     output_path <- file.path(
       dirname(sqlite_path),
@@ -100,7 +125,8 @@ generate_report <- function(sqlite_path,
   
   # Read the data
   message("[analyse_usage] Reading: ", sqlite_path)
-  df <- .read_events(sqlite_path, cutoff_utc = cutoff_utc)
+  df <- .read_events(sqlite_path, cutoff_utc = cutoff_utc,
+                     end_cutoff_utc = end_cutoff_utc)
   message(sprintf("[analyse_usage] %d rows loaded (after cutoff filter)", nrow(df)))
   
   # Generate the report -- writes Rmd to a tempfile and knits it
@@ -112,9 +138,10 @@ generate_report <- function(sqlite_path,
     rmd_path,
     output_file = basename(output_path),
     output_dir  = dirname(output_path),
-    params = list(events_df   = df,
-                  sqlite_path = sqlite_path,
-                  cutoff_utc  = cutoff_utc),
+    params = list(events_df      = df,
+                  sqlite_path    = sqlite_path,
+                  cutoff_utc     = cutoff_utc,
+                  end_cutoff_utc = end_cutoff_utc),
     quiet = TRUE
   )
   
@@ -137,7 +164,9 @@ generate_report <- function(sqlite_path,
 # they are pre-cutoff and would rather over-include than silently lose
 # logged events.
 # ---------------------------------------------------------------------------
-.read_events <- function(sqlite_path, cutoff_utc = DEFAULT_CUTOFF_UTC) {
+.read_events <- function(sqlite_path,
+                         cutoff_utc     = DEFAULT_CUTOFF_UTC,
+                         end_cutoff_utc = NULL) {
   con <- DBI::dbConnect(RSQLite::SQLite(), sqlite_path)
   on.exit(DBI::dbDisconnect(con), add = TRUE)
   
@@ -164,17 +193,23 @@ generate_report <- function(sqlite_path,
     error = function(e) rep(as.POSIXct(NA), nrow(df))
   )
   
-  # Apply cutoff: keep rows at/after cutoff, OR rows with NA timestamps.
-  # NB: a bare `timestamp_posix >= cutoff` returns NA for NA timestamps,
-  # which would drop them when used as a filter index -- hence the
-  # explicit is.na() branch.
-  before <- nrow(df)
-  keep   <- is.na(df$timestamp_posix) | df$timestamp_posix >= cutoff_utc
-  df     <- df[keep, , drop = FALSE]
-  n_na   <- sum(is.na(df$timestamp_posix))
+  # Apply window: keep rows in [cutoff_utc, end_cutoff_utc] (both inclusive),
+  # OR rows with NA timestamps. A bare comparison returns NA for NA
+  # timestamps, which would drop them when used as a filter index -- hence
+  # the explicit is.na() branch. end_cutoff_utc = NULL means no upper bound.
+  before    <- nrow(df)
+  in_window <- df$timestamp_posix >= cutoff_utc
+  if (!is.null(end_cutoff_utc)) {
+    in_window <- in_window & df$timestamp_posix <= end_cutoff_utc
+  }
+  keep <- is.na(df$timestamp_posix) | in_window
+  df   <- df[keep, , drop = FALSE]
+  n_na <- sum(is.na(df$timestamp_posix))
   message(sprintf(
-    "[analyse_usage] Cutoff %s UTC: kept %d/%d rows (%d with NA timestamps retained)",
-    format(cutoff_utc, "%Y-%m-%d %H:%M"), nrow(df), before, n_na
+    "[analyse_usage] Window [%s, %s] UTC: kept %d/%d rows (%d with NA timestamps retained)",
+    format(cutoff_utc, "%Y-%m-%d %H:%M"),
+    if (is.null(end_cutoff_utc)) "open" else format(end_cutoff_utc, "%Y-%m-%d %H:%M"),
+    nrow(df), before, n_na
   ))
   
   df
@@ -199,6 +234,7 @@ params:
   events_df: !r data.frame()
   sqlite_path: ""
   cutoff_utc: !r as.POSIXct("1970-01-01", tz = "UTC")
+  end_cutoff_utc: !r NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -273,7 +309,7 @@ tier_theme <- theme_minimal(base_size = 12) +
 
 *Report generated `r format(Sys.time(), "%Y-%m-%d %H:%M %Z")` from `r basename(params$sqlite_path)`*
 
-*Analysis cutoff: events on/after `r format(params$cutoff_utc, "%Y-%m-%d %H:%M")` UTC (rows with missing timestamps retained)*
+*Analysis window: events on/after `r format(params$cutoff_utc, "%Y-%m-%d %H:%M")` UTC `r if (is.null(params$end_cutoff_utc)) "" else sprintf("and on/before %s UTC ", format(params$end_cutoff_utc, "%Y-%m-%d %H:%M"))`(inclusive; rows with missing timestamps retained)*
 
 ---
 
@@ -643,7 +679,7 @@ if (nrow(results) == 0) {
 <hr>
 <p style="color:#888;font-size:0.85em;">
 TIER usage report. Generated from <code>`r params$sqlite_path`</code>.
-Analysis cutoff: <code>`r format(params$cutoff_utc, "%Y-%m-%d %H:%M")` UTC</code>.
+Analysis window: <code>`r format(params$cutoff_utc, "%Y-%m-%d %H:%M")` UTC</code> to <code>`r if (is.null(params$end_cutoff_utc)) "open" else format(params$end_cutoff_utc, "%Y-%m-%d %H:%M")`</code>.
 Re-run <code>generate_report()</code> after pulling a fresh SQLite snapshot.
 </p>
 )---"
@@ -657,7 +693,7 @@ Re-run <code>generate_report()</code> after pulling a fresh SQLite snapshot.
 if (sys.nframe() == 0L) {
   args <- commandArgs(trailingOnly = TRUE)
   if (length(args) == 0) {
-    cat("Usage: Rscript analyse_usage.R <path-to-usage.sqlite> [<output.html>] [<cutoff_utc>]\n")
+    cat("Usage: Rscript analyse_usage.R <path-to-usage.sqlite> [<output.html>] [<cutoff_utc>] [<end_cutoff_utc>]\n")
     quit(save = "no", status = 1)
   }
   sqlite_path <- args[1]
@@ -667,6 +703,13 @@ if (sys.nframe() == 0L) {
   } else {
     DEFAULT_CUTOFF_UTC
   }
+  end_cutoff_utc <- if (length(args) >= 4 && nzchar(args[4])) {
+    as.POSIXct(args[4], tz = "UTC")
+  } else {
+    NULL
+  }
   generate_report(sqlite_path, output_path,
-                  cutoff_utc = cutoff_utc, open_after = FALSE)
+                  cutoff_utc     = cutoff_utc,
+                  end_cutoff_utc = end_cutoff_utc,
+                  open_after     = FALSE)
 }

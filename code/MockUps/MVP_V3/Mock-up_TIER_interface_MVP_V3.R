@@ -42,13 +42,13 @@ tryCatch(
 # # Source usage logger and initialise log DB.
 # # Logging failure must NEVER block app startup -- the tryCatch guarantees
 # # the app runs even if usage_logger.R is missing or init fails.
-# tryCatch({
-#   source("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/MVP_V3/usage_logger.R")
-#   init_log_db()
-# }, error = function(e) {
-#   message("usage_logger.R not found or failed to init -- logging disabled.")
-# })
-# 
+tryCatch({
+  source("/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/MockUps/MVP_V3/usage_logger.R")
+  init_log_db()
+}, error = function(e) {
+  message("usage_logger.R not found or failed to init -- logging disabled.")
+})
+
 
 # ============================================================================
 # STARTUP PrEP ENTRY MODE
