@@ -79,10 +79,11 @@ DEFAULT_CUTOFF_UTC <- as.POSIXct("2026-06-12 10:00:00", tz = "UTC")
 # generated HTML file invisibly.
 # ---------------------------------------------------------------------------
 generate_report <- function(sqlite_path,
-                            output_path    = NULL,
-                            cutoff_utc     = DEFAULT_CUTOFF_UTC,
-                            end_cutoff_utc = NULL,
-                            open_after     = interactive()) {
+                            output_path     = NULL,
+                            cutoff_utc      = DEFAULT_CUTOFF_UTC,
+                            end_cutoff_utc  = NULL,
+                            default_country = NULL,
+                            open_after      = interactive()) {
   .check_packages()
   
   sqlite_path <- normalizePath(sqlite_path, mustWork = TRUE)
@@ -138,10 +139,11 @@ generate_report <- function(sqlite_path,
     rmd_path,
     output_file = basename(output_path),
     output_dir  = dirname(output_path),
-    params = list(events_df      = df,
-                  sqlite_path    = sqlite_path,
-                  cutoff_utc     = cutoff_utc,
-                  end_cutoff_utc = end_cutoff_utc),
+    params = list(events_df       = df,
+                  sqlite_path     = sqlite_path,
+                  cutoff_utc      = cutoff_utc,
+                  end_cutoff_utc  = end_cutoff_utc,
+                  default_country = default_country),
     quiet = TRUE
   )
   
@@ -235,6 +237,7 @@ params:
   sqlite_path: ""
   cutoff_utc: !r as.POSIXct("1970-01-01", tz = "UTC")
   end_cutoff_utc: !r NULL
+  default_country: !r NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -460,7 +463,7 @@ if (nrow(sessions) == 0) {
 
 ## 5. Countries being modelled
 
-Which country profiles do users select in the app? This is the answer to "what is TIER being used for".
+Which country profiles do users select in the app? This is the answer to "what is TIER being used for". Two counts are shown per country: **distinct sessions** that modelled it at least once (the less-inflated measure of interest), and **Results views** (every time the Results tab was opened with that country selected -- a session that iterates several times is counted each time).
 
 ```{r model_country}
 results <- df %>% filter(event_type == "results_view")
@@ -470,20 +473,42 @@ if (nrow(results) == 0) {
 } else if (all(is.na(results$model_country))) {
   empty_msg("No model_country values recorded yet.")
 } else {
-  countries <- results %>%
-    filter(!is.na(model_country), nzchar(model_country)) %>%
-    count(model_country, sort = TRUE)
-  
+  cm <- results %>% filter(!is.na(model_country), nzchar(model_country))
+
+  # views    = number of results_view events (a session iterating N times
+  #            contributes N) -- the historical "Views" metric.
+  # sessions = distinct session_id that modelled the country at least once.
+  #            A session that models several countries is counted under each,
+  #            so this column can sum to more than the number of distinct
+  #            sessions that reached Results.
+  by_country <- cm %>%
+    group_by(model_country) %>%
+    summarise(sessions = n_distinct(session_id),
+              views    = n(),
+              .groups  = "drop") %>%
+    arrange(desc(sessions), desc(views))
+
+  # Chart the distinct-session count (the less-inflated view of interest)
   print(
-    ggplot(countries, aes(x = reorder(model_country, n), y = n)) +
+    ggplot(by_country, aes(x = reorder(model_country, sessions), y = sessions)) +
       geom_col(fill = "#7c3aed", width = 0.7) +
       coord_flip() +
-      labs(x = NULL, y = "Results-view events") +
+      labs(x = NULL, y = "Distinct sessions modelling this country") +
       tier_theme
   )
-  
-  knitr::kable(countries, col.names = c("Country", "Views"),
-               format = "html", table.attr = "class='table table-striped'")
+
+  cat(knitr::kable(
+    by_country[, c("model_country", "sessions", "views")],
+    col.names = c("Country", "Distinct sessions", "Results views"),
+    format = "html", table.attr = "class='table table-striped'"))
+
+  cat("<p style='color:#666;'>",
+      "\"Distinct sessions\" counts unique sessions that modelled the country ",
+      "at least once; a session modelling several countries is counted under ",
+      "each, so this column can exceed the total number of distinct sessions ",
+      "that reached Results. \"Results views\" counts every Results-tab open ",
+      "with that country selected, so it is inflated by sessions that iterate ",
+      "and by the app's default landing country.</p>")
 }
 ```
 
@@ -671,6 +696,148 @@ if (nrow(results) == 0) {
           "Rows are ordered by N descending. Percentages may not sum to exactly 100 due to rounding.</p>")
     }
   }
+}
+```
+
+---
+
+## 9. Default-country engagement
+
+The app opens on a default country, so raw `results_view` counts for that country are inflated by sessions that opened the app and never really engaged. This section separates **genuine tool use from browsing** for the default country.
+
+Important caveat up front: the data **cannot** distinguish "the user deliberately selected the default country" from "the user left the default untouched" -- there is no region-change event, and `model_country` is only written on a `results_view`. What it *can* separate is engagement depth, which is the more useful cut:
+
+- **Opened Results, no change** -- reached the Results tab but no input differs from baseline by >5% (same rule as Sections 7-8). Effectively "just looking".
+- **Reopened Results, no input change** -- opened Results more than once (`view_count > 1`) but still changed nothing.
+- **Modelled a scenario** -- moved at least one input >5% off baseline in scenario 1 or 2. The real "used the tool" signal; it works even on the untouched default (scenario == baseline == default => zero fields changed).
+
+A session that *also* modelled a non-default country is separately flagged, since that makes its default-country view more likely to have been deliberate rather than incidental.
+
+```{r default_engagement}
+results  <- df %>% filter(event_type == "results_view")
+sessions <- df %>% filter(event_type == "session_start")
+
+# Resolve the default country. Explicit param wins; otherwise infer it as
+# the most common model_country on session_start rows (the app writes the
+# on-open default there). Fall back to the most common results_view country
+# if session_start carries no usable country -- flagged as low-confidence.
+default_country <- params$default_country
+detection_note  <- ""
+if (is.null(default_country) || !nzchar(default_country)) {
+  ss <- sessions$model_country
+  ss <- ss[!is.na(ss) & nzchar(ss)]
+  if (length(ss) > 0) {
+    tab <- sort(table(ss), decreasing = TRUE)
+    default_country <- names(tab)[1]
+    detection_note <- sprintf(
+      "Default country inferred as the most common value on session_start rows: <strong>%s</strong> (%d of %d session_start rows carrying a country).",
+      default_country, tab[[1]], length(ss))
+  } else {
+    rc <- results$model_country
+    rc <- rc[!is.na(rc) & nzchar(rc)]
+    if (length(rc) > 0) {
+      tab <- sort(table(rc), decreasing = TRUE)
+      default_country <- names(tab)[1]
+      detection_note <- sprintf(
+        "session_start rows carry no country, so the default was inferred from the most common results_view country: <strong>%s</strong>. TREAT WITH CAUTION -- this is a weak proxy for the app default.",
+        default_country)
+    } else {
+      default_country <- NULL
+    }
+  }
+} else {
+  detection_note <- sprintf("Default country supplied explicitly: <strong>%s</strong>.",
+                            default_country)
+}
+
+if (is.null(default_country)) {
+  empty_msg("Could not determine a default country (no model_country values recorded yet).")
+} else if (nrow(results %>% filter(model_country == default_country)) == 0) {
+  cat(sprintf("<p style='color:#666;'>%s</p>", detection_note))
+  empty_msg(sprintf("No results_view events for the default country (%s) in this window.",
+                    default_country))
+} else {
+  # Reuse the report's existing >5% delta rule (fields_changed_from_baseline,
+  # DELTA_THRESHOLD, DELTA_FLOOR are defined in the setup chunk).
+  adapted_flag <- function(s1, s2, b) {
+    length(fields_changed_from_baseline(s1, b)) > 0 ||
+    length(fields_changed_from_baseline(s2, b)) > 0
+  }
+
+  rv <- results %>% filter(model_country == default_country)
+  rv$adapted <- mapply(adapted_flag,
+                       rv$scenario1_json, rv$scenario2_json, rv$baseline_json)
+
+  # Sessions that also modelled a non-default country (=> deliberate switch)
+  switched <- results %>%
+    filter(!is.na(model_country), nzchar(model_country)) %>%
+    group_by(session_id) %>%
+    summarise(saw_non_default = any(model_country != default_country),
+              .groups = "drop")
+
+  per_sess <- rv %>%
+    group_by(session_id) %>%
+    summarise(
+      any_adapted = any(adapted),
+      max_views   = {
+        vv <- view_count[is.finite(view_count)]
+        if (length(vv) > 0) max(vv) else 1L
+      },
+      .groups = "drop"
+    ) %>%
+    left_join(switched, by = "session_id") %>%
+    mutate(tier = case_when(
+      any_adapted   ~ "Modelled a scenario (moved input >5%)",
+      max_views > 1 ~ "Reopened Results, no input change",
+      TRUE          ~ "Opened Results on default, no change"
+    ))
+
+  tier_levels <- c("Opened Results on default, no change",
+                   "Reopened Results, no input change",
+                   "Modelled a scenario (moved input >5%)")
+  per_sess$tier <- factor(per_sess$tier, levels = tier_levels)
+
+  tier_tbl <- as.data.frame(table(per_sess$tier), stringsAsFactors = FALSE)
+  names(tier_tbl) <- c("Engagement tier", "Sessions")
+  tier_tbl$`% of default-country sessions` <-
+    round(100 * tier_tbl$Sessions / sum(tier_tbl$Sessions), 0)
+
+  cat(sprintf("<p style='color:#666;'>%s</p>", detection_note))
+  cat(sprintf("<p><strong>%d</strong> distinct sessions reached Results with %s selected.</p>",
+              nrow(per_sess), default_country))
+
+  cat(knitr::kable(tier_tbl, format = "html",
+                   table.attr = "class='table table-striped'"))
+
+  print(
+    ggplot(per_sess, aes(x = tier)) +
+      geom_bar(fill = "#f59e0b", width = 0.7) +
+      scale_x_discrete(limits = tier_levels,
+                       labels = function(x) gsub(", ", ",\n", x)) +
+      scale_y_continuous(breaks = scales::pretty_breaks()) +
+      labs(x = NULL, y = "Sessions") +
+      tier_theme
+  )
+
+  n_used     <- sum(per_sess$tier == "Modelled a scenario (moved input >5%)")
+  n_switched <- sum(per_sess$saw_non_default, na.rm = TRUE)
+  cat(sprintf(
+    "<p style='color:#666;'>%d of %d default-country sessions (%.0f%%) actually modelled a scenario. ",
+    n_used, nrow(per_sess), 100 * n_used / nrow(per_sess)))
+  cat(sprintf(
+    "%d also modelled at least one non-default country in the same session, making the default-country view more likely to have been deliberate.</p>",
+    n_switched))
+
+  # Context: pure opens that never reached Results at all (global -- cannot
+  # be attributed to any country, since model_country is logged on
+  # results_view only).
+  opened  <- unique(df$session_id[df$event_type == "session_start"])
+  reached <- unique(results$session_id)
+  cat(sprintf(
+    "<p style='color:#666;'>Separately, <strong>%d</strong> sessions opened the app but never reached the Results tab. These have no model_country and cannot be attributed to any country -- they are pure opens, likely the largest block of 'just looking'.</p>",
+    length(setdiff(opened, reached))))
+
+  cat("<p style='color:#888;font-size:0.9em;'><em>Caveats: the >5% rule is a design choice (DELTA_THRESHOLD) -- shifting it moves the tier boundaries. Automated crawlers hitting the landing page look like 'Opened, no change'. There is no dwell-time signal, so time spent exploring is not measured here.</em></p>")
 }
 ```
 
