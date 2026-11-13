@@ -33,24 +33,108 @@ options(tier.mort_diag = FALSE)
 }
 
 # ============================================================================
-# LOAD DATA
+# LOAD DATA  (OneDrive / SharePoint first, local copy in data/ as fallback)
 # ============================================================================
-# Load country data
-response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQBCFFlfF2AaRLcGuaCvNAcJAbE-8Ak2_gDyNJnL0GQu8Ag?e=k5dAU1&download=1")
-country_data_csv <- content(response, as = "parsed", type = "text/csv")
+# Local fallback copies live in a folder called "data" next to this file:
+#   data/country_data.csv    <- same file as the country OneDrive link
+#   data/baseline_data.csv   <- same file as the baseline OneDrive link
+#   data/parameters.xlsx     <- same workbook as the SharePoint link
+#                               (needs sheets main_sheet and general_values)
+# The data folder is found by trying these in order and using the first that
+# exists: (1) the environment variable TIER_DATA_DIR, (2) the app_deployment/data
+# folder on the Mac (both OneDrive path spellings), (3) "data" next to the app
+# (this is the one used on the server). Same logic in app_logic.R and
+# Mock-Up_logic_V3.R, so both read the same files.
+# To test the fallback, set TIER_FORCE_LOCAL=1 (skips all web downloads).
+DATA_DIR <- local({
+  candidates <- c(
+    Sys.getenv("TIER_DATA_DIR"),
+    "/Users/adenooy/Library/CloudStorage/OneDrive-Personal/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/app_deployment/data",
+    "/Users/adenooy/OneDrive/AMC/HIV Prioritization tool/HIV_prioritization_tool/code/app_deployment/data",
+    "data"
+  )
+  candidates <- candidates[nzchar(candidates)]
+  found <- candidates[dir.exists(candidates)]
+  if (length(found) > 0) found[1] else "data"
+})
+message("Data folder: ", DATA_DIR)
+FORCE_LOCAL <- identical(Sys.getenv("TIER_FORCE_LOCAL"), "1")
 
-# Load country-level baseline intervention volumes
-# Replace the URL below with the actual share link for the baseline CSV
-baseline_response <- GET("https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=96oyQi&download=1")
-baseline_data_csv <- content(baseline_response, as = "parsed", type = "text/csv") 
+# Download `url` to a temp file. Returns the file path, or NULL if anything
+# goes wrong (error, status other than 200, empty file).
+try_download <- function(url, ext, use_httr = TRUE) {
+  if (FORCE_LOCAL) return(NULL)
+  tmp <- tempfile(fileext = ext)
+  ok <- tryCatch({
+    if (use_httr) {
+      r <- GET(url, write_disk(tmp, overwrite = TRUE), timeout(30))
+      status_code(r) == 200
+    } else {
+      download.file(url, tmp, mode = "wb", method = "libcurl", quiet = TRUE)
+      TRUE
+    }
+  }, error = function(e) FALSE, warning = function(w) FALSE)
+  if (ok && file.exists(tmp) && file.size(tmp) > 0) tmp else NULL
+}
+
+# Read a CSV: OneDrive first, then the local copy. Stops with a clear message
+# if neither works (instead of silently running on default values).
+load_csv <- function(url, local_name) {
+  tmp <- try_download(url, ".csv")
+  if (!is.null(tmp)) {
+    d <- tryCatch(read_csv(tmp, show_col_types = FALSE), error = function(e) NULL)
+    if (!is.null(d) && nrow(d) > 0 && "country" %in% names(d)) {
+      message("Loaded ", local_name, " from OneDrive.")
+      return(d)
+    }
+  }
+  local_path <- file.path(DATA_DIR, local_name)
+  if (file.exists(local_path)) {
+    message("WARNING: OneDrive download failed for ", local_name,
+            " - using local copy: ", normalizePath(local_path))
+    return(read_csv(local_path, show_col_types = FALSE))
+  }
+  stop("Could not load ", local_name, ": OneDrive download failed and no ",
+       "local copy found at ", normalizePath(local_path, mustWork = FALSE))
+}
+
+# Path to the parameters workbook: SharePoint first, then the local copy.
+get_params_xlsx <- function(url) {
+  tmp <- try_download(url, ".xlsx", use_httr = FALSE)
+  if (!is.null(tmp)) {
+    ok <- tryCatch({ excel_sheets(tmp); TRUE }, error = function(e) FALSE)
+    if (ok) {
+      message("Loaded parameters workbook from SharePoint.")
+      return(tmp)
+    }
+  }
+  local_path <- file.path(DATA_DIR, "parameters.xlsx")
+  if (file.exists(local_path)) {
+    message("WARNING: SharePoint download failed for the parameters workbook",
+            " - using local copy: ", normalizePath(local_path))
+    return(local_path)
+  }
+  stop("Could not load the parameters workbook: SharePoint download failed ",
+       "and no local copy found at ",
+       normalizePath(local_path, mustWork = FALSE))
+}
+
+# Country data
+country_data_csv <- load_csv(
+  "https://1drv.ms/x/c/2ae90f5cbd0fd171/IQBCFFlfF2AaRLcGuaCvNAcJAbE-8Ak2_gDyNJnL0GQu8Ag?e=k5dAU1&download=1",
+  "country_data.csv")
+
+# Country-level baseline intervention volumes
+baseline_data_csv <- load_csv(
+  "https://1drv.ms/x/c/2ae90f5cbd0fd171/IQAnibhIen_1TbiM3pkMXOTzAW2NkrUyv3KueNCHV1Tu_sI?e=96oyQi&download=1",
+  "baseline_data.csv")
 
 
 # Load intervention parameters from Excel
 load_intervention_params <- function(){
   sharepoint_url_interventions <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=WuMKZs&download=1"
   
-  temp_file_int <- tempfile(fileext = ".xlsx")
-  download.file(sharepoint_url_interventions, temp_file_int, mode = "wb", method = "libcurl")
+  temp_file_int <- get_params_xlsx(sharepoint_url_interventions)
   
   intervention_params <- read_excel(temp_file_int, col_names = FALSE)
   
@@ -115,14 +199,12 @@ load_intervention_params <- function(){
 # ============================================================================
 # LOAD MODEL PARAMETERS FROM EXCEL
 # Reads the flat key/value sheet 'params_for_loading' and returns a named list.
-# Falls back to hardcoded defaults if the download fails.
+# Falls back to the local copy in data/parameters.xlsx if the download fails.
 # ============================================================================
 load_hiv_model_params <- function() {
   sharepoint_url_params <- "https://bushare-my.sharepoint.com/:x:/g/personal/brooken_bu_edu/IQDkEN28uBz4Q6HD1Ydfa-mKASlPto-TuBhjDXChgC-eFbs?e=yS82SG&download=1"
   
-  temp_file_params <- tempfile(fileext = ".xlsx")
-  download.file(sharepoint_url_params, temp_file_params,
-                mode = "wb", method = "libcurl")
+  temp_file_params <- get_params_xlsx(sharepoint_url_params)
   df <- read_excel(temp_file_params, sheet = "general_values")
   out <- as.list(setNames(as.numeric(df$value), df$key))
   out[!is.na(names(out)) & nzchar(names(out))]
